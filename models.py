@@ -220,3 +220,41 @@ class GenerationTask(db.Model):
         """
         self.status = new_status
         self.updated_at = datetime.utcnow()
+
+
+class GenerationResult(db.Model):
+    """
+    GenerationResult model for storing persona data generated from Flowise.
+
+    Attributes:
+        id: Primary key
+        task_id: Foreign key to generation_tasks table (references id, not task_id string)
+        batch_number: Which batch this result came from (for tracking parallel requests)
+        firstname: Generated first name
+        lastname: Generated last name
+        gender: Gender (f/m)
+        bio_facebook: Facebook bio text
+        bio_instagram: Instagram bio text
+        bio_x: X (Twitter) bio text
+        bio_tiktok: TikTok bio text
+        created_at: Timestamp of result creation
+    """
+    __tablename__ = 'generation_results'
+
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('generation_tasks.id', ondelete='CASCADE'), nullable=False, index=True)
+    batch_number = db.Column(db.Integer, nullable=False, index=True)
+    firstname = db.Column(db.String(100), nullable=False)
+    lastname = db.Column(db.String(100), nullable=False)
+    gender = db.Column(db.String(10), nullable=False)
+    bio_facebook = db.Column(db.Text, nullable=True)
+    bio_instagram = db.Column(db.Text, nullable=True)
+    bio_x = db.Column(db.Text, nullable=True)
+    bio_tiktok = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+
+    # Relationship to GenerationTask
+    task = db.relationship('GenerationTask', backref=db.backref('results', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f'<GenerationResult {self.firstname} {self.lastname} for task_id={self.task_id} batch={self.batch_number}>'

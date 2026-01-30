@@ -54,6 +54,10 @@ class Config:
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains'
     }
 
+    # APScheduler Configuration
+    SCHEDULER_API_ENABLED = False  # Disable scheduler API
+    WORKER_INTERVAL = int(os.getenv('WORKER_INTERVAL', '30'))  # Task processing interval in seconds
+
 
 class DevelopmentConfig(Config):
     """Development-specific configuration."""

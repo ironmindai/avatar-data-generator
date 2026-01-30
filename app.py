@@ -6,9 +6,13 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
 from models import db, User, Settings, GenerationTask
 import os
+import atexit
+import logging
 
 
 def create_app():
@@ -38,6 +42,40 @@ def create_app():
     login_manager.login_view = 'login'
     login_manager.login_message = 'Please log in to access this page.'
     login_manager.login_message_category = 'error'
+
+    # Initialize APScheduler for background task processing
+    # Only start scheduler if we're not in a reloader process and not running Flask CLI
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        scheduler = BackgroundScheduler()
+        scheduler.start()
+
+        # Suppress APScheduler's INFO and WARNING logs to keep logs clean when idle
+        # Only show ERROR and above (critical errors will still be visible)
+        logging.getLogger('apscheduler').setLevel(logging.ERROR)
+
+        print(f"[SCHEDULER] Background scheduler started - checking for tasks every {app.config['WORKER_INTERVAL']} seconds", flush=True)
+
+        # Add task processor job
+        def scheduled_task_processor():
+            """Wrapper function to run task processor with Flask app context."""
+            with app.app_context():
+                from workers.task_processor import process_single_task
+                try:
+                    process_single_task()
+                except Exception as e:
+                    logging.error(f"[SCHEDULER] Error processing task: {e}", exc_info=True)
+
+        # Schedule the task processor to run every WORKER_INTERVAL seconds
+        scheduler.add_job(
+            func=scheduled_task_processor,
+            trigger=IntervalTrigger(seconds=app.config['WORKER_INTERVAL']),
+            id='task_processor_job',
+            name='Process pending avatar generation tasks',
+            replace_existing=True
+        )
+
+        # Shut down the scheduler when exiting the app
+        atexit.register(lambda: scheduler.shutdown())
 
     @login_manager.user_loader
     def load_user(user_id):

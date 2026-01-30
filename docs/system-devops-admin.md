@@ -57,6 +57,7 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - email-validator==2.1.0
 - Werkzeug==3.0.1
 - gunicorn==24.1.1 (production WSGI server)
+- APScheduler==3.11.0 (background task scheduling - installed 2026-01-30)
 
 ## Nginx Sites
 **Subdomain**: avatar-data-generator.dev.iron-mind.ai
@@ -101,11 +102,13 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 **Auto-Renewal**: Enabled (certbot.timer runs twice daily)
 
 ## Systemd Services
+
+### Main Application Service
 **Service Name**: avatar-data-generator.service
 **Service File**: `/etc/systemd/system/avatar-data-generator.service`
 **Status**: ACTIVE (enabled and running)
 
-### Service Configuration
+#### Service Configuration
 - **Type**: simple
 - **User**: niro
 - **Working Directory**: /home/niro/galacticos/avatar-data-generator
@@ -113,14 +116,14 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - **Restart Policy**: Always (with 10s delay, max 5 restarts in 300s)
 - **Dependencies**: Requires network.target, wants postgresql.service
 
-### Service Logs
+#### Service Logs
 - Access Log: `/var/log/avatar-data-generator/access.log`
 - Error Log: `/var/log/avatar-data-generator/error.log`
 - Journald: `StandardOutput=journal` and `StandardError=journal` configured
 - View service logs: `sudo journalctl -u avatar-data-generator.service`
 - Follow logs in real-time: `sudo journalctl -u avatar-data-generator.service -f`
 
-### Service Management Commands
+#### Service Management Commands
 ```bash
 # Start service
 sudo systemctl start avatar-data-generator.service
@@ -136,6 +139,68 @@ sudo systemctl status avatar-data-generator.service
 
 # View logs
 sudo journalctl -u avatar-data-generator.service -f
+```
+
+### Task Processor (Integrated Background Scheduler)
+**Architecture**: APScheduler integrated into main Flask application
+**Status**: ACTIVE (running within main application service)
+**Migration Date**: 2026-01-30 13:28 UTC (migrated from separate worker service)
+
+#### Scheduler Configuration
+- **Library**: APScheduler (Advanced Python Scheduler)
+- **Scheduler Type**: BackgroundScheduler (non-blocking, runs in separate thread)
+- **Execution**: Starts automatically when Flask application initializes
+- **Interval**: Checks for pending tasks every 30 seconds
+- **Thread Safety**: Uses separate thread pool for task processing
+- **No Separate Process**: Integrated into gunicorn worker process
+
+#### Scheduler Behavior
+- **Automatic Startup**: Scheduler starts when Flask app initializes (via `create_app()`)
+- **Background Thread**: Runs in background thread, doesn't block Flask request handling
+- **Task Checking**: IntervalTrigger checks database for pending tasks every 30 seconds
+- **Task Processing**: Processes one task at a time from the database queue
+- **Graceful Shutdown**: APScheduler handles cleanup on application shutdown
+- **Single Worker Model**: Works seamlessly with gunicorn's single-worker configuration
+
+#### Environment Variables
+Configuration from `/home/niro/galacticos/avatar-data-generator/.env`:
+- `MULTITHREAD_FLOWISE`: Number of threads for parallel Flowise API calls (default: 5)
+- All standard app configuration (database credentials, etc.)
+
+#### Monitoring & Logs
+- **Startup Log**: `[SCHEDULER] Background scheduler started - checking for tasks every 30 seconds`
+- **Task Processing Logs**: Same format as previous worker logs
+- **View Logs**: `sudo journalctl -u avatar-data-generator -f | grep SCHEDULER`
+- **All Logs**: Integrated into main application logs (`sudo journalctl -u avatar-data-generator`)
+
+#### Advantages Over Separate Worker Service
+1. **Simplified Architecture**: No separate service to manage
+2. **Resource Efficiency**: Shares Flask application process and database connections
+3. **Consistent Environment**: Same environment variables, imports, and context
+4. **Easier Deployment**: Single service to manage
+5. **Thread Safety**: APScheduler handles concurrency correctly
+6. **Automatic Lifecycle**: Starts/stops with Flask application
+
+#### Migration Notes
+- **Previous Architecture**: Separate systemd service (avatar-data-generator-worker.service)
+- **Migration Date**: 2026-01-30 13:28 UTC
+- **Old Service File**: Removed from `/etc/systemd/system/`
+- **Old Worker Script**: Still exists at `/home/niro/galacticos/avatar-data-generator/workers/task_processor.py` (for reference)
+- **Status**: Old worker service stopped, disabled, and removed
+
+#### Troubleshooting
+```bash
+# Check if scheduler is running
+sudo journalctl -u avatar-data-generator -f | grep SCHEDULER
+
+# View task processing logs
+sudo journalctl -u avatar-data-generator -f | grep "Found.*pending task"
+
+# Check for scheduler errors
+sudo journalctl -u avatar-data-generator -p err -n 50 | grep SCHEDULER
+
+# Restart application (includes scheduler)
+sudo systemctl restart avatar-data-generator
 ```
 
 ## Environment Variables
