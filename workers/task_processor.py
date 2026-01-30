@@ -730,6 +730,10 @@ async def process_persona_images(
 
         # Step 6: Generate 4-image grid from base image
         logger.info(f"[Task {task_id_str}] [{persona_name}] Step 4/4: Generating 4-image grid...")
+        logger.info("=" * 80)
+        logger.info(f"BASE IMAGE S3 URL (being used for 4-image grid generation):")
+        logger.info(f"{result.base_image_url}")
+        logger.info("=" * 80)
 
         try:
             grid_image_bytes = await generate_images_from_base(

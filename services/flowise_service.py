@@ -77,17 +77,25 @@ async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
         logger.info(f"Generating image prompt for {person_data['firstname']} {person_data['lastname']}")
 
         # Prepare request payload
+        # Per Flowise KB: parameters must be sent as startState.startAgentflow_0 array
+        # The workflow expects a single "person_data" key containing the full object as JSON
+        person_data_json = json.dumps({
+            "firstname": person_data['firstname'],
+            "lastname": person_data['lastname'],
+            "gender": person_data['gender'],
+            "bio_facebook": person_data['bio_facebook'],
+            "bio_instagram": person_data['bio_instagram'],
+            "bio_x": person_data['bio_x'],
+            "bio_tiktok": person_data['bio_tiktok']
+        })
+
         payload = {
             "question": "go",
             "overrideConfig": {
-                "person_data": {
-                    "firstname": person_data['firstname'],
-                    "lastname": person_data['lastname'],
-                    "gender": person_data['gender'],
-                    "bio_facebook": person_data['bio_facebook'],
-                    "bio_instagram": person_data['bio_instagram'],
-                    "bio_x": person_data['bio_x'],
-                    "bio_tiktok": person_data['bio_tiktok']
+                "startState": {
+                    "startAgentflow_0": [
+                        {"key": "person_data", "value": person_data_json}
+                    ]
                 }
             }
         }
@@ -99,6 +107,10 @@ async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
         }
 
         logger.debug(f"Calling Flowise workflow: {FLOWISE_PROMPT_WORKFLOW_URL}")
+        logger.info("=" * 80)
+        logger.info("FLOWISE PAYLOAD (for image prompt generation):")
+        logger.info(json.dumps(payload, indent=2))
+        logger.info("=" * 80)
 
         # Make async HTTP request to Flowise
         async with httpx.AsyncClient(timeout=FLOWISE_PROMPT_TIMEOUT) as client:
@@ -134,7 +146,10 @@ async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
                 final_prompt = prompt_data['final_prompt']
 
                 logger.info(f"Successfully generated prompt ({len(final_prompt)} chars)")
-                logger.debug(f"Prompt preview: {final_prompt[:150]}...")
+                logger.info("=" * 80)
+                logger.info("FLOWISE RESPONSE - FINAL_PROMPT:")
+                logger.info(f"{final_prompt}")
+                logger.info("=" * 80)
 
                 return final_prompt
 

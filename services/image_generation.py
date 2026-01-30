@@ -11,6 +11,7 @@ import os
 import base64
 import httpx
 import logging
+from io import BytesIO
 from typing import Optional
 from dotenv import load_dotenv
 
@@ -36,7 +37,7 @@ async def generate_base_image(bio_facebook: str, gender: str) -> Optional[bytes]
 
     Args:
         bio_facebook: Facebook bio text describing the person
-        gender: Gender of the person (for prompt)
+        gender: Gender of the person (for prompt) - 'm' or 'f'
 
     Returns:
         bytes: Generated image as bytes, or None if generation fails
@@ -45,15 +46,21 @@ async def generate_base_image(bio_facebook: str, gender: str) -> Optional[bytes]
         Exception: If API call fails or returns invalid response
     """
     try:
+        # Convert gender shorthand to full word
+        gender_full = 'male' if gender.lower() == 'm' else 'female'
+
         # Construct the prompt
         prompt = (
             f"generate an image of how this person would look like in a selfie. "
             f"the image should be not well-produced, amateur digital camera aesthetic, "
-            f"low resolution. Person: {bio_facebook}. {gender}."
+            f"low resolution. Person: {bio_facebook}. {gender_full}."
         )
 
         logger.info(f"Generating base image for gender '{gender}'")
-        logger.debug(f"Prompt: {prompt[:100]}...")
+        logger.info("=" * 80)
+        logger.info("BASE IMAGE GENERATION PROMPT (Text-to-Image):")
+        logger.info(f"{prompt}")
+        logger.info("=" * 80)
 
         # Prepare request payload
         payload = {
@@ -141,13 +148,19 @@ async def generate_images_from_base(
     """
     try:
         logger.info("Generating images from base image")
-        logger.debug(f"Prompt: {flowise_prompt[:100]}...")
-        logger.debug(f"Base image size: {len(base_image_bytes)} bytes")
+        logger.info("=" * 80)
+        logger.info("FLOWISE IMAGE PROMPT (Image-to-Image for 4-grid):")
+        logger.info(f"{flowise_prompt}")
+        logger.info("=" * 80)
+        logger.info(f"Base image size: {len(base_image_bytes)} bytes")
 
         # Prepare multipart form data
         # CRITICAL: Use 'image[]' field notation for the image
+        # CRITICAL: Wrap bytes in BytesIO to create a file-like object
+        # This ensures httpx properly streams the image data like a file handle
+        image_file = BytesIO(base_image_bytes)
         files = [
-            ('image[]', ('base_image.png', base_image_bytes, 'image/png'))
+            ('image[]', ('base_image.png', image_file, 'image/png'))
         ]
 
         # Prepare form data
