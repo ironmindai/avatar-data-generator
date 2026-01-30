@@ -261,10 +261,23 @@ Uses a tight, precise 4px base unit system:
 #### Header
 - **Background:** `#1a1a1a`
 - **Border Bottom:** `1px solid #333333`
-- **Height:** `60px`
-- **Padding:** `0 1.5rem`
+- **Padding:** `16px 32px` (vertical 16px, horizontal 32px on desktop)
+  - Tablet (≤1024px): `12px 24px`
+  - Mobile (≤640px): `12px 16px`
 - **Box Shadow:** `0 2px 10px rgba(0, 0, 0, 0.5)`
 - **Position:** `sticky; top: 0; z-index: 50;`
+- **Layout:** Full-width with `justify-content: space-between` for left/right alignment
+- **Note:** Removed fixed height to allow content-based height with proper vertical padding
+
+#### Header Brand (Logo & Title)
+- **Layout:** Flexbox, left-aligned, `16px` gap between logo and title
+- **Logo Size:** `64px` height (desktop), `48px` (mobile)
+- **Title Text:** "Avatar Data & Image Generator"
+- **Title Font Size:** `1.25rem` (20px - H3 size on desktop), `0.875rem` (14px on mobile)
+- **Title Font Weight:** `600` (semibold)
+- **Title Color:** `#ffffff` (primary text)
+- **Title Margin:** `0` (no margin, controlled by flex gap)
+- **Title Behavior:** `white-space: nowrap` (prevents wrapping)
 
 #### Sidebar
 - **Background:** `#1a1a1a`
@@ -836,4 +849,70 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-01-30 (History Page Width Consistency Fix)*
+### 2026-01-30 - Header Logo & Title Enhancement
+
+**Changes Made:**
+- Doubled logo size from 32px to 64px height (desktop)
+- Added "Avatar Data & Image Generator" title text next to logo
+- Positioned logo and title on left side of header using flexbox
+- Added 16px gap between logo and title for professional spacing
+- Implemented responsive sizing: 48px logo on mobile, 14px title font size on mobile
+- Maintained sharp corners and brandbook color compliance
+- Title uses semibold weight (600) with white color for maximum contrast
+- Added white-space: nowrap to prevent title wrapping
+
+**Layout Structure:**
+```
+[LOGO (64px)]  Avatar Data & Image Generator     [user info + logout]
+```
+
+**Files Modified:**
+- `/templates/base.html` - Added header-title element next to logo
+- `/static/css/main.css` - Updated header-brand, header-logo, added header-title styles
+- `/docs/brandbook.md` - Documented Header Brand component specifications
+
+**Design Rationale:**
+- Larger logo increases brand visibility and presence
+- Title text provides immediate context about application purpose
+- Left-aligned layout follows standard navigation patterns
+- Responsive scaling ensures usability on all device sizes
+- Maintains professional developer tools aesthetic with clean typography
+
+---
+
+### 2026-01-30 - Header Layout Alignment Fix
+
+**Issue Identified:**
+- Header content was centered on the page instead of left-aligned
+- Logo and title appeared in the center of wide screens
+- Insufficient vertical padding made header feel cramped
+- Fixed height constraint prevented proper padding implementation
+
+**Changes Made:**
+- Removed `max-width: 1440px` and `margin: 0 auto` from `.header-content` to prevent centering
+- Removed fixed `height: 60px` from `.header` to allow content-based height
+- Updated header padding from `0 24px` to vertical and horizontal padding:
+  - Desktop: `16px 32px` (proper breathing room)
+  - Tablet (≤1024px): `12px 24px`
+  - Mobile (≤640px): `12px 16px`
+- Reduced mobile header-brand gap from 16px to 12px for tighter spacing on small screens
+- Maintained `justify-content: space-between` for proper left/right alignment
+
+**Layout Structure (FIXED):**
+```
+[32px padding] [LOGO] Avatar Data & Image Generator        [user info + logout] [32px padding]
+```
+
+**Files Modified:**
+- `/static/css/main.css` - Fixed header layout, removed centering, added proper padding
+- `/docs/brandbook.md` - Updated Header component specifications
+
+**Design Rationale:**
+- Full-width layout ensures logo starts from left edge with consistent padding
+- Vertical padding provides better visual breathing room
+- Responsive padding scales appropriately for different screen sizes
+- Maintains professional developer tools aesthetic with proper spacing hierarchy
+
+---
+
+*Last Updated: 2026-01-30 (Header Layout Alignment Fix)*

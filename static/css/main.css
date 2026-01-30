@@ -458,12 +458,11 @@ code {
    ======================================== */
 
 .header {
-  height: 60px;
   background-color: var(--color-bg-primary);
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  padding: 0 var(--spacing-6);
+  padding: var(--spacing-4) var(--spacing-8);
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
@@ -475,18 +474,25 @@ code {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
 }
 
 .header-brand {
   display: flex;
   align-items: center;
+  gap: var(--spacing-4);
 }
 
 .header-logo {
-  height: 32px;
+  height: 64px;
   width: auto;
+}
+
+.header-title {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+  white-space: nowrap;
 }
 
 .header-nav {
@@ -804,6 +810,10 @@ code {
    ======================================== */
 
 @media (max-width: 1024px) {
+  .header {
+    padding: var(--spacing-3) var(--spacing-6);
+  }
+
   .sidebar {
     width: 220px;
   }
@@ -823,7 +833,19 @@ code {
 
 @media (max-width: 640px) {
   .header {
-    padding: 0 var(--spacing-4);
+    padding: var(--spacing-3) var(--spacing-4);
+  }
+
+  .header-logo {
+    height: 48px;
+  }
+
+  .header-title {
+    font-size: var(--font-size-body);
+  }
+
+  .header-brand {
+    gap: var(--spacing-3);
   }
 
   .dashboard-layout {
