@@ -1,0 +1,488 @@
+/* Settings Page Styles - Brandbook Compliant */
+/* Charcoal & Neon Developer Tools Aesthetic */
+
+/* ========================================
+   Content Wrapper
+   ======================================== */
+
+.content-wrapper {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* ========================================
+   Page Header
+   ======================================== */
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-title {
+    font-size: 2rem; /* 32px */
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+    line-height: 1.2;
+}
+
+.page-description {
+    font-size: 0.875rem; /* 14px */
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+}
+
+/* ========================================
+   Settings Container
+   ======================================== */
+
+.settings-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+/* ========================================
+   Settings Section
+   ======================================== */
+
+.settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.section-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--color-accent-cyan);
+}
+
+.section-title {
+    font-size: 1.5rem; /* 24px */
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: 0.05em;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.section-description {
+    font-size: 0.875rem; /* 14px */
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    margin-bottom: 2rem;
+}
+
+/* ========================================
+   Form Wrapper - Elevated Card Background
+   ======================================== */
+
+.settings-form-wrapper {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-none); /* Sharp corners */
+    padding: 2rem;
+}
+
+/* ========================================
+   Form Styles
+   ======================================== */
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.form-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem; /* 12px */
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.form-label-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--color-accent-cyan);
+}
+
+.form-help {
+    font-size: 0.75rem; /* 12px */
+    color: var(--color-text-tertiary);
+    line-height: 1.5;
+    margin-bottom: 0.75rem;
+}
+
+/* ========================================
+   Textarea Styles
+   ======================================== */
+
+.textarea-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.form-textarea {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0; /* SHARP CORNERS */
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-family: var(--font-primary);
+    color: var(--color-text-primary);
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 120px;
+    transition: all 0.2s ease-out;
+}
+
+.form-textarea::placeholder {
+    color: var(--color-text-placeholder);
+}
+
+.form-textarea:hover {
+    border-color: #444444;
+}
+
+.form-textarea:focus {
+    outline: none;
+    border-color: var(--color-accent-cyan);
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+}
+
+.form-textarea.dirty {
+    border-color: var(--color-accent-blue);
+}
+
+/* Character Counter */
+.char-count {
+    display: block;
+    font-size: 0.6875rem; /* 11px */
+    color: var(--color-text-muted);
+    text-align: right;
+    margin-top: 0.5rem;
+    font-family: var(--font-mono);
+}
+
+/* ========================================
+   Form Actions (Buttons)
+   ======================================== */
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: var(--font-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 0; /* SHARP CORNERS */
+    cursor: pointer;
+    transition: all 0.2s ease-out;
+    border: none;
+    white-space: nowrap;
+    position: relative;
+}
+
+.btn i {
+    width: 18px;
+    height: 18px;
+}
+
+/* Primary Button (Save) */
+.btn-primary {
+    background: var(--color-accent-cyan);
+    color: var(--color-bg-secondary);
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-cyan-dark);
+    box-shadow: 0 0 30px rgba(0, 217, 255, 0.6), 0 0 60px rgba(0, 217, 255, 0.3);
+}
+
+.btn-primary:active:not(:disabled) {
+    background: var(--color-accent-cyan-dark);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Secondary Button (Reset) */
+.btn-secondary {
+    background: transparent;
+    color: var(--color-accent-cyan);
+    border: 1px solid var(--color-accent-cyan);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.2);
+}
+
+.btn-secondary:hover {
+    background: rgba(0, 217, 255, 0.1);
+    box-shadow: 0 0 25px rgba(0, 217, 255, 0.4);
+}
+
+.btn-secondary:active {
+    background: rgba(0, 217, 255, 0.15);
+}
+
+/* Button Loading State */
+.btn-loading {
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn.loading .btn-text {
+    display: none;
+}
+
+.btn.loading .btn-loading {
+    display: flex;
+}
+
+.btn.loading i {
+    display: none;
+}
+
+/* Small Spinner for Button */
+.spinner-small {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-bg-secondary);
+    border-radius: 50%; /* Exception for circular spinner */
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========================================
+   Information Card
+   ======================================== */
+
+.info-card {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-accent-cyan);
+    border-radius: 0; /* SHARP CORNERS */
+    padding: 1.5rem;
+}
+
+.info-card-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--color-accent-cyan);
+    margin-bottom: 0.75rem;
+}
+
+.info-card-title {
+    font-size: 1rem; /* 16px */
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: 0.05em;
+    margin: 0 0 0.75rem 0;
+    line-height: 1.2;
+}
+
+.info-card-text {
+    font-size: 0.875rem; /* 14px */
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.info-card-list {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.info-card-list li {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 0.5rem;
+}
+
+.info-card-list li:last-child {
+    margin-bottom: 0;
+}
+
+.info-card-list strong {
+    color: var(--color-accent-cyan);
+    font-weight: 600;
+}
+
+/* ========================================
+   Toast Notification
+   ======================================== */
+
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-success);
+    border-radius: 0; /* SHARP CORNERS */
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
+    z-index: 1000;
+    min-width: 300px;
+    animation: slideIn 0.3s ease-out;
+}
+
+.toast.error {
+    border-left-color: var(--color-error);
+    box-shadow: 0 0 30px rgba(255, 68, 102, 0.3);
+}
+
+.toast.error #toastIcon {
+    color: var(--color-error);
+}
+
+.toast i {
+    width: 20px;
+    height: 20px;
+    color: var(--color-success);
+    flex-shrink: 0;
+}
+
+.toast span {
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+    font-weight: 500;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+}
+
+.toast.hiding {
+    animation: slideOut 0.3s ease-out forwards;
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+
+@media (max-width: 1024px) {
+    .content-wrapper {
+        padding: 1.5rem;
+    }
+
+    .settings-form-wrapper {
+        padding: 1.5rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .content-wrapper {
+        padding: 1rem;
+    }
+
+    .page-title {
+        font-size: 1.5rem; /* 24px */
+    }
+
+    .section-title {
+        font-size: 1.25rem; /* 20px */
+    }
+
+    .settings-form-wrapper {
+        padding: 1rem;
+    }
+
+    .form-actions {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .btn {
+        width: 100%;
+    }
+
+    .toast {
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+        min-width: auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .page-header {
+        margin-bottom: 1rem;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    .form-textarea {
+        font-size: 0.8125rem; /* 13px */
+    }
+}

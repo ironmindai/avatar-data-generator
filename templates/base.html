@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="{% block meta_description %}Avatar Data Generator by Galacticos AI{% endblock %}">
+    <title>{% block title %}Avatar Data Generator by Galacticos AI{% endblock %}</title>
+
+    <!-- Stylesheets - Brandbook Compliant -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    {% block extra_css %}{% endblock %}
+
+    <!-- Feather Icons for UI elements -->
+    <script src="https://unpkg.com/feather-icons"></script>
+</head>
+<body>
+    {% block body_content %}
+    <!-- Header Navigation (only shown for authenticated pages with sidebar) -->
+    {% if show_header %}
+    <header class="header">
+        <div class="header-content">
+            <!-- Logo -->
+            <div class="header-brand">
+                <img src="/static/images/logo-white.jpeg" alt="Galacticos AI" class="header-logo">
+            </div>
+
+            <!-- User Info and Actions -->
+            <div class="header-user">
+                <div class="user-name">{{ user_name or 'User' }}</div>
+                <div class="user-avatar" aria-label="User Avatar">
+                    {{ user_name[0].upper() if user_name else 'U' }}
+                </div>
+                <a href="/logout" class="btn btn-ghost" aria-label="Logout">
+                    <i data-feather="log-out"></i>
+                </a>
+            </div>
+        </div>
+    </header>
+    {% endif %}
+
+    <!-- Main Layout (with or without sidebar) -->
+    {% if show_sidebar %}
+    <div class="dashboard-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" role="navigation" aria-label="Main Navigation">
+            <nav>
+                <ul class="sidebar-nav">
+                    <li class="sidebar-nav-item">
+                        <a href="/dashboard" class="sidebar-nav-link {% if active_page == 'dashboard' %}active{% endif %}" {% if active_page == 'dashboard' %}aria-current="page"{% endif %}>
+                            <i data-feather="home" class="sidebar-nav-icon"></i>
+                            Dashboard
+                        </a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="/generate" class="sidebar-nav-link {% if active_page == 'generate' %}active{% endif %}" {% if active_page == 'generate' %}aria-current="page"{% endif %}>
+                            <i data-feather="image" class="sidebar-nav-icon"></i>
+                            Generate Avatars
+                        </a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="/datasets" class="sidebar-nav-link {% if active_page == 'datasets' %}active{% endif %}" {% if active_page == 'datasets' %}aria-current="page"{% endif %}>
+                            <i data-feather="database" class="sidebar-nav-icon"></i>
+                            Datasets
+                        </a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="/history" class="sidebar-nav-link {% if active_page == 'history' %}active{% endif %}" {% if active_page == 'history' %}aria-current="page"{% endif %}>
+                            <i data-feather="clock" class="sidebar-nav-icon"></i>
+                            History
+                        </a>
+                    </li>
+                    <li class="sidebar-nav-item">
+                        <a href="/settings" class="sidebar-nav-link {% if active_page == 'settings' %}active{% endif %}" {% if active_page == 'settings' %}aria-current="page"{% endif %}>
+                            <i data-feather="settings" class="sidebar-nav-icon"></i>
+                            Settings
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area (for pages with sidebar) -->
+        <main class="main-content" role="main">
+            {% block alerts %}
+            <!-- Alert Messages (conditionally shown) -->
+            {% if error %}
+            <div class="alert alert-error" role="alert">
+                <i data-feather="alert-circle" style="width: 20px; height: 20px;"></i>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            {% if success %}
+            <div class="alert alert-success" role="alert">
+                <i data-feather="check-circle" style="width: 20px; height: 20px;"></i>
+                {{ success }}
+            </div>
+            {% endif %}
+
+            {% if message %}
+            <div class="alert alert-info" role="alert">
+                <i data-feather="info" style="width: 20px; height: 20px;"></i>
+                {{ message }}
+            </div>
+            {% endif %}
+            {% endblock %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% else %}
+    <!-- Standalone Content (for pages without sidebar, like login) -->
+    {% block standalone_content %}{% endblock %}
+    {% endif %}
+    {% endblock %}
+
+    <!-- Initialize Feather Icons -->
+    <script>
+        feather.replace();
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

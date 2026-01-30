@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'generate' %}
+
+{% block meta_description %}Generate AI Avatars - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block title %}Generate Avatars - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<!-- Select2 CSS for searchable dropdown -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="/static/css/generate.css">
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1 class="page-title">GENERATE AVATARS</h1>
+        <p class="page-description">
+            Configure and generate synthetic avatar datasets with AI-powered precision
+        </p>
+    </div>
+
+    <!-- Generation Form -->
+    <div class="generate-container">
+        <div class="generate-form-wrapper">
+            <form id="generateForm" method="POST" action="/generate" class="generate-form">
+                <!-- CSRF Token -->
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                <!-- Persona Description Field -->
+                <div class="form-group">
+                    <label for="persona_description" class="form-label">
+                        <i data-feather="users" class="form-label-icon"></i>
+                        PERSONA DESCRIPTION
+                    </label>
+                    <p class="form-help" id="persona-description-help">
+                        Describe the demographic characteristics, interests, and attributes of your target personas
+                    </p>
+                    <textarea
+                        id="persona_description"
+                        name="persona_description"
+                        class="form-input form-textarea"
+                        rows="5"
+                        placeholder="Students from Japan, living and studying in America, fair split between male and female and most of them interested in tech"
+                        aria-label="Persona Description"
+                        aria-describedby="persona-description-help"
+                        required
+                    ></textarea>
+                </div>
+
+                <!-- Horizontal Row: Bio Language, Number to Generate, Images per Persona -->
+                <div class="form-row">
+                    <!-- Bio Language Selector -->
+                    <div class="form-group">
+                        <label for="bio_language" class="form-label">
+                            <i data-feather="globe" class="form-label-icon"></i>
+                            BIO LANGUAGE
+                        </label>
+                        <p class="form-help" id="bio-language-help">
+                            Select the language for generated biography text
+                        </p>
+                        <select
+                            id="bio_language"
+                            name="bio_language"
+                            class="form-input form-select"
+                            aria-label="Bio Language"
+                            aria-describedby="bio-language-help"
+                            required
+                        >
+                            <option value="" disabled selected>Select a language</option>
+
+                            <optgroup label="Most Common">
+                                <option value="en">English</option>
+                                <option value="zh">Chinese (Mandarin) - 中文</option>
+                                <option value="es">Spanish - Español</option>
+                                <option value="hi">Hindi - हिन्दी</option>
+                                <option value="ar">Arabic - العربية</option>
+                                <option value="pt">Portuguese - Português</option>
+                                <option value="bn">Bengali - বাংলা</option>
+                                <option value="ru">Russian - Русский</option>
+                                <option value="ja">Japanese - 日本語</option>
+                                <option value="fr">French - Français</option>
+                                <option value="de">German - Deutsch</option>
+                            </optgroup>
+
+                            <optgroup label="European Languages">
+                                <option value="it">Italian - Italiano</option>
+                                <option value="pl">Polish - Polski</option>
+                                <option value="uk">Ukrainian - Українська</option>
+                                <option value="ro">Romanian - Română</option>
+                                <option value="nl">Dutch - Nederlands</option>
+                                <option value="el">Greek - Ελληνικά</option>
+                                <option value="cs">Czech - Čeština</option>
+                                <option value="sv">Swedish - Svenska</option>
+                                <option value="hu">Hungarian - Magyar</option>
+                                <option value="be">Belarusian - Беларуская</option>
+                                <option value="bg">Bulgarian - Български</option>
+                                <option value="da">Danish - Dansk</option>
+                                <option value="fi">Finnish - Suomi</option>
+                                <option value="sk">Slovak - Slovenčina</option>
+                                <option value="no">Norwegian - Norsk</option>
+                                <option value="hr">Croatian - Hrvatski</option>
+                                <option value="lt">Lithuanian - Lietuvių</option>
+                                <option value="sl">Slovenian - Slovenščina</option>
+                                <option value="et">Estonian - Eesti</option>
+                                <option value="lv">Latvian - Latviešu</option>
+                                <option value="is">Icelandic - Íslenska</option>
+                                <option value="ga">Irish - Gaeilge</option>
+                                <option value="mt">Maltese - Malti</option>
+                                <option value="cy">Welsh - Cymraeg</option>
+                            </optgroup>
+
+                            <optgroup label="Asian Languages">
+                                <option value="ko">Korean - 한국어</option>
+                                <option value="vi">Vietnamese - Tiếng Việt</option>
+                                <option value="th">Thai - ไทย</option>
+                                <option value="id">Indonesian - Bahasa Indonesia</option>
+                                <option value="ms">Malay - Bahasa Melayu</option>
+                                <option value="tl">Tagalog (Filipino)</option>
+                                <option value="ur">Urdu - اردو</option>
+                                <option value="pa">Punjabi - ਪੰਜਾਬੀ</option>
+                                <option value="ta">Tamil - தமிழ்</option>
+                                <option value="te">Telugu - తెలుగు</option>
+                                <option value="mr">Marathi - मराठी</option>
+                                <option value="gu">Gujarati - ગુજરાતી</option>
+                                <option value="kn">Kannada - ಕನ್ನಡ</option>
+                                <option value="ml">Malayalam - മലയാളം</option>
+                                <option value="si">Sinhala - සිංහල</option>
+                                <option value="my">Burmese - မြန်မာ</option>
+                                <option value="km">Khmer - ខ្មែរ</option>
+                                <option value="lo">Lao - ລາວ</option>
+                                <option value="ne">Nepali - नेपाली</option>
+                                <option value="dz">Dzongkha - རྫོང་ཁ</option>
+                                <option value="mn">Mongolian - Монгол</option>
+                                <option value="ug">Uyghur - ئۇيغۇر</option>
+                                <option value="bo">Tibetan - བོད་ཡིག</option>
+                                <option value="ka">Georgian - ქართული</option>
+                                <option value="hy">Armenian - Հայերեն</option>
+                                <option value="az">Azerbaijani - Azərbaycan</option>
+                                <option value="kk">Kazakh - Қазақ</option>
+                                <option value="uz">Uzbek - Oʻzbek</option>
+                                <option value="tk">Turkmen - Türkmen</option>
+                                <option value="ky">Kyrgyz - Кыргыз</option>
+                            </optgroup>
+
+                            <optgroup label="Middle Eastern & African Languages">
+                                <option value="he">Hebrew - עברית</option>
+                                <option value="fa">Persian (Farsi) - فارسی</option>
+                                <option value="tr">Turkish - Türkçe</option>
+                                <option value="sw">Swahili - Kiswahili</option>
+                                <option value="am">Amharic - አማርኛ</option>
+                                <option value="ha">Hausa</option>
+                                <option value="yo">Yoruba</option>
+                                <option value="ig">Igbo</option>
+                                <option value="zu">Zulu</option>
+                                <option value="xh">Xhosa</option>
+                                <option value="af">Afrikaans</option>
+                                <option value="so">Somali</option>
+                                <option value="ti">Tigrinya - ትግርኛ</option>
+                                <option value="om">Oromo</option>
+                                <option value="rw">Kinyarwanda</option>
+                            </optgroup>
+
+                            <optgroup label="Americas Languages">
+                                <option value="qu">Quechua</option>
+                                <option value="gn">Guarani</option>
+                                <option value="ay">Aymara</option>
+                                <option value="ht">Haitian Creole</option>
+                            </optgroup>
+
+                            <optgroup label="Other Languages">
+                                <option value="sq">Albanian - Shqip</option>
+                                <option value="mk">Macedonian - Македонски</option>
+                                <option value="sr">Serbian - Српски</option>
+                                <option value="bs">Bosnian - Bosanski</option>
+                                <option value="eu">Basque - Euskara</option>
+                                <option value="ca">Catalan - Català</option>
+                                <option value="gl">Galician - Galego</option>
+                                <option value="la">Latin</option>
+                                <option value="eo">Esperanto</option>
+                                <option value="yi">Yiddish - ייִדיש</option>
+                                <option value="lb">Luxembourgish - Lëtzebuergesch</option>
+                                <option value="fo">Faroese - Føroyskt</option>
+                                <option value="se">Northern Sami - Davvisámegiella</option>
+                                <option value="mi">Maori - Te Reo Māori</option>
+                                <option value="sm">Samoan</option>
+                                <option value="to">Tongan</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <!-- Number to Generate -->
+                    <div class="form-group">
+                        <label for="number_to_generate" class="form-label">
+                            <i data-feather="hash" class="form-label-icon"></i>
+                            NUMBER TO GENERATE
+                        </label>
+                        <p class="form-help" id="number-help">
+                            Specify how many avatar personas to generate (10-300, increments of 5)
+                        </p>
+                        <div class="number-input-group">
+                            <input
+                                type="number"
+                                id="number_to_generate"
+                                name="number_to_generate"
+                                class="form-input form-number"
+                                min="10"
+                                max="300"
+                                step="5"
+                                value="50"
+                                aria-label="Number to Generate"
+                                aria-describedby="number-help"
+                                required
+                            />
+                            <input
+                                type="range"
+                                id="number_slider"
+                                class="form-range"
+                                min="10"
+                                max="300"
+                                step="5"
+                                value="50"
+                                aria-label="Number to Generate Slider"
+                            />
+                            <div class="range-labels">
+                                <span>10</span>
+                                <span>300</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Images per Persona -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i data-feather="camera" class="form-label-icon"></i>
+                            IMAGES PER PERSONA
+                        </label>
+                        <p class="form-help" id="images-help">
+                            Choose the number of unique avatar images to generate for each persona
+                        </p>
+                        <div class="radio-group" role="radiogroup" aria-labelledby="images-help">
+                            <label class="radio-option">
+                                <input
+                                    type="radio"
+                                    name="images_per_persona"
+                                    value="4"
+                                    checked
+                                    aria-label="4 images per persona"
+                                />
+                                <span class="radio-custom"></span>
+                                <span class="radio-label">
+                                    <span class="radio-value">4</span>
+                                    <span class="radio-text">images</span>
+                                </span>
+                            </label>
+                            <label class="radio-option">
+                                <input
+                                    type="radio"
+                                    name="images_per_persona"
+                                    value="8"
+                                    aria-label="8 images per persona"
+                                />
+                                <span class="radio-custom"></span>
+                                <span class="radio-label">
+                                    <span class="radio-value">8</span>
+                                    <span class="radio-text">images</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i data-feather="zap"></i>
+                        GENERATE AVATARS
+                    </button>
+                    <button type="reset" class="btn btn-secondary">
+                        <i data-feather="rotate-ccw"></i>
+                        RESET FORM
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Information Cards -->
+        <div class="info-cards">
+            <div class="info-card">
+                <i data-feather="zap" class="info-card-icon" style="color: var(--color-accent-cyan);"></i>
+                <h3 class="info-card-title">AI-POWERED</h3>
+                <p class="info-card-text">Advanced AI models generate realistic, diverse avatar datasets tailored to your specifications</p>
+            </div>
+            <div class="info-card">
+                <i data-feather="shield" class="info-card-icon" style="color: var(--color-success);"></i>
+                <h3 class="info-card-title">PRIVACY FIRST</h3>
+                <p class="info-card-text">All avatars are 100% synthetic - no real individuals, ensuring complete data privacy and compliance</p>
+            </div>
+            <div class="info-card">
+                <i data-feather="download-cloud" class="info-card-icon" style="color: var(--color-accent-blue);"></i>
+                <h3 class="info-card-title">EXPORT READY</h3>
+                <p class="info-card-text">Download datasets in multiple formats (JSON, CSV, ZIP) for immediate integration into your applications</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading State (hidden by default) -->
+<div id="loadingState" class="loading-overlay" style="display: none;">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <p class="loading-text">Generating Avatars...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- jQuery (required for Select2) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Select2 for searchable dropdown -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<!-- Generate page specific JavaScript -->
+<script src="/static/js/generate.js"></script>
+{% endblock %}

@@ -1,0 +1,193 @@
+/*
+ * Login Page - Stylesheet
+ * Developer Tools / Premium Tech Product Design
+ * Adheres to brandbook specifications in docs/brandbook.md
+ * Last Updated: 2026-01-30
+ */
+
+/* ========================================
+   LOGIN CONTAINER (Charcoal, Centered)
+   ======================================== */
+
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-6);
+  background-color: var(--color-bg-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle grid pattern background */
+.login-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    linear-gradient(rgba(0, 217, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 217, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+/* ========================================
+   LOGIN BOX (Sharp, Technical)
+   ======================================== */
+
+.login-box {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 0;
+  padding: var(--spacing-12);
+  box-shadow: 0 0 40px rgba(0, 217, 255, 0.1);
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-logo {
+  display: block;
+  margin: 0 auto var(--spacing-10);
+  max-width: 160px;
+  height: auto;
+}
+
+/* ========================================
+   LOGIN HEADER
+   ======================================== */
+
+.login-header {
+  text-align: center;
+  margin-bottom: var(--spacing-10);
+}
+
+.login-title {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login-subtitle {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-relaxed);
+}
+
+/* ========================================
+   LOGIN FORM
+   ======================================== */
+
+.login-form {
+  margin-bottom: var(--spacing-6);
+}
+
+/* Forgot password link */
+.forgot-password {
+  display: block;
+  text-align: right;
+  margin-top: calc(var(--spacing-2) * -1);
+  margin-bottom: var(--spacing-6);
+  font-size: var(--font-size-small);
+  color: var(--color-accent-cyan);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-base);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.forgot-password:hover {
+  color: var(--color-accent-cyan-dark);
+}
+
+/* Checkbox group (Remember me) */
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-6);
+}
+
+.checkbox-label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ========================================
+   LOGIN FOOTER
+   ======================================== */
+
+.login-footer {
+  text-align: center;
+  padding-top: var(--spacing-6);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-small);
+}
+
+.login-footer p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+}
+
+.login-footer a {
+  color: var(--color-accent-cyan);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-base);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login-footer a:hover {
+  color: var(--color-accent-cyan-dark);
+}
+
+/* ========================================
+   RESPONSIVE ADJUSTMENTS
+   ======================================== */
+
+@media (max-width: 640px) {
+  .login-container {
+    padding: var(--spacing-4);
+  }
+
+  .login-box {
+    padding: var(--spacing-8);
+    max-width: 100%;
+  }
+
+  .login-logo {
+    max-width: 140px;
+    margin-bottom: var(--spacing-8);
+  }
+
+  .login-title {
+    font-size: var(--font-size-h3);
+  }
+
+  .login-header {
+    margin-bottom: var(--spacing-8);
+  }
+}

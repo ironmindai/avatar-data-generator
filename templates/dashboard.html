@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'dashboard' %}
+
+{% block meta_description %}Avatar Data Generator Dashboard - Galacticos AI{% endblock %}
+
+{% block title %}Dashboard - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/dashboard.css">
+{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+    <h1 class="page-title">AVATAR DATA GENERATOR</h1>
+    <p class="page-description">
+        Enterprise-grade avatar generation platform
+    </p>
+</div>
+
+<!-- Under Construction Placeholder -->
+<div class="card dashboard-placeholder">
+    <div>
+        <i data-feather="terminal" class="dashboard-placeholder-icon"></i>
+        <h2 class="dashboard-placeholder-title">System Initializing</h2>
+        <p class="dashboard-placeholder-description">
+            Dashboard interface is currently under development. Advanced avatar generation tools, dataset management, and real-time analytics will be available soon.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}
