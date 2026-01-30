@@ -73,7 +73,8 @@ def split_and_trim_image(
 
         # Split the image using split-image library
         # This creates files: input_grid_0.png, input_grid_1.png, etc.
-        split_image(temp_input_path, num_rows, num_cols, should_cleanup=False)
+        # should_square=False: Don't force squares, keep original aspect ratio
+        split_image(temp_input_path, num_rows, num_cols, should_square=False, should_cleanup=False)
 
         # Calculate total number of splits
         num_splits = num_rows * num_cols
