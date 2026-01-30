@@ -19,6 +19,7 @@ The database currently contains the following tables:
 1. **users** - User authentication and management
 2. **settings** - Application configuration key-value store
 3. **generation_tasks** - Avatar generation task tracking and management
+4. **generation_results** - Persona data and avatar image URLs for each generated avatar
 
 ---
 
@@ -115,6 +116,52 @@ Tracks avatar generation tasks submitted by users, including status, configurati
 
 ---
 
+### generation_results
+
+Stores persona data and S3 image URLs for generated avatars. Each record represents one generated avatar persona with associated bio data and image URLs.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Result unique identifier
+- `task_id` (Integer, Foreign Key to `generation_tasks.id`, NOT NULL, Indexed, CASCADE DELETE) - Parent generation task
+- `batch_number` (Integer, NOT NULL, Indexed) - Batch number for tracking parallel requests
+- `firstname` (String(100), NOT NULL) - Generated first name
+- `lastname` (String(100), NOT NULL) - Generated last name
+- `gender` (String(10), NOT NULL) - Gender (f/m)
+- `bio_facebook` (Text, NULLABLE) - Generated Facebook bio text
+- `bio_instagram` (Text, NULLABLE) - Generated Instagram bio text
+- `bio_x` (Text, NULLABLE) - Generated X (Twitter) bio text
+- `bio_tiktok` (Text, NULLABLE) - Generated TikTok bio text
+- `base_image_url` (Text, NULLABLE) - Public S3 URL for base selfie image
+- `images` (JSONB, NULLABLE) - JSON array of public S3 URLs for split images (flexible: 4, 8, or any number)
+- `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of result creation
+
+**Indexes:**
+- `ix_generation_results_task_id` on `task_id`
+- `ix_generation_results_batch_number` on `batch_number`
+
+**Constraints:**
+- Primary Key: `id`
+- Foreign Key: `task_id` references `generation_tasks.id` (via `fk_generation_results_task_id`) with CASCADE DELETE
+
+**Relationships:**
+- `task` - Many-to-One relationship with `GenerationTask` model
+- `GenerationTask.results` - One-to-Many backref for accessing task's results (with cascade delete)
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `GenerationResult` class
+
+**Image Generation Workflow:**
+1. Base selfie image is generated first and stored in `base_image_url`
+2. Multiple images (4 or 8) are generated from the base image
+3. Image URLs are stored as a JSONB array in `images` column (format: `["url1", "url2", ...]`)
+4. All images are uploaded to S3 with public URLs
+
+**JSONB Images Column Format:**
+```json
+["https://s3.../image1.jpg", "https://s3.../image2.jpg", "https://s3.../image3.jpg", "https://s3.../image4.jpg"]
+```
+
+---
+
 ## Migration History
 
 ### Migration: 25698f3f906f - initial_migration
@@ -166,6 +213,90 @@ Tracks avatar generation tasks submitted by users, including status, configurati
 
 ---
 
+### Migration: 3d677a879bd9 - create_generation_results_table
+**Date**: 2026-01-30 13:07:31
+**Parent**: 3a0f944324eb
+
+**Changes:**
+- Created `generation_results` table for storing generated persona data
+- Added indexes on `task_id` and `batch_number` for query performance
+- Added foreign key constraint to `generation_tasks.id` with CASCADE DELETE
+- Set server-side default for `created_at` (NOW())
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/3d677a879bd9_create_generation_results_table.py`
+
+**Safety Notes:**
+- No destructive operations
+- Fully reversible via downgrade function
+- Foreign key CASCADE DELETE ensures orphaned results are cleaned up when tasks are deleted
+
+---
+
+### Migration: 36b6aa503da9 - add_s3_image_url_fields_to_generation_results
+**Date**: 2026-01-30 15:01:07
+**Parent**: 3d677a879bd9
+
+**Changes:**
+- Added `base_image_url` (Text, NULLABLE) - Public S3 URL for base selfie image
+- Added `image_1_url` (Text, NULLABLE) - Public S3 URL for first split image
+- Added `image_2_url` (Text, NULLABLE) - Public S3 URL for second split image
+- Added `image_3_url` (Text, NULLABLE) - Public S3 URL for third split image
+- Added `image_4_url` (Text, NULLABLE) - Public S3 URL for fourth split image
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/36b6aa503da9_add_s3_image_url_fields_to_generation_.py`
+
+**Purpose:**
+These fields store public S3 URLs for generated avatar images. The workflow is:
+1. Generate base selfie image → store in `base_image_url`
+2. Generate 4-image grid from base image
+3. Split grid into 4 individual images → store in `image_1_url` through `image_4_url`
+
+**Safety Notes:**
+- All fields are nullable (images generated after persona data)
+- TEXT type supports long S3 URLs
+- Non-destructive operation (adding columns only)
+- Fully reversible via downgrade function
+- **Downgrade Warning**: Rolling back this migration will permanently delete all stored image URLs
+
+**Status**: SUPERSEDED by migration 30c18b6939ce (converted to JSONB array)
+
+---
+
+### Migration: 30c18b6939ce - convert_image_urls_to_jsonb_array
+**Date**: 2026-01-30 15:24:25
+**Parent**: 36b6aa503da9
+
+**Changes:**
+- Added `images` (JSONB, NULLABLE) - JSON array for flexible image URL storage
+- Migrated existing data from `image_1_url` through `image_4_url` to JSONB array
+- Dropped columns: `image_1_url`, `image_2_url`, `image_3_url`, `image_4_url`
+- Retained `base_image_url` column (unchanged)
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/30c18b6939ce_convert_image_urls_to_jsonb_array.py`
+
+**Purpose:**
+BREAKING CHANGE - Converts individual image URL columns to a JSONB array for better flexibility and scalability:
+- **Before**: Fixed 4 columns (`image_1_url` through `image_4_url`) - inflexible for 8+ images
+- **After**: Single JSONB array column `images` - supports 4, 8, or any number of images
+
+**Data Migration:**
+- Upgrade: Combines non-null values from `image_1_url` through `image_4_url` into JSONB array
+- Downgrade: Extracts first 4 elements from JSONB array back to individual columns
+
+**JSONB Format:**
+```json
+["https://s3.../image1.jpg", "https://s3.../image2.jpg", "https://s3.../image3.jpg", "https://s3.../image4.jpg"]
+```
+
+**Safety Notes:**
+- **BREAKING CHANGE**: Application code must be updated to use `images` JSONB array instead of individual columns
+- Data migration preserves existing image URLs during upgrade
+- Downgrade is possible but limited to first 4 images (extras are lost if array has more than 4)
+- Fully tested and reversible
+- **Downgrade Warning**: If JSONB array has more than 4 images, downgrade will lose extras
+
+---
+
 ## How to Apply Migrations
 
 ```bash
@@ -191,10 +322,15 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 3a0f944324eb (create_generation_tasks_table) - APPLIED
-**Total Tables**: 3
-**Total Migrations**: 3
+**Latest Migration**: 30c18b6939ce (convert_image_urls_to_jsonb_array) - APPLIED
+**Total Tables**: 4
+**Total Migrations**: 6
 **Database State**: Up to date
+
+**Recent Schema Changes:**
+- `generation_results.images` is now JSONB array (supports 4, 8, or any number of images)
+- `generation_results.image_1_url` through `image_4_url` columns removed
+- `generation_results.base_image_url` retained as-is
 
 ---
 

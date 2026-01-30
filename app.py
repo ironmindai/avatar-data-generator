@@ -55,22 +55,41 @@ def create_app():
 
         print(f"[SCHEDULER] Background scheduler started - checking for tasks every {app.config['WORKER_INTERVAL']} seconds", flush=True)
 
-        # Add task processor job
+        # Add data generation task processor job
         def scheduled_task_processor():
-            """Wrapper function to run task processor with Flask app context."""
+            """Wrapper function to run data generation task processor with Flask app context."""
             with app.app_context():
                 from workers.task_processor import process_single_task
                 try:
                     process_single_task()
                 except Exception as e:
-                    logging.error(f"[SCHEDULER] Error processing task: {e}", exc_info=True)
+                    logging.error(f"[SCHEDULER] Error processing data generation task: {e}", exc_info=True)
 
-        # Schedule the task processor to run every WORKER_INTERVAL seconds
+        # Schedule the data generation task processor to run every WORKER_INTERVAL seconds
         scheduler.add_job(
             func=scheduled_task_processor,
             trigger=IntervalTrigger(seconds=app.config['WORKER_INTERVAL']),
             id='task_processor_job',
-            name='Process pending avatar generation tasks',
+            name='Process pending avatar data generation tasks',
+            replace_existing=True
+        )
+
+        # Add image generation task processor job
+        def scheduled_image_processor():
+            """Wrapper function to run image generation task processor with Flask app context."""
+            with app.app_context():
+                from workers.task_processor import process_image_generation
+                try:
+                    process_image_generation()
+                except Exception as e:
+                    logging.error(f"[SCHEDULER] Error processing image generation task: {e}", exc_info=True)
+
+        # Schedule the image generation task processor to run every WORKER_INTERVAL seconds
+        scheduler.add_job(
+            func=scheduled_image_processor,
+            trigger=IntervalTrigger(seconds=app.config['WORKER_INTERVAL']),
+            id='image_processor_job',
+            name='Process image generation for completed data tasks',
             replace_existing=True
         )
 

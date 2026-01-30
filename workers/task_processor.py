@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """
 Avatar Data Generator - Task Processor Worker
-STEP 1: DATA GENERATION ONLY
+COMPLETE DATA + IMAGE GENERATION
 
 This module provides task processing functions for avatar generation:
 1. Fetching pending tasks from the database with row-level locking
 2. Calling Flowise API to generate persona data (names, bios)
 3. Storing results in generation_results table
 4. Updating task status to 'data-generated'
-
-IMPORTANT: This worker handles ONLY the data generation step.
-The image generation step will be implemented separately in a future version.
+5. Generating images for each persona using OpenAI
+6. Uploading images to S3 storage
+7. Updating task status to 'completed'
 
 Status Flow:
-    pending -> generating-data -> data-generated
-    (Image generation: data-generated -> generating-images -> completed)
+    pending -> generating-data -> data-generated -> generating-images -> completed
 
 This module can be:
 - Integrated into Flask app via APScheduler (recommended)
@@ -28,6 +27,7 @@ import logging
 import requests
 import time
 import signal
+import asyncio
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Tuple, Optional
@@ -39,6 +39,11 @@ from dotenv import load_dotenv
 from flask import current_app
 from models import db, GenerationTask, GenerationResult, Settings
 from sqlalchemy import text
+
+# Import service modules for image generation
+from services.flowise_service import generate_image_prompt
+from services.image_generation import generate_base_image, generate_images_from_base
+from services.image_utils import split_and_trim_image, upload_to_s3
 
 # Load environment variables
 load_dotenv()
@@ -109,6 +114,42 @@ def get_pending_task_with_lock() -> Optional[GenerationTask]:
 
     except Exception as e:
         logger.error(f"Error fetching pending task: {e}", exc_info=True)
+        db.session.rollback()
+        return None
+
+
+def get_data_generated_task_with_lock() -> Optional[GenerationTask]:
+    """
+    Get a single task with status='data-generated' for image generation.
+
+    Uses SELECT ... FOR UPDATE SKIP LOCKED to ensure that when multiple
+    workers are running, each gets a different task without conflicts.
+
+    Returns:
+        GenerationTask object or None if no tasks available
+    """
+    try:
+        # Raw SQL query with row-level locking
+        result = db.session.execute(
+            text("""
+                SELECT id FROM generation_tasks
+                WHERE status = 'data-generated'
+                ORDER BY created_at ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            """)
+        ).fetchone()
+
+        if result:
+            task_id = result[0]
+            # Fetch the actual task object
+            task = GenerationTask.query.get(task_id)
+            return task
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error fetching data-generated task: {e}", exc_info=True)
         db.session.rollback()
         return None
 
@@ -560,6 +601,310 @@ def process_single_task() -> bool:
 
     except Exception as e:
         logger.error(f"Fatal error during task processing: {e}", exc_info=True)
+        db.session.rollback()
+        return False
+
+
+async def process_persona_images(
+    task_id_str: str,
+    task_db_id: int,
+    result: GenerationResult
+) -> Tuple[bool, Optional[str]]:
+    """
+    Process image generation for a single persona.
+
+    This function handles the complete image generation workflow with immediate saves:
+    1. Check if base image exists (resumption support)
+    2. Generate base selfie image using OpenAI (if not exists)
+    3. Upload base image to S3 and SAVE IMMEDIATELY
+    4. Check if images exist (resumption support)
+    5. Generate image prompt from person data using Flowise
+    6. Generate 4-image grid from base image
+    7. Split grid into 4 individual images
+    8. Upload all 4 images to S3 and SAVE IMMEDIATELY to JSONB array
+
+    Args:
+        task_id_str: Task ID string for logging
+        task_db_id: Database ID of GenerationTask
+        result: GenerationResult object containing persona data
+
+    Returns:
+        Tuple of (success: bool, error_message: Optional[str])
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    try:
+        persona_name = f"{result.firstname} {result.lastname}"
+        logger.info(f"[Task {task_id_str}] Processing images for persona: {persona_name} (result_id={result.id})")
+
+        # Step 1: Check if base image already exists (resumption support)
+        base_image_bytes = None
+
+        if result.base_image_url:
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Base image already exists: {result.base_image_url}")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Skipping base image generation (resumption mode)")
+            # Note: We don't download the base image here unless needed for grid generation
+            # The base image will be regenerated if needed
+        else:
+            # Step 2: Generate base selfie image
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 1/4: Generating base selfie image...")
+
+            try:
+                base_image_bytes = await generate_base_image(
+                    bio_facebook=result.bio_facebook or '',
+                    gender=result.gender
+                )
+                if not base_image_bytes:
+                    raise Exception("OpenAI returned empty image")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image generated ({len(base_image_bytes)} bytes)")
+            except Exception as e:
+                error_msg = f"Base image generation failed: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+                return False, error_msg
+
+            # Step 3: Upload base image to S3 and SAVE IMMEDIATELY
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 2/4: Uploading base image to S3...")
+
+            base_object_key = f"avatars/task_{task_db_id}/persona_{result.id}/base.png"
+
+            try:
+                _, base_image_url = upload_to_s3(base_image_bytes, base_object_key)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image uploaded: {base_image_url}")
+
+                # SAVE IMMEDIATELY to database
+                result.base_image_url = base_image_url
+                db.session.commit()
+                logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED base_image_url to database immediately")
+
+            except Exception as e:
+                error_msg = f"Base image S3 upload failed: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+                db.session.rollback()
+                return False, error_msg
+
+        # Step 4: Check if images already exist (resumption support)
+        if result.images and len(result.images) > 0:
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Images already exist ({len(result.images)} images)")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Skipping image generation (resumption mode)")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Image processing completed successfully (from cache)!")
+            return True, None
+
+        # Step 5: Generate image prompt from person data
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/4: Generating image prompt via Flowise...")
+
+        person_data = {
+            'firstname': result.firstname,
+            'lastname': result.lastname,
+            'gender': result.gender,
+            'bio_facebook': result.bio_facebook or '',
+            'bio_instagram': result.bio_instagram or '',
+            'bio_x': result.bio_x or '',
+            'bio_tiktok': result.bio_tiktok or ''
+        }
+
+        try:
+            flowise_prompt = await generate_image_prompt(person_data)
+            if not flowise_prompt:
+                raise Exception("Flowise returned empty prompt")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Image prompt generated ({len(flowise_prompt)} chars)")
+        except Exception as e:
+            error_msg = f"Flowise prompt generation failed: {str(e)}"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
+        # If we didn't generate base image earlier (resumption mode), generate it now for grid
+        if not base_image_bytes:
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Regenerating base image for grid generation...")
+            try:
+                base_image_bytes = await generate_base_image(
+                    bio_facebook=result.bio_facebook or '',
+                    gender=result.gender
+                )
+                if not base_image_bytes:
+                    raise Exception("OpenAI returned empty image")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image regenerated ({len(base_image_bytes)} bytes)")
+            except Exception as e:
+                error_msg = f"Base image regeneration failed: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+                return False, error_msg
+
+        # Step 6: Generate 4-image grid from base image
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 4/4: Generating 4-image grid...")
+
+        try:
+            grid_image_bytes = await generate_images_from_base(
+                base_image_bytes=base_image_bytes,
+                flowise_prompt=flowise_prompt
+            )
+            if not grid_image_bytes:
+                raise Exception("OpenAI returned empty grid image")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Grid image generated ({len(grid_image_bytes)} bytes)")
+        except Exception as e:
+            error_msg = f"Grid image generation failed: {str(e)}"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
+        # Step 7: Split grid into 4 individual images
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Splitting and trimming grid image...")
+
+        try:
+            split_images = split_and_trim_image(grid_image_bytes, num_rows=2, num_cols=2)
+            if len(split_images) != 4:
+                raise Exception(f"Expected 4 images, got {len(split_images)}")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Grid split into {len(split_images)} images")
+        except Exception as e:
+            error_msg = f"Image splitting failed: {str(e)}"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
+        # Step 8: Upload all 4 split images to S3 and SAVE IMMEDIATELY to JSONB array
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Uploading 4 split images to S3...")
+
+        image_urls = []
+        for i, image_bytes in enumerate(split_images):
+            object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{i}.png"
+
+            try:
+                _, image_url = upload_to_s3(image_bytes, object_key)
+                image_urls.append(image_url)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Uploaded image {i}: {image_url}")
+            except Exception as e:
+                error_msg = f"S3 upload failed for image {i}: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+                return False, error_msg
+
+        # SAVE IMMEDIATELY to JSONB array
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(image_urls)} images to JSONB array...")
+
+        try:
+            result.images = image_urls
+            flag_modified(result, 'images')
+            db.session.commit()
+            logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED {len(image_urls)} images to database immediately")
+        except Exception as e:
+            error_msg = f"Database update failed: {str(e)}"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            db.session.rollback()
+            return False, error_msg
+
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Image processing completed successfully!")
+        return True, None
+
+    except Exception as e:
+        error_msg = f"Unexpected error during image processing: {str(e)}"
+        logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}", exc_info=True)
+        return False, error_msg
+
+
+def process_image_generation() -> bool:
+    """
+    Process image generation for a single task with status='data-generated'.
+
+    This function is designed to be called by APScheduler periodically.
+    It finds tasks that have completed data generation and processes
+    images for all personas in the task sequentially.
+
+    Returns:
+        True if a task was processed, False if no tasks available
+    """
+    try:
+        # Get a task with data-generated status
+        task = get_data_generated_task_with_lock()
+
+        if not task:
+            # No tasks ready for image generation
+            return False
+
+        logger.info(f"=" * 80)
+        logger.info(f"Processing Image Generation for Task: {task.task_id}")
+        logger.info(f"User ID: {task.user_id}")
+        logger.info(f"Number of Personas: {task.number_to_generate}")
+        logger.info(f"=" * 80)
+
+        # Update task status to 'generating-images'
+        task.update_status('generating-images')
+        db.session.commit()
+        logger.info(f"[Task {task.task_id}] Status updated to 'generating-images'")
+
+        # Get all results for this task
+        results = GenerationResult.query.filter_by(task_id=task.id).all()
+
+        if not results:
+            logger.error(f"[Task {task.task_id}] No results found for image generation")
+            task.status = 'failed'
+            task.error_log = "No persona data found for image generation"
+            task.updated_at = datetime.utcnow()
+            db.session.commit()
+            return True
+
+        logger.info(f"[Task {task.task_id}] Found {len(results)} personas to process")
+
+        # Process each persona sequentially
+        # Sequential processing prevents overwhelming OpenAI API
+        success_count = 0
+        error_logs = []
+
+        for idx, result in enumerate(results, 1):
+            persona_name = f"{result.firstname} {result.lastname}"
+            logger.info(f"[Task {task.task_id}] Processing persona {idx}/{len(results)}: {persona_name}")
+
+            try:
+                # Run async image processing in event loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+                success, error_msg = loop.run_until_complete(
+                    process_persona_images(task.task_id, task.id, result)
+                )
+
+                loop.close()
+
+                if success:
+                    success_count += 1
+                    logger.info(f"[Task {task.task_id}] [{persona_name}] SUCCESS ({success_count}/{len(results)})")
+                else:
+                    error_logs.append(f"Persona {persona_name} (ID {result.id}): {error_msg}")
+                    logger.error(f"[Task {task.task_id}] [{persona_name}] FAILED: {error_msg}")
+
+            except Exception as e:
+                error_msg = f"Exception during image processing: {str(e)}"
+                error_logs.append(f"Persona {persona_name} (ID {result.id}): {error_msg}")
+                logger.error(f"[Task {task.task_id}] [{persona_name}] EXCEPTION: {error_msg}", exc_info=True)
+
+        # Update final task status
+        logger.info(f"[Task {task.task_id}] Image generation completed")
+        logger.info(f"[Task {task.task_id}] Success: {success_count}/{len(results)} personas")
+
+        if error_logs:
+            logger.warning(f"[Task {task.task_id}] Errors encountered:")
+            for error_log in error_logs:
+                logger.warning(f"  - {error_log}")
+
+        if success_count == 0:
+            # Complete failure
+            task.status = 'failed'
+            task.error_log = f"All image generation failed. Errors:\n" + "\n".join(error_logs)
+            task.updated_at = datetime.utcnow()
+            logger.error(f"[Task {task.task_id}] Task FAILED - no images generated")
+        elif success_count == len(results):
+            # Complete success
+            task.status = 'completed'
+            task.completed_at = datetime.utcnow()
+            task.updated_at = datetime.utcnow()
+            logger.info(f"[Task {task.task_id}] Task COMPLETED successfully - all images generated")
+        else:
+            # Partial success
+            task.status = 'completed'
+            task.completed_at = datetime.utcnow()
+            task.updated_at = datetime.utcnow()
+            task.error_log = f"Partial success: {success_count}/{len(results)} personas with images.\nErrors:\n" + "\n".join(error_logs)
+            logger.warning(f"[Task {task.task_id}] Task COMPLETED with partial success - {success_count}/{len(results)} images generated")
+
+        db.session.commit()
+        return True
+
+    except Exception as e:
+        logger.error(f"Fatal error during image generation: {e}", exc_info=True)
         db.session.rollback()
         return False
 
