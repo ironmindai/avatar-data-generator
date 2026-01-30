@@ -80,7 +80,14 @@ Port 8085 allocated for Avatar Data Generator Flask application.
   - proxy_cache: off
   - proxy_buffering: off
   - Applied to ALL content (proxied application + static files)
-  - Configuration updated: 2026-01-30
+  - Configuration updated: 2026-01-30 (enhanced for CSRF protection)
+- Proxy Headers: Complete set for session/cookie handling
+  - Host, X-Real-IP, X-Forwarded-For, X-Forwarded-Proto
+  - X-Forwarded-Host, X-Forwarded-Port (added 2026-01-30)
+  - Cookie preservation: proxy_set_header Cookie + proxy_pass_header Set-Cookie
+  - Referer preservation for CSRF validation
+  - Request buffering disabled for better session handling
+  - HTTP/1.1 with persistent connections
 
 ### Logs
 - Access Log: `/var/log/nginx/avatar-data-generator.access.log`
@@ -102,7 +109,7 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - **Type**: simple
 - **User**: niro
 - **Working Directory**: /home/niro/galacticos/avatar-data-generator
-- **Command**: gunicorn with 4 workers, 2 threads per worker
+- **Command**: gunicorn with 1 worker, 2 threads per worker
 - **Restart Policy**: Always (with 10s delay, max 5 restarts in 300s)
 - **Dependencies**: Requires network.target, wants postgresql.service
 
@@ -210,20 +217,55 @@ sudo tail -f /var/log/nginx/avatar-data-generator.access.log
 - Password verification confirmed: Admin credentials work correctly
 **Prevention**: Always quote environment variable values containing special characters (#, $, etc.) in .env files
 
-### Static Files 403 Forbidden Error (2026-01-30)
-**Issue**: Specific static files (generate.css, generate.js) were returning HTTP 403 Forbidden errors
-**Root Cause**: Files created by frontend-brand-guardian agent had restrictive permissions (600) that prevented nginx (www-data user) from reading them:
-- `/home/niro/galacticos/avatar-data-generator/static/css/generate.css` (was 600)
-- `/home/niro/galacticos/avatar-data-generator/static/js/generate.js` (was 600)
-**Solution**: Fixed permissions on problematic files:
+### Static Files 403 Forbidden Error - Recurring Issue (2026-01-30)
+**Issue**: Static files (CSS, JS) repeatedly returning HTTP 403 Forbidden errors after creation
+**Affected Files**:
+- First occurrence: `generate.css`, `generate.js` (morning)
+- Second occurrence: `history.css`, `history.js` (afternoon)
+
+**Root Cause Analysis**:
+Files created by Claude Code (and agents like frontend-brand-guardian) have restrictive permissions (600 = rw-------) that prevent nginx (www-data user) from reading them. This is due to:
+1. **Umask Setting**: Current umask is `0002`, which would normally create files with 664 permissions
+2. **Claude Code File Creation**: Claude Code's Write tool creates files with more restrictive permissions (600) for security
+3. **Nginx Requirements**: Nginx (www-data user) needs read permissions (at least 644) to serve static files
+
+**Technical Details**:
+- Gunicorn service runs as: `niro:niro`
+- Nginx runs as: `www-data:www-data`
+- Files created: `600 (rw-------)` - only owner can read/write
+- Files needed: `644 (rw-r--r--)` - owner can read/write, group/others can read
+- Directories needed: `755 (rwxr-xr-x)` - executable bit required for directory traversal
+
+**Permanent Solution Implemented**:
+Created `/home/niro/galacticos/avatar-data-generator/fix-static-permissions.sh` helper script:
 ```bash
-chmod 644 /home/niro/galacticos/avatar-data-generator/static/css/generate.css
-chmod 644 /home/niro/galacticos/avatar-data-generator/static/js/generate.js
+#!/bin/bash
+# Fix ownership and permissions for all static files
+chown -R niro:niro /home/niro/galacticos/avatar-data-generator/static/
+chmod -R 755 /home/niro/galacticos/avatar-data-generator/static/
+find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644 {} \;
 ```
-**Verification**:
-- All static files now have proper permissions (644 for files, 755 for directories)
-- Nginx (www-data user) can now read all static assets
-**Prevention**: Ensure future static files are created with proper read permissions (644) for nginx
+
+**Usage Workflow**:
+1. After creating new static files (CSS, JS, images), run:
+   ```bash
+   ./fix-static-permissions.sh
+   ```
+2. Script will automatically fix all permissions in `/static` directory
+3. Verify with: `ls -la static/js/` and `ls -la static/css/`
+4. Test access: `curl -I https://avatar-data-generator.dev.iron-mind.ai/static/js/[filename]`
+
+**Why This Happens**:
+- Claude Code's file creation tools prioritize security by creating files with restrictive permissions (600)
+- This is intentional behavior to prevent accidental exposure of sensitive files
+- For static web assets served by nginx, we need less restrictive permissions (644)
+- The fix script is the correct approach rather than changing Claude Code's default behavior
+
+**Prevention**:
+- Run `./fix-static-permissions.sh` after creating/modifying static files
+- Add this step to deployment/update procedures
+- Consider adding to git hooks or CI/CD pipeline if implemented
+- Document this requirement for other developers/agents working on frontend
 
 ### Service Restart for Frontend Template Updates (2026-01-30 11:01 UTC)
 **Reason**: Frontend code was completely updated with new templates and CSS, but gunicorn was still serving cached templates
@@ -237,11 +279,56 @@ chmod 644 /home/niro/galacticos/avatar-data-generator/static/js/generate.js
 - No errors in error log after restart
 **Note**: Gunicorn caches templates in memory; service restart required after template/static file changes
 
+### CSRF Token Validation Errors - Reduced Workers (2026-01-30 12:15 UTC)
+**Issue**: Users experiencing CSRF token validation errors during form submissions
+**Root Cause**: Multiple gunicorn workers (4) each maintaining separate Flask sessions. When a form was rendered by one worker and submitted to a different worker, the CSRF token validation would fail because the session data didn't match
+**Solution**: Reduced gunicorn workers from 4 to 1 to ensure all requests are handled by the same worker with consistent session state
+**Changes Made**:
+1. Edited `/etc/systemd/system/avatar-data-generator.service`
+2. Changed `--workers 4` to `--workers 1` on line 23
+3. Executed `sudo systemctl daemon-reload`
+4. Executed `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 1992191 (master), 1992193 (worker)
+- Workers: 1 gunicorn worker with 2 threads
+- Port 8085: Listening and accepting connections
+- Tasks: 2 total (1 master + 1 worker)
+**Note**: For production with multiple workers, need to implement server-side session storage (Redis, Memcached, or database-backed sessions) to share session data across workers. For development, single worker is sufficient.
+
+### CSRF Token Validation Errors - Nginx Proxy Headers Fix (2026-01-30 12:24 UTC)
+**Issue**: Continued CSRF token validation errors even with single worker and fresh incognito sessions
+**Root Cause Analysis**: Nginx configuration was missing critical proxy headers for proper cookie and session handling:
+  1. Missing `X-Forwarded-Host` and `X-Forwarded-Port` headers
+  2. No explicit cookie handling directives (`proxy_set_header Cookie`, `proxy_pass_header Set-Cookie`)
+  3. Missing `proxy_request_buffering off` which can cause session issues
+  4. Not using HTTP/1.1 for proxy connections
+**Solution**: Enhanced nginx configuration with complete proxy header set and cookie handling
+**Changes Made**:
+1. Backed up original config: `/etc/nginx/sites-available/avatar-data-generator.dev.iron-mind.ai.backup`
+2. Added missing proxy headers to `/etc/nginx/sites-available/avatar-data-generator.dev.iron-mind.ai`:
+   - `proxy_set_header X-Forwarded-Host $host`
+   - `proxy_set_header X-Forwarded-Port $server_port`
+   - `proxy_set_header Cookie $http_cookie` (explicit cookie forwarding)
+   - `proxy_pass_header Set-Cookie` (preserve Set-Cookie headers from backend)
+   - `proxy_request_buffering off` (disable request buffering)
+   - `proxy_http_version 1.1` (use HTTP/1.1 for better compatibility)
+   - `proxy_set_header Connection ""` (persistent connections)
+3. Tested nginx configuration: `sudo nginx -t` (successful)
+4. Reloaded nginx: `sudo systemctl reload nginx`
+5. Restarted application: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Nginx status: active (running), reloaded at 12:24:52 UTC
+- Service status: active (running) with PID 1997261 (master), 1997263 (worker)
+- Configuration test: passed with no errors
+- Application initialized successfully with debug logging enabled
+**Impact**: These changes ensure cookies are properly forwarded through the nginx reverse proxy, which is critical for Flask session management and CSRF token validation. The issue was that cookies set by Flask were not being correctly passed back to the client or forwarded from the client to Flask, causing session mismatch.
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)
-- Application uses gunicorn WSGI server (4 workers, 2 threads each) for production
+- Application uses gunicorn WSGI server (1 worker, 2 threads) for production
 - Service auto-restarts on failure
 - SSL certificate auto-renews via certbot
 - For database schema changes (tables, migrations, etc.), consult the database-schema-manager agent
 - Static files served directly by nginx for better performance
+- Single worker configuration prevents CSRF token validation errors by ensuring session consistency

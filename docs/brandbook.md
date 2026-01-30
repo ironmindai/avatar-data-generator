@@ -391,6 +391,46 @@ Uses a tight, precise 4px base unit system:
 
 ## Layout Standards
 
+### Page Container Pattern (CRITICAL - Use Consistently)
+
+All page-level content MUST be wrapped in a `.content-wrapper` container to maintain consistent width across the application.
+
+**CSS Class: `.content-wrapper`**
+```css
+.content-wrapper {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-6); /* 24px horizontal padding */
+}
+```
+
+**Usage in Templates:**
+```html
+{% block content %}
+<div class="content-wrapper">
+    <!-- All page content goes here -->
+    <div class="page-header">...</div>
+    <div class="page-body">...</div>
+</div>
+{% endblock %}
+```
+
+**Responsive Padding:**
+- Desktop (>768px): `0 var(--spacing-6)` (24px)
+- Tablet/Mobile (≤768px): `0 var(--spacing-4)` (16px)
+
+**Why This Matters:**
+- Prevents content from stretching excessively on wide screens
+- Maintains comfortable reading width and visual hierarchy
+- Ensures consistent layout across all pages (generate, settings, history, etc.)
+- Centers content horizontally on the page
+
+**Pages Using This Pattern:**
+- `/generate` - Generate Avatars page
+- `/settings` - Settings page
+- `/history` - Generation History page
+- All future authenticated pages MUST follow this pattern
+
 ### Responsive Breakpoints
 - **Mobile:** `< 640px`
 - **Tablet:** `640px - 1024px`
@@ -514,6 +554,32 @@ Provides:
 ---
 
 ## Recent Updates
+
+### 2026-01-30 - Generate Form Submission Fix
+
+**Issue Fixed:**
+- Duplicate form validation listeners causing potential validation bypass
+- First listener validated but didn't show loading state
+- Second listener showed loading state but didn't properly prevent invalid submission
+
+**Solution:**
+- Consolidated validation into single submission handler
+- Form now properly validates before showing loading overlay
+- Invalid forms are prevented from submitting with clear error messages
+- Loading overlay only displays for valid form submissions
+
+**Form Submission Flow:**
+1. User clicks "Generate Avatars"
+2. Client-side validation runs (persona description, language, number, images per persona)
+3. If validation fails: Alert shown, submission prevented, no loading overlay
+4. If validation succeeds: Loading overlay displays, form inputs disabled, form submits naturally
+5. Backend receives POST request to `/generate` with form data (not JSON)
+6. Backend validates server-side and redirects to dashboard with flash message
+
+**Files Modified:**
+- `/static/js/generate.js` - Consolidated validation logic into submission handler
+
+---
 
 ### 2026-01-30 - Settings Page Implementation
 
@@ -666,4 +732,108 @@ Provides:
 
 ---
 
-*Last Updated: 2026-01-30 (Developer Tools Aesthetic Overhaul)*
+### 2026-01-30 - History Page Implementation
+
+**New Page Created:**
+- Generation history page for viewing all avatar generation tasks
+- Table layout for desktop (responsive, full data visibility)
+- Card layout for mobile/tablet (stacked, touch-friendly)
+- Empty state for when no tasks exist
+- Error modal for viewing detailed error logs
+
+**Components Added:**
+
+**History Table (Desktop)**
+- Full-width responsive table with horizontal scroll
+- Column headers: Task ID, Status, Persona Description, Language, Count, Images, Created, Completed, Actions
+- Row hover effect: Background changes to elevated color
+- Monospace font for technical data (Task ID, language, dates)
+- Status badges with color-coded glows
+- Copy button for Task ID with success animation
+- View error button for failed tasks
+
+**Task Cards (Mobile/Tablet)**
+- Stacked card layout below 1024px breakpoint
+- Card header with Task ID and status badge
+- Card body with all task details in vertical layout
+- Responsive grid for compact details (language, count, images)
+- View error button for failed tasks
+
+**Status Badge System**
+- Completed: Green (#00ff88) with success glow
+- Failed: Red (#ff4466) with error glow
+- Generating (Data/Images): Amber (#ffaa00) with warning glow
+- Pending: Cyan (#00d9ff) with info glow
+- Sharp corners, uppercase text, letter-spacing 0.05em
+- Icons from Feather Icons library
+
+**Error Modal**
+- Full-screen modal overlay with backdrop blur
+- Modal content: Header, body with error details, footer with close button
+- Task ID display with monospace font
+- Error message in code block format (pre tag, monospace)
+- Left border accent (3px solid red)
+- Keyboard support (Escape key closes modal)
+- Click backdrop to close
+- Sharp corners, neon cyan border glow
+
+**Copy to Clipboard Feature**
+- Modern Clipboard API with fallback for older browsers
+- Visual feedback: Button turns green with check icon for 2 seconds
+- Success animation with glow effect
+- Works on both desktop table and mobile cards
+
+**Empty State**
+- Large inbox icon (80px)
+- Centered message: "No Generation Tasks Yet"
+- Description text explaining how to create first task
+- Primary CTA button: "Generate Avatars" linking to /generate
+
+**Interactive Features (JavaScript)**
+- Copy Task ID to clipboard with visual feedback
+- Error modal open/close with smooth transitions
+- Feather icons initialization
+- Keyboard navigation (Escape to close modal)
+- Event delegation for performance
+- Commented optional auto-refresh feature (30-second interval)
+
+**Responsive Breakpoints:**
+- Desktop (>1024px): Table layout
+- Tablet/Mobile (≤1024px): Card layout
+- Mobile (≤640px): Single column, reduced spacing
+
+**Files Created:**
+- `/templates/history.html` - History page template with Jinja2 logic
+- `/static/css/history.css` - History page styles with table/card layouts
+- `/static/js/history.js` - Interactive features (copy, modal, icons)
+
+**Navigation:**
+- History link already present in sidebar (base.html)
+
+---
+
+### 2026-01-30 - History Page Width Consistency Fix
+
+**Issue Fixed:**
+- History page had inconsistent width compared to generate and settings pages
+- Content was stretching full-width without the standard max-width constraint
+
+**Solution:**
+- Added `.content-wrapper` CSS class to `/static/css/history.css` with standard constraints:
+  - `max-width: 1280px`
+  - `margin: 0 auto` (centered)
+  - `padding: 0 var(--spacing-6)` with responsive adjustments
+- Wrapped history.html content in `<div class="content-wrapper">` container
+- Documented Page Container Pattern in brandbook Layout Standards section
+
+**Standardized Pattern:**
+All authenticated pages (generate, settings, history, dashboard) now use the same `.content-wrapper` pattern for consistent width and centering.
+
+**Files Modified:**
+- `/static/css/history.css` - Added `.content-wrapper` class and responsive padding
+- `/templates/history.html` - Wrapped content in `.content-wrapper` div
+- `/docs/brandbook.md` - Added "Page Container Pattern" documentation
+
+---
+
+*Last Updated: 2026-01-30 (History Page Width Consistency Fix)*

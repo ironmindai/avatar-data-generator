@@ -7,7 +7,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from config import get_config
-from models import db, User, Settings
+from models import db, User, Settings, GenerationTask
 import os
 
 
@@ -28,6 +28,9 @@ def create_app():
     db.init_app(app)
     migrate = Migrate(app, db)
     csrf = CSRFProtect(app)
+
+    # Test log to verify journald is capturing app output
+    print("[STARTUP] Avatar Data Generator application initialized successfully", flush=True)
 
     # Initialize Flask-Login
     login_manager = LoginManager()
@@ -142,13 +145,192 @@ def create_app():
         GET: Display generation form
         POST: Process avatar generation request (to be implemented)
         """
+        # Language code to name mapping
+        LANGUAGE_MAP = {
+            # Most Common
+            'en': 'English',
+            'zh': 'Chinese (Mandarin)',
+            'es': 'Spanish',
+            'hi': 'Hindi',
+            'ar': 'Arabic',
+            'pt': 'Portuguese',
+            'bn': 'Bengali',
+            'ru': 'Russian',
+            'ja': 'Japanese',
+            'fr': 'French',
+            'de': 'German',
+            # European Languages
+            'it': 'Italian',
+            'pl': 'Polish',
+            'uk': 'Ukrainian',
+            'ro': 'Romanian',
+            'nl': 'Dutch',
+            'el': 'Greek',
+            'cs': 'Czech',
+            'sv': 'Swedish',
+            'hu': 'Hungarian',
+            'be': 'Belarusian',
+            'bg': 'Bulgarian',
+            'da': 'Danish',
+            'fi': 'Finnish',
+            'sk': 'Slovak',
+            'no': 'Norwegian',
+            'hr': 'Croatian',
+            'lt': 'Lithuanian',
+            'sl': 'Slovenian',
+            'et': 'Estonian',
+            'lv': 'Latvian',
+            'is': 'Icelandic',
+            'ga': 'Irish',
+            'mt': 'Maltese',
+            'cy': 'Welsh',
+            # Asian Languages
+            'ko': 'Korean',
+            'vi': 'Vietnamese',
+            'th': 'Thai',
+            'id': 'Indonesian',
+            'ms': 'Malay',
+            'tl': 'Tagalog (Filipino)',
+            'ur': 'Urdu',
+            'pa': 'Punjabi',
+            'ta': 'Tamil',
+            'te': 'Telugu',
+            'mr': 'Marathi',
+            'gu': 'Gujarati',
+            'kn': 'Kannada',
+            'ml': 'Malayalam',
+            'si': 'Sinhala',
+            'my': 'Burmese',
+            'km': 'Khmer',
+            'lo': 'Lao',
+            'ne': 'Nepali',
+            'dz': 'Dzongkha',
+            'mn': 'Mongolian',
+            'ug': 'Uyghur',
+            'bo': 'Tibetan',
+            'ka': 'Georgian',
+            'hy': 'Armenian',
+            'az': 'Azerbaijani',
+            'kk': 'Kazakh',
+            'uz': 'Uzbek',
+            'tk': 'Turkmen',
+            'ky': 'Kyrgyz',
+            # Middle Eastern & African Languages
+            'he': 'Hebrew',
+            'fa': 'Persian (Farsi)',
+            'tr': 'Turkish',
+            'sw': 'Swahili',
+            'am': 'Amharic',
+            'ha': 'Hausa',
+            'yo': 'Yoruba',
+            'ig': 'Igbo',
+            'zu': 'Zulu',
+            'xh': 'Xhosa',
+            'af': 'Afrikaans',
+            'so': 'Somali',
+            'ti': 'Tigrinya',
+            'om': 'Oromo',
+            'rw': 'Kinyarwanda',
+            # Americas Languages
+            'qu': 'Quechua',
+            'gn': 'Guarani',
+            'ay': 'Aymara',
+            'ht': 'Haitian Creole',
+            # Other Languages
+            'sq': 'Albanian',
+            'mk': 'Macedonian',
+            'sr': 'Serbian',
+            'bs': 'Bosnian',
+            'eu': 'Basque',
+            'ca': 'Catalan',
+            'gl': 'Galician',
+            'la': 'Latin',
+            'eo': 'Esperanto',
+            'yi': 'Yiddish',
+            'lb': 'Luxembourgish',
+            'fo': 'Faroese',
+            'se': 'Northern Sami',
+            'mi': 'Maori',
+            'sm': 'Samoan',
+            'to': 'Tongan'
+        }
+
         # Extract user name from email (part before @)
         user_name = current_user.email.split('@')[0]
 
         if request.method == 'POST':
-            # POST handling to be implemented
-            flash('Avatar generation processing will be implemented soon!', 'info')
-            return render_template('generate.html', user_name=user_name)
+            # Extract form data
+            persona_description = request.form.get('persona_description', '').strip()
+            bio_language_code = request.form.get('bio_language', '').strip()
+            number_to_generate = request.form.get('number_to_generate', '').strip()
+            images_per_persona = request.form.get('images_per_persona', '').strip()
+
+            # Convert language code to full language name
+            bio_language = LANGUAGE_MAP.get(bio_language_code, bio_language_code)  # Fallback to code if not found
+
+            # Validate required fields
+            validation_errors = []
+
+            if not persona_description:
+                validation_errors.append('Persona description is required.')
+
+            if not bio_language:
+                validation_errors.append('Bio language is required.')
+
+            if not number_to_generate:
+                validation_errors.append('Number to generate is required.')
+            else:
+                try:
+                    number_to_generate = int(number_to_generate)
+                    if number_to_generate < 10 or number_to_generate > 300:
+                        validation_errors.append('Number to generate must be between 10 and 300.')
+                except ValueError:
+                    validation_errors.append('Number to generate must be a valid number.')
+
+            if not images_per_persona:
+                validation_errors.append('Images per persona is required.')
+            else:
+                try:
+                    images_per_persona = int(images_per_persona)
+                    if images_per_persona not in [4, 8]:
+                        validation_errors.append('Images per persona must be either 4 or 8.')
+                except ValueError:
+                    validation_errors.append('Images per persona must be a valid number.')
+
+            # If validation errors exist, flash error and re-render form
+            if validation_errors:
+                for error in validation_errors:
+                    flash(error, 'error')
+                return render_template('generate.html', user_name=user_name)
+
+            # Create new generation task
+            try:
+                new_task = GenerationTask(
+                    user_id=current_user.id,
+                    persona_description=persona_description,
+                    bio_language=bio_language,
+                    number_to_generate=number_to_generate,
+                    images_per_persona=images_per_persona
+                )
+
+                db.session.add(new_task)
+                db.session.commit()
+
+                # Flash success message with task ID
+                flash(f'Avatar generation task created successfully! Task ID: {new_task.task_id}', 'success')
+
+                # Redirect to history page to view the task
+                return redirect(url_for('history'))
+
+            except Exception as e:
+                # Rollback on database error
+                db.session.rollback()
+
+                # Log error (in production, use proper logging)
+                print(f"Error creating generation task: {str(e)}")
+
+                flash('An error occurred while creating the generation task. Please try again.', 'error')
+                return render_template('generate.html', user_name=user_name)
 
         # GET request - show generation form
         return render_template('generate.html', user_name=user_name)
@@ -163,9 +345,15 @@ def create_app():
     @app.route('/history')
     @login_required
     def history():
-        """Generation history page (placeholder)."""
-        flash('History feature coming soon!', 'info')
-        return redirect(url_for('dashboard'))
+        """Generation history page."""
+        user_name = current_user.email.split('@')[0]
+
+        # Get all tasks for current user, newest first
+        tasks = GenerationTask.query.filter_by(user_id=current_user.id)\
+            .order_by(GenerationTask.created_at.desc())\
+            .all()
+
+        return render_template('history.html', user_name=user_name, tasks=tasks)
 
     @app.route('/settings', methods=['GET'])
     @login_required

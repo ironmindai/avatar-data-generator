@@ -115,16 +115,8 @@
   // ========================================
 
   function initializeFormValidation() {
-    const form = document.getElementById('generateForm');
-
-    if (form) {
-      form.addEventListener('submit', function(event) {
-        if (!validateForm()) {
-          event.preventDefault();
-          return false;
-        }
-      });
-    }
+    // Validation is handled in initializeFormSubmission()
+    // This function is kept for backwards compatibility
   }
 
   function validateForm() {
@@ -201,16 +193,18 @@
 
     if (form && loadingOverlay) {
       form.addEventListener('submit', function(event) {
-        if (validateForm()) {
-          // Show loading overlay
-          loadingOverlay.style.display = 'flex';
-
-          // Disable form inputs to prevent duplicate submission
-          disableFormInputs(form);
-
-          // Note: Form will submit naturally, backend will handle the generation
-          // Loading overlay will be visible until page reload/redirect
+        // Validate form before submission
+        if (!validateForm()) {
+          event.preventDefault();
+          return false;
         }
+
+        // Show loading overlay
+        loadingOverlay.style.display = 'flex';
+
+        // Note: Don't disable inputs - disabled inputs don't send their values!
+        // Form will submit naturally, backend will handle the generation
+        // Loading overlay will be visible until page reload/redirect
       });
     }
   }

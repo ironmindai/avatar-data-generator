@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'history' %}
+
+{% block meta_description %}Generation History - View past avatar generation tasks{% endblock %}
+
+{% block title %}Generation History - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/history.css">
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1 class="page-title">GENERATION HISTORY</h1>
+        <p class="page-description">
+            Track and monitor all avatar generation tasks and their execution status
+        </p>
+    </div>
+
+    <!-- History Content -->
+    {% if tasks and tasks|length > 0 %}
+<!-- Tasks Table (Desktop View) -->
+<div class="history-table-wrapper">
+    <table class="history-table">
+        <thead>
+            <tr>
+                <th class="th-task-id">Task ID</th>
+                <th class="th-status">Status</th>
+                <th class="th-persona">Persona Description</th>
+                <th class="th-lang">Lang</th>
+                <th class="th-count">Count</th>
+                <th class="th-images">Images</th>
+                <th class="th-created">Created</th>
+                <th class="th-completed">Completed</th>
+                <th class="th-actions">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr class="task-row" data-task-id="{{ task.task_id }}">
+                <!-- Task ID with Copy Button -->
+                <td class="td-task-id">
+                    <div class="task-id-cell">
+                        <code class="task-id-code">{{ task.task_id }}</code>
+                        <button class="btn-copy"
+                                data-task-id="{{ task.task_id }}"
+                                aria-label="Copy Task ID"
+                                title="Copy Task ID">
+                            <i data-feather="copy"></i>
+                        </button>
+                    </div>
+                </td>
+
+                <!-- Status Badge -->
+                <td class="td-status">
+                    {% if task.status == 'completed' %}
+                        <span class="status-badge status-completed">
+                            <i data-feather="check-circle"></i>
+                            Completed
+                        </span>
+                    {% elif task.status == 'failed' %}
+                        <span class="status-badge status-failed">
+                            <i data-feather="x-circle"></i>
+                            Failed
+                        </span>
+                    {% elif task.status == 'generating-data' %}
+                        <span class="status-badge status-generating">
+                            <i data-feather="cpu"></i>
+                            Generating Data
+                        </span>
+                    {% elif task.status == 'generating-images' %}
+                        <span class="status-badge status-generating">
+                            <i data-feather="image"></i>
+                            Generating Images
+                        </span>
+                    {% elif task.status == 'pending' %}
+                        <span class="status-badge status-pending">
+                            <i data-feather="clock"></i>
+                            Pending
+                        </span>
+                    {% else %}
+                        <span class="status-badge status-pending">
+                            <i data-feather="help-circle"></i>
+                            {{ task.status }}
+                        </span>
+                    {% endif %}
+                </td>
+
+                <!-- Persona Description -->
+                <td class="td-persona">
+                    <div class="persona-text" title="{{ task.persona_description }}">
+                        {{ task.persona_description[:80] }}{% if task.persona_description|length > 80 %}...{% endif %}
+                    </div>
+                </td>
+
+                <!-- Language -->
+                <td class="td-lang">
+                    <code class="lang-code">{{ task.bio_language }}</code>
+                </td>
+
+                <!-- Number to Generate -->
+                <td class="td-count">
+                    <span class="count-value">{{ task.number_to_generate }}</span>
+                </td>
+
+                <!-- Images per Persona -->
+                <td class="td-images">
+                    <span class="images-value">{{ task.images_per_persona }}</span>
+                </td>
+
+                <!-- Created At -->
+                <td class="td-created">
+                    <time class="datetime-value" datetime="{{ task.created_at.isoformat() }}">
+                        {{ task.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    </time>
+                </td>
+
+                <!-- Completed At -->
+                <td class="td-completed">
+                    {% if task.completed_at %}
+                        <time class="datetime-value" datetime="{{ task.completed_at.isoformat() }}">
+                            {{ task.completed_at.strftime('%Y-%m-%d %H:%M') }}
+                        </time>
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+
+                <!-- Actions -->
+                <td class="td-actions">
+                    <div class="action-buttons">
+                        {% if task.status == 'failed' and task.error_log %}
+                            <button class="btn-icon btn-view-error"
+                                    data-task-id="{{ task.task_id }}"
+                                    data-error="{{ task.error_log }}"
+                                    aria-label="View Error"
+                                    title="View Error Details">
+                                <i data-feather="alert-triangle"></i>
+                            </button>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Tasks Cards (Mobile View) -->
+<div class="history-cards">
+    {% for task in tasks %}
+    <div class="task-card" data-task-id="{{ task.task_id }}">
+        <!-- Card Header with Task ID and Status -->
+        <div class="task-card-header">
+            <div class="task-id-cell">
+                <code class="task-id-code">{{ task.task_id }}</code>
+                <button class="btn-copy"
+                        data-task-id="{{ task.task_id }}"
+                        aria-label="Copy Task ID"
+                        title="Copy Task ID">
+                    <i data-feather="copy"></i>
+                </button>
+            </div>
+
+            {% if task.status == 'completed' %}
+                <span class="status-badge status-completed">
+                    <i data-feather="check-circle"></i>
+                    Completed
+                </span>
+            {% elif task.status == 'failed' %}
+                <span class="status-badge status-failed">
+                    <i data-feather="x-circle"></i>
+                    Failed
+                </span>
+            {% elif task.status == 'generating-data' %}
+                <span class="status-badge status-generating">
+                    <i data-feather="cpu"></i>
+                    Generating Data
+                </span>
+            {% elif task.status == 'generating-images' %}
+                <span class="status-badge status-generating">
+                    <i data-feather="image"></i>
+                    Generating Images
+                </span>
+            {% elif task.status == 'pending' %}
+                <span class="status-badge status-pending">
+                    <i data-feather="clock"></i>
+                    Pending
+                </span>
+            {% else %}
+                <span class="status-badge status-pending">
+                    <i data-feather="help-circle"></i>
+                    {{ task.status }}
+                </span>
+            {% endif %}
+        </div>
+
+        <!-- Card Body with Details -->
+        <div class="task-card-body">
+            <div class="task-detail">
+                <span class="task-detail-label">Persona Description:</span>
+                <div class="persona-text">{{ task.persona_description }}</div>
+            </div>
+
+            <div class="task-detail-row">
+                <div class="task-detail">
+                    <span class="task-detail-label">Language:</span>
+                    <code class="lang-code">{{ task.bio_language }}</code>
+                </div>
+                <div class="task-detail">
+                    <span class="task-detail-label">Count:</span>
+                    <span class="count-value">{{ task.number_to_generate }}</span>
+                </div>
+                <div class="task-detail">
+                    <span class="task-detail-label">Images:</span>
+                    <span class="images-value">{{ task.images_per_persona }}</span>
+                </div>
+            </div>
+
+            <div class="task-detail-row">
+                <div class="task-detail">
+                    <span class="task-detail-label">Created:</span>
+                    <time class="datetime-value" datetime="{{ task.created_at.isoformat() }}">
+                        {{ task.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    </time>
+                </div>
+                {% if task.completed_at %}
+                <div class="task-detail">
+                    <span class="task-detail-label">Completed:</span>
+                    <time class="datetime-value" datetime="{{ task.completed_at.isoformat() }}">
+                        {{ task.completed_at.strftime('%Y-%m-%d %H:%M') }}
+                    </time>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if task.status == 'failed' and task.error_log %}
+            <div class="task-detail error-detail">
+                <button class="btn-view-error-mobile"
+                        data-task-id="{{ task.task_id }}"
+                        data-error="{{ task.error_log }}">
+                    <i data-feather="alert-triangle"></i>
+                    View Error Details
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<!-- Empty State -->
+<div class="empty-state">
+    <i data-feather="inbox" class="empty-state-icon"></i>
+    <h2 class="empty-state-title">No Generation Tasks Yet</h2>
+    <p class="empty-state-description">
+        You haven't created any avatar generation tasks. Head over to the Generate Avatars page to create your first task.
+    </p>
+    <a href="/generate" class="btn btn-primary">
+        <i data-feather="image"></i>
+        Generate Avatars
+    </a>
+</div>
+{% endif %}
+
+<!-- Error Modal -->
+<div id="errorModal" class="modal" role="dialog" aria-labelledby="errorModalTitle" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="errorModalTitle" class="modal-title">
+                <i data-feather="alert-triangle"></i>
+                Error Details
+            </h2>
+            <button class="btn-modal-close" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="error-task-id">
+                <span class="error-label">Task ID:</span>
+                <code id="errorTaskId" class="task-id-code"></code>
+            </div>
+            <div class="error-message-wrapper">
+                <span class="error-label">Error Message:</span>
+                <pre id="errorMessage" class="error-message"></pre>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost btn-modal-close">Close</button>
+        </div>
+    </div>
+</div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/history.js"></script>
+{% endblock %}

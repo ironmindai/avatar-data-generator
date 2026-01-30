@@ -18,6 +18,7 @@ The database currently contains the following tables:
 
 1. **users** - User authentication and management
 2. **settings** - Application configuration key-value store
+3. **generation_tasks** - Avatar generation task tracking and management
 
 ---
 
@@ -73,6 +74,47 @@ Stores application settings as key-value pairs, primarily used for bio prompts f
 
 ---
 
+### generation_tasks
+
+Tracks avatar generation tasks submitted by users, including status, configuration, and results.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Task unique identifier
+- `task_id` (String(12), UNIQUE, NOT NULL, Indexed) - Short UUID for user-facing task identification (8-12 characters)
+- `user_id` (Integer, Foreign Key to `users.id`, NOT NULL, Indexed) - User who submitted the task
+- `persona_description` (Text, NOT NULL) - Persona description provided in the form
+- `bio_language` (String(100), NOT NULL) - Selected language for generated bios
+- `number_to_generate` (Integer, NOT NULL) - Number of avatars to generate
+- `images_per_persona` (Integer, NOT NULL) - Images per persona (4 or 8)
+- `status` (String(50), NOT NULL, Default: 'pending', Indexed) - Task status: pending, generating-data, generating-images, completed, failed
+- `error_log` (Text, NULLABLE) - Error messages if task fails
+- `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of task creation
+- `updated_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of last update
+- `completed_at` (DateTime, NULLABLE) - Timestamp of task completion (success or failure)
+
+**Indexes:**
+- `ix_generation_tasks_task_id` (UNIQUE) on `task_id`
+- `ix_generation_tasks_user_id` on `user_id`
+- `ix_generation_tasks_status` on `status`
+
+**Constraints:**
+- Primary Key: `id`
+- Unique: `task_id` (via `uq_generation_tasks_task_id`)
+- Foreign Key: `user_id` references `users.id` (via `fk_generation_tasks_user_id`)
+
+**Relationships:**
+- `user` - Many-to-One relationship with `User` model
+- `User.generation_tasks` - One-to-Many backref for accessing user's tasks
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `GenerationTask` class
+
+**Helper Methods:**
+- `generate_task_id()` - Static method to generate 8-character UUID-based task ID
+- `mark_completed(success, error_message)` - Mark task as completed or failed
+- `update_status(new_status)` - Update task status with automatic timestamp update
+
+---
+
 ## Migration History
 
 ### Migration: 25698f3f906f - initial_migration
@@ -102,6 +144,28 @@ Stores application settings as key-value pairs, primarily used for bio prompts f
 
 ---
 
+### Migration: 3a0f944324eb - create_generation_tasks_table
+**Date**: 2026-01-30 12:02:12
+**Parent**: d8cfd3cb4083
+
+**Changes:**
+- Created `generation_tasks` table for tracking avatar generation tasks
+- Added unique index on `generation_tasks.task_id` (user-facing task identifier)
+- Added index on `generation_tasks.user_id` (foreign key to users)
+- Added index on `generation_tasks.status` (for filtering tasks by status)
+- Added foreign key constraint linking `user_id` to `users.id`
+- Set server-side defaults for `status` ('pending'), `created_at`, and `updated_at` (NOW())
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/3a0f944324eb_create_generation_tasks_table.py`
+
+**Safety Notes:**
+- No destructive operations
+- Fully reversible via downgrade function
+- Foreign key constraint ensures referential integrity with users table
+- Task ID uniqueness enforced at database level
+
+---
+
 ## How to Apply Migrations
 
 ```bash
@@ -127,9 +191,9 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: d8cfd3cb4083 (create_settings_table) - APPLIED
-**Total Tables**: 2
-**Total Migrations**: 2
+**Latest Migration**: 3a0f944324eb (create_generation_tasks_table) - APPLIED
+**Total Tables**: 3
+**Total Migrations**: 3
 **Database State**: Up to date
 
 ---

@@ -5,6 +5,7 @@ from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 import bcrypt
+import uuid
 
 db = SQLAlchemy()
 
@@ -139,3 +140,83 @@ class Settings(db.Model):
             setting = cls(key=key, value=value)
             db.session.add(setting)
         return setting
+
+
+class GenerationTask(db.Model):
+    """
+    GenerationTask model for tracking avatar generation requests.
+
+    Attributes:
+        id: Primary key
+        task_id: Short UUID for user-facing task identification (8-12 chars)
+        user_id: Foreign key to users table
+        persona_description: The persona description from form
+        bio_language: Selected language for bios
+        number_to_generate: Number of avatars to generate
+        images_per_persona: Images per persona (4 or 8)
+        status: Task status (pending, generating-data, generating-images, completed, failed)
+        error_log: Error messages if task fails
+        created_at: Timestamp of task creation
+        updated_at: Timestamp of last update
+        completed_at: Timestamp of task completion
+    """
+    __tablename__ = 'generation_tasks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.String(12), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    persona_description = db.Column(db.Text, nullable=False)
+    bio_language = db.Column(db.String(100), nullable=False)
+    number_to_generate = db.Column(db.Integer, nullable=False)
+    images_per_persona = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(50), nullable=False, default='pending', index=True)
+    error_log = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    # Relationship to User
+    user = db.relationship('User', backref=db.backref('generation_tasks', lazy='dynamic'))
+
+    def __init__(self, **kwargs):
+        """Initialize GenerationTask with auto-generated task_id if not provided."""
+        if 'task_id' not in kwargs:
+            kwargs['task_id'] = self.generate_task_id()
+        super(GenerationTask, self).__init__(**kwargs)
+
+    def __repr__(self):
+        return f'<GenerationTask {self.task_id} status={self.status}>'
+
+    @staticmethod
+    def generate_task_id() -> str:
+        """
+        Generate a short, unique task ID using UUID4.
+
+        Returns:
+            8-character alphanumeric task ID
+        """
+        return str(uuid.uuid4())[:8]
+
+    def mark_completed(self, success: bool = True, error_message: str = None) -> None:
+        """
+        Mark task as completed or failed.
+
+        Args:
+            success: True if completed successfully, False if failed
+            error_message: Error message if task failed
+        """
+        self.status = 'completed' if success else 'failed'
+        self.completed_at = datetime.utcnow()
+        self.updated_at = datetime.utcnow()
+        if error_message:
+            self.error_log = error_message
+
+    def update_status(self, new_status: str) -> None:
+        """
+        Update task status.
+
+        Args:
+            new_status: New status value
+        """
+        self.status = new_status
+        self.updated_at = datetime.utcnow()
