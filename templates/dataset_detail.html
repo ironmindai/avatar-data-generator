@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'datasets' %}
+
+{% block meta_description %}Dataset Details - View and export dataset{% endblock %}
+
+{% block title %}Dataset Details - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/datasets.css">
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper" data-task-id="{{ task_id }}">
+    <!-- Breadcrumb Navigation -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/datasets" class="breadcrumb-link">
+            <i data-feather="database"></i>
+            Datasets
+        </a>
+        <i data-feather="chevron-right" class="breadcrumb-separator"></i>
+        <span class="breadcrumb-current">{{ task_id[:8] }}...</span>
+    </nav>
+
+    <!-- Task Header -->
+    <div class="task-header">
+        <div class="task-header-main">
+            <h1 class="task-title">DATASET DETAILS</h1>
+            <div class="task-id-display">
+                <span class="task-id-label">Task ID:</span>
+                <code class="task-id-code-large">{{ task_id }}</code>
+                <button class="btn-copy-large"
+                        data-task-id="{{ task_id }}"
+                        aria-label="Copy Task ID"
+                        title="Copy Task ID">
+                    <i data-feather="copy"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Status and Info will be loaded via API -->
+        <div id="taskStatus" class="task-status-container">
+            <!-- Loading placeholder -->
+            <div class="skeleton skeleton-badge"></div>
+        </div>
+    </div>
+
+    <!-- Task Metadata (loaded via API) -->
+    <div id="taskMetadata" class="task-metadata">
+        <div class="skeleton skeleton-text"></div>
+        <div class="skeleton skeleton-text"></div>
+    </div>
+
+    <!-- Statistics Panel -->
+    <div id="statisticsPanel" class="statistics-panel">
+        <div class="stat-card">
+            <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="stat-card">
+            <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="stat-card">
+            <div class="skeleton skeleton-stat"></div>
+        </div>
+        <div class="stat-card">
+            <div class="skeleton skeleton-stat"></div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div id="progressSection" class="progress-section">
+        <div class="skeleton skeleton-progress"></div>
+    </div>
+
+    <!-- Error Log Section (hidden by default) -->
+    <div id="errorSection" class="error-section" style="display: none;">
+        <div class="error-header">
+            <h3 class="error-title">
+                <i data-feather="alert-triangle"></i>
+                Error Log
+            </h3>
+            <button class="btn-collapse" id="toggleErrorLog" aria-label="Toggle Error Log">
+                <i data-feather="chevron-down"></i>
+            </button>
+        </div>
+        <div class="error-content" id="errorContent">
+            <pre class="error-message" id="errorMessage"></pre>
+        </div>
+    </div>
+
+    <!-- Export Buttons -->
+    <div id="exportButtons" class="export-buttons">
+        <button class="btn btn-secondary export-btn" id="exportJson" disabled>
+            <i data-feather="download"></i>
+            Export JSON
+        </button>
+        <button class="btn btn-secondary export-btn" id="exportCsv" disabled>
+            <i data-feather="download"></i>
+            Export CSV
+        </button>
+        <button class="btn btn-primary export-btn" id="exportZip" disabled>
+            <i data-feather="package"></i>
+            Export ZIP (with images)
+        </button>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-section">
+        <div class="results-header">
+            <h2 class="results-title">Generated Results</h2>
+            <div id="paginationTop" class="pagination-container">
+                <!-- Pagination will be loaded dynamically -->
+            </div>
+        </div>
+
+        <!-- Results Grid -->
+        <div id="resultsGrid" class="results-grid">
+            <!-- Loading skeletons -->
+            <div class="result-card skeleton-card">
+                <div class="skeleton skeleton-image"></div>
+                <div class="skeleton skeleton-text"></div>
+                <div class="skeleton skeleton-text"></div>
+            </div>
+            <div class="result-card skeleton-card">
+                <div class="skeleton skeleton-image"></div>
+                <div class="skeleton skeleton-text"></div>
+                <div class="skeleton skeleton-text"></div>
+            </div>
+            <div class="result-card skeleton-card">
+                <div class="skeleton skeleton-image"></div>
+                <div class="skeleton skeleton-text"></div>
+                <div class="skeleton skeleton-text"></div>
+            </div>
+        </div>
+
+        <!-- Bottom Pagination -->
+        <div id="paginationBottom" class="pagination-container">
+            <!-- Pagination will be loaded dynamically -->
+        </div>
+    </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div id="imageModal" class="image-modal" role="dialog" aria-labelledby="imageModalTitle" aria-hidden="true">
+    <div class="image-modal-backdrop"></div>
+    <div class="image-modal-content">
+        <button class="btn-image-close" aria-label="Close Image Preview">
+            <i data-feather="x"></i>
+        </button>
+        <img id="modalImage" src="" alt="Preview" class="modal-image">
+        <div id="imageCaption" class="image-caption"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/datasets.js"></script>
+{% endblock %}

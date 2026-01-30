@@ -221,6 +221,38 @@ class GenerationTask(db.Model):
         self.status = new_status
         self.updated_at = datetime.utcnow()
 
+    @property
+    def personas_generated(self) -> int:
+        """
+        Get the count of personas generated for this task.
+
+        Returns:
+            Number of GenerationResult entries for this task
+        """
+        from models import GenerationResult
+        return GenerationResult.query.filter_by(task_id=self.id).count()
+
+    @property
+    def images_generated(self) -> int:
+        """
+        Get the total count of images generated for this task.
+
+        Returns:
+            Total number of split images (base_image excluded - it's for generation only)
+        """
+        from models import GenerationResult
+
+        total_images = 0
+        results_with_images = GenerationResult.query.filter_by(task_id=self.id)\
+            .filter(GenerationResult.images.isnot(None)).all()
+
+        for result in results_with_images:
+            # Count only split images (base_image is for generation, not part of dataset)
+            if result.images:
+                total_images += len(result.images)
+
+        return total_images
+
 
 class GenerationResult(db.Model):
     """

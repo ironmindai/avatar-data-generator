@@ -12,26 +12,149 @@
 {% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="page-header">
-    <h1 class="page-title">AVATAR DATA GENERATOR</h1>
-    <p class="page-description">
-        Enterprise-grade avatar generation platform
-    </p>
-</div>
-
-<!-- Under Construction Placeholder -->
-<div class="card dashboard-placeholder">
-    <div>
-        <i data-feather="terminal" class="dashboard-placeholder-icon"></i>
-        <h2 class="dashboard-placeholder-title">System Initializing</h2>
-        <p class="dashboard-placeholder-description">
-            Dashboard interface is currently under development. Advanced avatar generation tools, dataset management, and real-time analytics will be available soon.
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-description">
+            Overview of your avatar generation statistics
         </p>
+    </div>
+
+    <!-- Primary Statistics Cards -->
+    <div class="stats-grid stats-grid-primary">
+        <!-- Total Tasks Card -->
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i data-feather="layers"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="total-tasks">-</div>
+                <div class="stat-label">Total Tasks</div>
+            </div>
+        </div>
+
+        <!-- Total Personas Card -->
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i data-feather="users"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="total-personas">-</div>
+                <div class="stat-label">Total Personas</div>
+            </div>
+        </div>
+
+        <!-- Total Images Card -->
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i data-feather="image"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="total-images">-</div>
+                <div class="stat-label">Total Images</div>
+            </div>
+        </div>
+
+        <!-- Tasks in Progress Card -->
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i data-feather="clock"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="tasks-in-progress">-</div>
+                <div class="stat-label">Tasks in Progress</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Secondary Statistics Cards -->
+    <div class="stats-grid stats-grid-secondary">
+        <!-- Completed Tasks Card -->
+        <div class="stat-card stat-card-success">
+            <div class="stat-card-icon">
+                <i data-feather="check-circle"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="completed-tasks">-</div>
+                <div class="stat-label">Completed Tasks</div>
+            </div>
+        </div>
+
+        <!-- Failed Tasks Card -->
+        <div class="stat-card stat-card-error">
+            <div class="stat-card-icon">
+                <i data-feather="x-circle"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="failed-tasks">-</div>
+                <div class="stat-label">Failed Tasks</div>
+            </div>
+        </div>
+
+        <!-- Avg Personas/Task Card -->
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i data-feather="trending-up"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="avg-personas">-</div>
+                <div class="stat-label">Avg Personas/Task</div>
+            </div>
+        </div>
+
+        <!-- Avg Images/Persona Card -->
+        <div class="stat-card">
+            <div class="stat-card-icon">
+                <i data-feather="bar-chart-2"></i>
+            </div>
+            <div class="stat-card-content">
+                <div class="stat-value skeleton-text" id="avg-images">-</div>
+                <div class="stat-label">Avg Images/Persona</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Section -->
+    <div class="charts-grid">
+        <!-- Tasks Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Tasks Created (Last 7 Days)</h3>
+            </div>
+            <div class="chart-body">
+                <div class="skeleton-chart" id="tasks-chart-skeleton"></div>
+                <canvas id="tasks-chart" style="display: none;"></canvas>
+            </div>
+        </div>
+
+        <!-- Personas Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Personas Generated (Last 7 Days)</h3>
+            </div>
+            <div class="chart-body">
+                <div class="skeleton-chart" id="personas-chart-skeleton"></div>
+                <canvas id="personas-chart" style="display: none;"></canvas>
+            </div>
+        </div>
+
+        <!-- Images Chart -->
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Images Generated (Last 7 Days)</h3>
+            </div>
+            <div class="chart-body">
+                <div class="skeleton-chart" id="images-chart-skeleton"></div>
+                <canvas id="images-chart" style="display: none;"></canvas>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="/static/js/dashboard.js"></script>
 {% endblock %}

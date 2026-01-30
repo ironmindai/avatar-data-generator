@@ -915,4 +915,278 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-01-30 (Header Layout Alignment Fix)*
+### 2026-01-30 - Datasets Viewing Feature Implementation
+
+**New Templates Created:**
+- Datasets list page for viewing all generation tasks with progress
+- Dataset detail page with real-time updates, pagination, and export functionality
+- Responsive design with table layout (desktop) and card layout (mobile/tablet)
+
+**Components Added:**
+
+**Breadcrumb Navigation**
+- Display: Flex with chevron separators
+- Font size: 12px (small)
+- Link color: `#cccccc` (secondary text), hover: `#00d9ff` (cyan)
+- Current page: Monospace font, primary text color
+- Icon size: 16px for links, 14px for separators
+- Gap: 8px between elements
+
+**Progress Bar (Animated)**
+- Container: 8px height, charcoal primary background, sharp corners
+- Bar: Full height, animated width transition (0.3s ease-out)
+- Completed state: Success green with glow `0 0 20px rgba(0, 255, 136, 0.3)`
+- Failed state: Error red with glow `0 0 20px rgba(255, 68, 102, 0.3)`
+- Generating state: Gradient background (warning to cyan) with pulse animation
+- Progress percentage: H4 size, monospace, semibold
+- Progress details: Small size, monospace, tertiary text color
+
+**Statistics Panel**
+- Grid layout: Auto-fit, minimum 200px columns, 16px gap
+- Stat cards: Primary background, border, 24px padding, sharp corners
+- Stat label: Small size, uppercase, letter-spacing 0.05em, tertiary color
+- Stat value: H2 size, monospace, bold, primary text
+- Stat description: Small size, secondary text
+
+**Task Metadata Display**
+- Grid layout: Auto-fit, minimum 250px columns, 16px gap
+- Background: Secondary charcoal, border, 24px padding
+- Label: Small size, uppercase, tertiary color
+- Value: Body size, primary text, line-height normal
+- Monospace variant for technical data (language, IDs)
+
+**Export Buttons**
+- Flex layout with 16px gap, wraps on mobile
+- Secondary button style with download/package icons
+- Disabled state: 50% opacity, no pointer events
+- Loading state: Spinner animation, "Exporting..." text
+- Full width on mobile devices
+
+**Pagination Controls**
+- Flex layout with 16px gap, wraps on small screens
+- Pagination info: Small monospace text showing "X-Y of Z results"
+- Page buttons: 36x36px, sharp corners, border, monospace
+- Active button: Cyan background with glow `0 0 20px rgba(0, 217, 255, 0.3)`
+- Hover: Elevated background, cyan border with glow
+- Disabled: 30% opacity, no cursor
+- Ellipsis: Monospace, muted text, centered in 36x36px space
+- Icon buttons: Chevron left/right, 16px icons
+
+**Result Cards (Persona Display)**
+- Grid layout: Auto-fill, minimum 300px columns (desktop), single column (mobile)
+- Card: Primary background, border, sharp corners, hover with cyan glow
+- Image container: 1:1 aspect ratio, secondary background, zoom on hover (scale 1.05)
+- Name: H4 size, semibold, primary text
+- Gender badge: Tiny uppercase text, letter-spacing 0.05em
+  - Male: Blue border/color `#0088ff`, blue background `rgba(0, 136, 255, 0.1)`
+  - Female: Red border/color `#ff4466`, red background `rgba(255, 68, 102, 0.1)`
+- Content padding: 16px
+
+**Bio Platform Tabs**
+- Flex layout with 4px gap, bottom border
+- Tab button: 8px/12px padding, transparent background
+- Active tab: Cyan text, 2px bottom border in cyan
+- Hover: Primary text, elevated background
+- Tab labels: Small uppercase, letter-spacing 0.05em
+- Bio content: Small size, secondary text, relaxed line-height
+
+**Gallery Thumbnails**
+- Grid: 4 columns (desktop), 3 columns (mobile), 8px gap
+- Thumbnail: 1:1 aspect ratio, border, sharp corners, cursor pointer
+- Hover: Cyan border with subtle glow `0 0 15px rgba(0, 217, 255, 0.2)`
+- Image: Object-fit cover, full container size
+- Label: Small uppercase, tertiary color, medium weight
+
+**Image Preview Modal**
+- Full-screen overlay: `rgba(15, 15, 15, 0.95)` with backdrop blur (8px)
+- Modal content: Centered, max 90vw/90vh
+- Close button: Positioned -50px above image, 40x40px, elevated background
+- Image: Sharp corners, cyan border, glow `0 0 40px rgba(0, 217, 255, 0.2)`
+- Caption: Elevated background, border, 12px/16px padding, small monospace text
+- Click backdrop or Escape key to close
+
+**Error Log Section (Collapsible)**
+- Container: Secondary background, error border (3px left), sharp corners
+- Header: Error red background `rgba(255, 68, 102, 0.1)`, clickable
+- Title: H4 size, error color, with alert-triangle icon (20px)
+- Collapse button: 32x32px, error border, chevron icon rotates -90deg when collapsed
+- Content: Max-height 400px, vertical scroll, 16px padding
+- Error message: Monospace, small size, error color, primary background, pre-wrap
+
+**Skeleton Loaders**
+- Background: Gradient from secondary to elevated charcoal
+- Animation: Shimmer effect (1.5s infinite) moving 200% left to right
+- Variants:
+  - Badge: 120px x 28px
+  - Text: Full width x 20px
+  - Stat: Full width x 80px
+  - Progress: Full width x 60px
+  - Image: 1:1 aspect ratio
+- Sharp corners throughout
+
+**Interactive Features (JavaScript)**
+- Real-time polling: 3-second interval for task status updates
+- Smart DOM updates: Only modify changed elements to prevent flicker
+- Copy to clipboard: Modern API with visual feedback (green + check icon for 2s)
+- Pagination: Updates URL with `?page=N` parameter, smooth scroll to top
+- Bio tabs: Switch between platforms with active state highlighting
+- Image preview: Click thumbnails or main image to view full-size in modal
+- Export: Download JSON/CSV/ZIP with loading spinner, error handling
+- Toast notifications: Slide-in from right, auto-dismiss after 4 seconds
+- Stop polling when task completed/failed (prevents unnecessary API calls)
+
+**Responsive Breakpoints:**
+- Desktop (>1024px): Table layout, multi-column grids
+- Tablet (641px-1024px): Card layout, 2-column grids
+- Mobile (≤640px): Single column, stacked cards, reduced spacing
+
+**API Integration:**
+- Endpoint: `/datasets/<task_id>/data?page=<page_number>`
+- Returns: Task metadata, statistics, results array, pagination info
+- Export endpoints: `/datasets/<task_id>/export/{json,csv,zip}`
+- Polling stops when task status is 'completed' or 'failed'
+
+**Files Created:**
+- `/templates/datasets.html` - Datasets list page with table/card views
+- `/templates/dataset_detail.html` - Detail page with real-time updates
+- `/static/css/datasets.css` - Complete styling for both pages
+- `/static/js/datasets.js` - Interactive features and API integration
+
+**Navigation:**
+- Datasets link already present in sidebar (base.html)
+- Active state highlights current page
+
+**Empty States:**
+- Datasets list: Database icon, "No datasets yet" message, CTA to generate
+- Results grid: Inbox icon, "No results generated yet" message
+- Error state: Alert icon with error message
+
+**Accessibility:**
+- ARIA labels on all interactive elements
+- Keyboard navigation: Tab through controls, Escape closes modals
+- Alt text on all images with descriptive names
+- Focus states with cyan glow
+- Proper heading hierarchy (h1 → h2 → h3)
+- Time elements with ISO datetime attributes
+
+**Design Philosophy:**
+- Consistent with history page patterns (badges, cards, modals)
+- Sharp corners and neon glows throughout
+- Monospace fonts for technical data (IDs, dates, counts)
+- Real-time updates without page refresh
+- Progressive disclosure (collapsed error logs, paginated results)
+- Smooth transitions and animations (0.2s-0.3s ease-out)
+
+---
+
+### 2026-01-30 - Dashboard Page Implementation
+
+**New Page Created:**
+- Complete dashboard page with statistics cards and charts
+- Real-time data visualization with automatic refresh
+- Overview statistics and 7-day trend charts
+- Responsive design for mobile/tablet/desktop
+
+**Components Added:**
+
+**Statistics Cards (Primary and Secondary Rows)**
+- Grid layout: Auto-fit, minimum 250px columns, 24px gap
+- Card: Primary background, border, 24px padding, sharp corners
+- Layout: Flexbox with icon (48px) and content area
+- Icon: 32px Feather icons in neon cyan (or success/error colors)
+- Hover: Cyan border with subtle glow `0 0 20px rgba(0, 217, 255, 0.15)`
+- Stat value: H2 size, monospace font, bold, primary text
+- Stat label: Small uppercase, letter-spacing 0.05em, secondary color
+- Success variant: Green icon and hover glow
+- Error variant: Red icon and hover glow
+
+**Primary Statistics Cards:**
+1. Total Tasks (icon: layers)
+2. Total Personas (icon: users)
+3. Total Images (icon: image)
+4. Tasks in Progress (icon: clock)
+
+**Secondary Statistics Cards:**
+1. Completed Tasks (icon: check-circle, success green)
+2. Failed Tasks (icon: x-circle, error red)
+3. Avg Personas/Task (icon: trending-up)
+4. Avg Images/Persona (icon: bar-chart-2)
+
+**Chart Cards (3 Charts in Row)**
+- Grid layout: Auto-fit, minimum 350px columns, 24px gap
+- Card: Primary background, border, 24px padding, sharp corners
+- Header: H4 title, semibold, primary text, 16px bottom margin
+- Chart body: 250px min-height (200px on mobile)
+- Hover: Cyan border with subtle glow
+
+**Chart Types:**
+1. Tasks Created (Last 7 Days) - Line chart, neon cyan (#00d9ff)
+2. Personas Generated (Last 7 Days) - Line chart, neon green (#00ff88)
+3. Images Generated (Last 7 Days) - Line chart, neon purple (#c77dff)
+
+**Chart.js Configuration:**
+- Line charts with smooth curves (tension: 0.4)
+- Fill area under line with 20% opacity
+- Point radius: 4px (6px on hover)
+- Points: Colored with dark border (#1a1a1a), white hover border
+- Grid lines: Subtle (#333333), no borders
+- X-axis labels: Inter font, 11px, tertiary color
+- Y-axis labels: Monospace font, 11px, formatted with commas
+- Tooltips: Elevated background (#242424), colored border, 12px padding
+- Dark theme colors throughout
+- Responsive design with maintainAspectRatio: false
+
+**Skeleton Loaders (Loading State)**
+- Background: Gradient from secondary to elevated charcoal
+- Animation: Shimmer effect (1.5s infinite) moving 200% left to right
+- Text skeleton: Inline-block, 60px min-width, transparent text
+- Chart skeleton: Full width x 250px height (200px on mobile)
+- Sharp corners throughout
+
+**JavaScript Functionality:**
+- Fetch data from `/api/dashboard/stats` on page load
+- Parse JSON response (overview + last_7_days)
+- Animate counter values with ease-out easing (1 second duration)
+- Format numbers with commas (e.g., "1,500")
+- Format decimals for averages (1 decimal place)
+- Initialize Chart.js charts with 7-day data
+- Format dates as "MMM DD" (e.g., "Jan 24")
+- Auto-refresh every 30 seconds for in-progress tasks
+- Update charts without animation on refresh
+- Smooth transitions and animations
+- Error handling with user-friendly error state
+- Cleanup intervals on page unload
+
+**API Integration:**
+- Endpoint: `/api/dashboard/stats`
+- Returns: Overview statistics and last 7 days data
+- Overview fields: total_tasks, total_personas, total_images, completed_tasks, failed_tasks, tasks_in_progress, average_personas_per_task, average_images_per_persona
+- Last 7 days: tasks_by_date, personas_by_date, images_by_date (arrays with date/count objects)
+
+**Responsive Breakpoints:**
+- Desktop (>1024px): 4 columns for stats, 3 columns for charts
+- Tablet (641px-1024px): 2 columns for stats, 2 columns for charts
+- Mobile (≤640px): Single column, reduced icon sizes, smaller stat values
+
+**Files Created/Modified:**
+- `/templates/dashboard.html` - Dashboard page template (updated from placeholder)
+- `/static/css/dashboard.css` - Dashboard styles (complete rewrite)
+- `/static/js/dashboard.js` - Dashboard interactivity (complete rewrite)
+- Chart.js CDN (v4.4.1) included via script tag
+
+**Navigation:**
+- Dashboard link already present in sidebar (base.html)
+- Active state highlights dashboard when on page
+
+**Design Philosophy:**
+- Consistent with brandbook: Sharp corners, neon accents, dark backgrounds
+- Monospace fonts for technical data (statistics values)
+- Professional data visualization with Chart.js
+- Smooth animations and loading states
+- Real-time updates for monitoring in-progress tasks
+- High contrast for optimal readability
+- Clean, minimal, technical aesthetic
+
+---
+
+*Last Updated: 2026-01-30 (Dashboard Page Implementation)*

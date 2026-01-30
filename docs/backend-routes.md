@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2025-01-30*
+> *Last Updated: 2026-01-30 (Added /api/dashboard/stats endpoint)*
 
 ## Application Information
 
@@ -122,18 +122,290 @@ All statistics are placeholders (set to 0) pending avatar generation implementat
 ---
 
 #### GET `/datasets`
-**Description**: Dataset management page
+**Description**: Dataset management page - lists all tasks for current user
 **Authentication**: Required
-**Status**: Placeholder - redirects to dashboard with info message
-**Planned**: List and manage avatar datasets
+**Template**: `templates/datasets.html`
+
+**Template Variables**:
+- `user_name`: String - Username (extracted from email)
+- `tasks`: List - All GenerationTask objects for current user, ordered by created_at DESC
+
+**Implementation**:
+Lists all avatar generation tasks for the current user, similar to /history but renders different template for dataset viewing interface.
+
+---
+
+#### GET `/api/dashboard/stats`
+**Description**: Dashboard statistics API endpoint - returns overview and last 7 days data
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Success Response (200)**:
+```json
+{
+  "overview": {
+    "total_tasks": 150,
+    "total_personas": 1500,
+    "total_images": 6000,
+    "completed_tasks": 145,
+    "failed_tasks": 5,
+    "tasks_in_progress": 2,
+    "average_personas_per_task": 10.0,
+    "average_images_per_persona": 4.0
+  },
+  "last_7_days": {
+    "tasks_by_date": [
+      {"date": "2026-01-24", "count": 10},
+      {"date": "2026-01-25", "count": 15},
+      {"date": "2026-01-26", "count": 12},
+      {"date": "2026-01-27", "count": 8},
+      {"date": "2026-01-28", "count": 20},
+      {"date": "2026-01-29", "count": 18},
+      {"date": "2026-01-30", "count": 5}
+    ],
+    "personas_by_date": [
+      {"date": "2026-01-24", "count": 100},
+      {"date": "2026-01-25", "count": 150},
+      {"date": "2026-01-26", "count": 120},
+      {"date": "2026-01-27", "count": 80},
+      {"date": "2026-01-28", "count": 200},
+      {"date": "2026-01-29", "count": 180},
+      {"date": "2026-01-30", "count": 50}
+    ],
+    "images_by_date": [
+      {"date": "2026-01-24", "count": 400},
+      {"date": "2026-01-25", "count": 600},
+      {"date": "2026-01-26", "count": 480},
+      {"date": "2026-01-27", "count": 320},
+      {"date": "2026-01-28", "count": 800},
+      {"date": "2026-01-29", "count": 720},
+      {"date": "2026-01-30", "count": 200}
+    ]
+  }
+}
+```
+
+**Error Response (500)**:
+```json
+{
+  "success": false,
+  "error": "An error occurred while generating dashboard statistics"
+}
+```
+
+**Implementation Details**:
+- All statistics filtered by current user (user_id)
+- Overview counts:
+  - Total tasks, personas, images across all time
+  - Tasks grouped by status (completed, failed, in-progress)
+  - Averages calculated with proper division-by-zero handling
+- Last 7 days data:
+  - Includes today (7 days total)
+  - Missing dates filled with 0 count
+  - Dates sorted ascending
+  - Images counted by summing JSON array lengths
+  - Personas and images grouped by task creation date
+
+**Database Queries**:
+- Uses SQLAlchemy `func.date()` and `func.count()` for efficient aggregation
+- Joins GenerationResult with GenerationTask for user filtering
+- Separate queries for tasks, personas, and images for optimal performance
+
+**Security**:
+- Requires authentication via `@login_required`
+- Only shows data for current user
+- Proper error handling with rollback on exceptions
+
+---
+
+#### GET `/datasets/<task_id>/data`
+**Description**: Dataset detail API endpoint - returns task details, progress stats, and paginated results
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `task_id`: String - Task ID (short UUID, e.g., "a1b2c3d4")
+
+**Query Parameters**:
+- `page`: Integer (default: 1) - Page number for results
+- `per_page`: Integer (default: 20, max: 100) - Results per page
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "task": {
+    "task_id": "a1b2c3d4",
+    "status": "completed",
+    "persona_description": "Young professionals in tech",
+    "bio_language": "English",
+    "number_to_generate": 50,
+    "images_per_persona": 4,
+    "created_at": "2025-01-30T10:00:00",
+    "completed_at": "2025-01-30T10:15:00",
+    "error_log": null
+  },
+  "progress": {
+    "total_personas": 50,
+    "completed_personas": 50,
+    "completed_images": 50,
+    "progress_percentage": 100.0,
+    "time_elapsed": "15m 30s",
+    "status_message": "Completed! Generated 50 personas with images."
+  },
+  "results": [
+    {
+      "id": 1,
+      "firstname": "John",
+      "lastname": "Doe",
+      "gender": "m",
+      "bios": {
+        "facebook": "Tech enthusiast...",
+        "instagram": "Code, coffee, repeat...",
+        "x": "Building the future...",
+        "tiktok": "Developer life..."
+      },
+      "base_image_url": "https://s3.amazonaws.com/...",
+      "images": ["https://s3.amazonaws.com/...", ...]
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "total_pages": 3,
+    "total_results": 50,
+    "has_next": true,
+    "has_prev": false,
+    "per_page": 20
+  }
+}
+```
+
+**Error Responses**:
+- **404**: Task not found
+- **403**: Access denied (task belongs to another user)
+
+**Security**:
+- Verifies task ownership before returning data
+- Pagination prevents memory issues with large datasets
+
+---
+
+#### GET `/datasets/<task_id>/export/json`
+**Description**: Export complete task data and all results as JSON file
+**Authentication**: Required
+
+**Path Parameters**:
+- `task_id`: String - Task ID (short UUID)
+
+**Response**:
+- Content-Type: `application/json`
+- Content-Disposition: `attachment; filename="dataset_{task_id}.json"`
+
+**Export Structure**:
+```json
+{
+  "task": { ... },
+  "results": [ ... ]
+}
+```
+
+**Security**:
+- Verifies task ownership
+- Returns 404 if task not found
+- Returns 403 if user doesn't own task
+
+---
+
+#### GET `/datasets/<task_id>/export/csv`
+**Description**: Export task results as flattened CSV file
+**Authentication**: Required
+
+**Path Parameters**:
+- `task_id`: String - Task ID (short UUID)
+
+**Response**:
+- Content-Type: `text/csv`
+- Content-Disposition: `attachment; filename="dataset_{task_id}.csv"`
+
+**CSV Columns**:
+- firstname, lastname, gender
+- bio_facebook, bio_instagram, bio_x, bio_tiktok
+- base_image_url
+- image_1, image_2, ..., image_N (N = images_per_persona, up to 8)
+
+**Notes**:
+- Column count adapts to images_per_persona setting
+- Missing images export as empty strings
+- All text properly escaped for CSV format
+
+**Security**:
+- Verifies task ownership
+- Returns 404 if task not found
+- Returns 403 if user doesn't own task
+
+---
+
+#### GET `/datasets/<task_id>/export/zip`
+**Description**: Export complete dataset as ZIP file with images and data.json
+**Authentication**: Required
+
+**Path Parameters**:
+- `task_id`: String - Task ID (short UUID)
+
+**Response**:
+- Content-Type: `application/zip`
+- Content-Disposition: `attachment; filename="dataset_{task_id}.zip"`
+
+**ZIP Contents**:
+```
+dataset_{task_id}.zip/
+├── data.json          # Complete task and results data
+└── images/
+    ├── 1_base.jpg     # Base selfie image for result ID 1
+    ├── 1_1.jpg        # Split image 1 for result ID 1
+    ├── 1_2.jpg        # Split image 2 for result ID 1
+    ├── ...
+    ├── 2_base.jpg     # Base selfie image for result ID 2
+    └── ...
+```
+
+**Image Naming Convention**:
+- Base images: `{result_id}_base.{ext}`
+- Split images: `{result_id}_{index}.{ext}`
+- Extension determined from S3 URL (jpg, png, gif, webp)
+
+**Implementation Details**:
+- Downloads images from S3 using requests library
+- Creates temporary directory for processing
+- Streams ZIP to avoid memory issues with large datasets
+- Gracefully handles S3 download errors (logs and continues)
+- Cleans up temporary files after send
+
+**Error Handling**:
+- Logs warnings for failed image downloads (continues processing)
+- Cleans up temp directory on error
+- Flash message on failure with redirect to /datasets
+
+**Security**:
+- Verifies task ownership
+- 30-second timeout for S3 downloads
+- Validates file extensions from URLs
+- Returns 404 if task not found
+- Returns 403 if user doesn't own task
 
 ---
 
 #### GET `/history`
 **Description**: Generation history page
 **Authentication**: Required
-**Status**: Placeholder - redirects to dashboard with info message
-**Planned**: View past generation jobs and results
+**Template**: `templates/history.html`
+
+**Template Variables**:
+- `user_name`: String - Username (extracted from email)
+- `tasks`: List - All GenerationTask objects for current user, ordered by created_at DESC
+
+**Implementation**:
+Lists all avatar generation tasks for the current user with status and basic information.
 
 ---
 

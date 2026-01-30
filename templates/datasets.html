@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'datasets' %}
+
+{% block meta_description %}Datasets - View and export your generated avatar datasets{% endblock %}
+
+{% block title %}Datasets - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/datasets.css">
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1 class="page-title">DATASETS</h1>
+        <p class="page-description">
+            View and export your generated avatar datasets
+        </p>
+    </div>
+
+    <!-- Datasets Content -->
+    {% if tasks and tasks|length > 0 %}
+        <!-- Tasks Table (Desktop View) -->
+        <div class="datasets-table-wrapper">
+            <table class="datasets-table">
+                <thead>
+                    <tr>
+                        <th class="th-task-id">Task ID</th>
+                        <th class="th-status">Status</th>
+                        <th class="th-persona">Persona Description</th>
+                        <th class="th-lang">Lang</th>
+                        <th class="th-progress">Progress</th>
+                        <th class="th-created">Created</th>
+                        <th class="th-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in tasks %}
+                    <tr class="task-row" data-task-id="{{ task.task_id }}">
+                        <!-- Task ID with Copy Button -->
+                        <td class="td-task-id">
+                            <div class="task-id-cell">
+                                <code class="task-id-code">{{ task.task_id[:8] }}...</code>
+                                <button class="btn-copy"
+                                        data-task-id="{{ task.task_id }}"
+                                        aria-label="Copy Task ID"
+                                        title="Copy Task ID">
+                                    <i data-feather="copy"></i>
+                                </button>
+                            </div>
+                        </td>
+
+                        <!-- Status Badge -->
+                        <td class="td-status">
+                            {% if task.status == 'completed' %}
+                                <span class="status-badge status-completed">
+                                    <i data-feather="check-circle"></i>
+                                    Completed
+                                </span>
+                            {% elif task.status == 'failed' %}
+                                <span class="status-badge status-failed">
+                                    <i data-feather="x-circle"></i>
+                                    Failed
+                                </span>
+                            {% elif task.status == 'generating-data' %}
+                                <span class="status-badge status-generating">
+                                    <i data-feather="cpu"></i>
+                                    Generating
+                                </span>
+                            {% elif task.status == 'generating-images' %}
+                                <span class="status-badge status-generating">
+                                    <i data-feather="image"></i>
+                                    Generating
+                                </span>
+                            {% elif task.status == 'pending' %}
+                                <span class="status-badge status-pending">
+                                    <i data-feather="clock"></i>
+                                    Pending
+                                </span>
+                            {% else %}
+                                <span class="status-badge status-pending">
+                                    <i data-feather="help-circle"></i>
+                                    {{ task.status }}
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Persona Description -->
+                        <td class="td-persona">
+                            <div class="persona-text" title="{{ task.persona_description }}">
+                                {{ task.persona_description[:60] }}{% if task.persona_description|length > 60 %}...{% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Language -->
+                        <td class="td-lang">
+                            <code class="lang-code">{{ task.bio_language }}</code>
+                        </td>
+
+                        <!-- Progress -->
+                        <td class="td-progress">
+                            <div class="progress-info">
+                                <span class="progress-text">
+                                    <span class="font-mono">{{ task.personas_generated or 0 }}</span>
+                                    <span class="text-muted">/</span>
+                                    <span class="font-mono">{{ task.number_to_generate }}</span>
+                                    <span class="text-tertiary">personas</span>
+                                </span>
+                                <span class="progress-text">
+                                    <span class="font-mono">{{ task.images_generated or 0 }}</span>
+                                    <span class="text-muted">/</span>
+                                    <span class="font-mono">{{ task.number_to_generate * task.images_per_persona }}</span>
+                                    <span class="text-tertiary">images</span>
+                                </span>
+                            </div>
+                        </td>
+
+                        <!-- Created At -->
+                        <td class="td-created">
+                            <time class="datetime-value" datetime="{{ task.created_at.isoformat() }}">
+                                {{ task.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            </time>
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="td-actions">
+                            <a href="/datasets/{{ task.task_id }}"
+                               class="btn-view-details"
+                               aria-label="View Details"
+                               title="View Dataset Details">
+                                <i data-feather="eye"></i>
+                                Details
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tasks Cards (Mobile View) -->
+        <div class="datasets-cards">
+            {% for task in tasks %}
+            <div class="task-card" data-task-id="{{ task.task_id }}">
+                <!-- Card Header with Task ID and Status -->
+                <div class="task-card-header">
+                    <div class="task-id-cell">
+                        <code class="task-id-code">{{ task.task_id[:8] }}...</code>
+                        <button class="btn-copy"
+                                data-task-id="{{ task.task_id }}"
+                                aria-label="Copy Task ID"
+                                title="Copy Task ID">
+                            <i data-feather="copy"></i>
+                        </button>
+                    </div>
+
+                    {% if task.status == 'completed' %}
+                        <span class="status-badge status-completed">
+                            <i data-feather="check-circle"></i>
+                            Completed
+                        </span>
+                    {% elif task.status == 'failed' %}
+                        <span class="status-badge status-failed">
+                            <i data-feather="x-circle"></i>
+                            Failed
+                        </span>
+                    {% elif task.status == 'generating-data' %}
+                        <span class="status-badge status-generating">
+                            <i data-feather="cpu"></i>
+                            Generating
+                        </span>
+                    {% elif task.status == 'generating-images' %}
+                        <span class="status-badge status-generating">
+                            <i data-feather="image"></i>
+                            Generating
+                        </span>
+                    {% elif task.status == 'pending' %}
+                        <span class="status-badge status-pending">
+                            <i data-feather="clock"></i>
+                            Pending
+                        </span>
+                    {% else %}
+                        <span class="status-badge status-pending">
+                            <i data-feather="help-circle"></i>
+                            {{ task.status }}
+                        </span>
+                    {% endif %}
+                </div>
+
+                <!-- Card Body with Details -->
+                <div class="task-card-body">
+                    <div class="task-detail">
+                        <span class="task-detail-label">Persona Description:</span>
+                        <div class="persona-text">{{ task.persona_description }}</div>
+                    </div>
+
+                    <div class="task-detail-row">
+                        <div class="task-detail">
+                            <span class="task-detail-label">Language:</span>
+                            <code class="lang-code">{{ task.bio_language }}</code>
+                        </div>
+                        <div class="task-detail">
+                            <span class="task-detail-label">Created:</span>
+                            <time class="datetime-value" datetime="{{ task.created_at.isoformat() }}">
+                                {{ task.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            </time>
+                        </div>
+                    </div>
+
+                    <div class="task-detail">
+                        <span class="task-detail-label">Progress:</span>
+                        <div class="progress-info-mobile">
+                            <span class="progress-text">
+                                <span class="font-mono">{{ task.personas_generated or 0 }}</span>
+                                <span class="text-muted">/</span>
+                                <span class="font-mono">{{ task.number_to_generate }}</span>
+                                <span class="text-tertiary">personas</span>
+                            </span>
+                            <span class="progress-text">
+                                <span class="font-mono">{{ task.images_generated or 0 }}</span>
+                                <span class="text-muted">/</span>
+                                <span class="font-mono">{{ task.number_to_generate * task.images_per_persona }}</span>
+                                <span class="text-tertiary">images</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="task-detail">
+                        <a href="/datasets/{{ task.task_id }}" class="btn-view-details-mobile">
+                            <i data-feather="eye"></i>
+                            View Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <!-- Empty State -->
+        <div class="empty-state">
+            <i data-feather="database" class="empty-state-icon"></i>
+            <h2 class="empty-state-title">No Datasets Yet</h2>
+            <p class="empty-state-description">
+                You haven't generated any avatar datasets. Start by generating avatars from the home page.
+            </p>
+            <a href="/generate" class="btn btn-primary">
+                <i data-feather="image"></i>
+                Generate Avatars
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/datasets.js"></script>
+{% endblock %}

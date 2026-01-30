@@ -154,6 +154,103 @@ def get_data_generated_task_with_lock() -> Optional[GenerationTask]:
         return None
 
 
+def recover_stuck_tasks(stuck_threshold_minutes: int = 15, check_incomplete_completed: bool = False) -> int:
+    """
+    Detect and recover tasks that are stuck in processing states.
+
+    Tasks are considered stuck if they've been in 'generating-data' or
+    'generating-images' status for longer than the threshold without updates.
+
+    Args:
+        stuck_threshold_minutes: Minutes without updates before considering stuck (default: 15)
+        check_incomplete_completed: Also check 'completed' tasks with incomplete images (default: False)
+
+    Returns:
+        Number of tasks recovered
+    """
+    try:
+        from datetime import timedelta
+
+        threshold_time = datetime.utcnow() - timedelta(minutes=stuck_threshold_minutes)
+        recovered_count = 0
+
+        # Check for "completed" tasks that are actually incomplete (startup recovery only)
+        if check_incomplete_completed:
+            completed_tasks = GenerationTask.query.filter(
+                GenerationTask.status == 'completed'
+            ).all()
+
+            for task in completed_tasks:
+                results = GenerationResult.query.filter_by(task_id=task.id).all()
+                if results:
+                    personas_with_images = sum(1 for r in results if r.images and len(r.images) > 0)
+                    total_personas = len(results)
+
+                    if personas_with_images < total_personas:
+                        logger.warning(f"[Task {task.task_id}] INCOMPLETE: Marked as 'completed' but only {personas_with_images}/{total_personas} have images. Resetting to 'data-generated'.")
+                        task.status = 'data-generated'
+                        task.completed_at = None
+                        task.updated_at = datetime.utcnow()
+                        task.error_log = (task.error_log or '') + f"\n[{datetime.utcnow().isoformat()}] Task was incomplete and auto-recovered by system startup."
+                        recovered_count += 1
+
+        # Find tasks stuck in 'generating-data' status
+        stuck_data_tasks = GenerationTask.query.filter(
+            GenerationTask.status == 'generating-data',
+            GenerationTask.updated_at < threshold_time
+        ).all()
+
+        for task in stuck_data_tasks:
+            logger.warning(f"[Task {task.task_id}] STUCK in 'generating-data' for {stuck_threshold_minutes}+ minutes. Resetting to 'pending'.")
+            task.status = 'pending'
+            task.updated_at = datetime.utcnow()
+            task.error_log = (task.error_log or '') + f"\n[{datetime.utcnow().isoformat()}] Task was stuck and auto-recovered by system."
+            recovered_count += 1
+
+        # Find tasks stuck in 'generating-images' status
+        stuck_image_tasks = GenerationTask.query.filter(
+            GenerationTask.status == 'generating-images',
+            GenerationTask.updated_at < threshold_time
+        ).all()
+
+        for task in stuck_image_tasks:
+            # Check progress: count personas with images vs total personas
+            results = GenerationResult.query.filter_by(task_id=task.id).all()
+
+            if not results:
+                logger.warning(f"[Task {task.task_id}] STUCK in 'generating-images' with no data. Resetting to 'pending'.")
+                task.status = 'pending'
+            else:
+                # Count how many personas have images
+                personas_with_images = sum(1 for r in results if r.images and len(r.images) > 0)
+                total_personas = len(results)
+
+                if personas_with_images == total_personas:
+                    # All personas have images - mark as completed!
+                    logger.info(f"[Task {task.task_id}] STUCK task has all images complete ({personas_with_images}/{total_personas}). Marking as completed.")
+                    task.status = 'completed'
+                    task.completed_at = datetime.utcnow()
+                else:
+                    # Some personas missing images - reset to 'data-generated' for retry
+                    logger.warning(f"[Task {task.task_id}] STUCK in 'generating-images' ({personas_with_images}/{total_personas} with images). Resetting to 'data-generated'.")
+                    task.status = 'data-generated'
+
+            task.updated_at = datetime.utcnow()
+            task.error_log = (task.error_log or '') + f"\n[{datetime.utcnow().isoformat()}] Task was stuck and auto-recovered by system."
+            recovered_count += 1
+
+        if recovered_count > 0:
+            db.session.commit()
+            logger.info(f"Recovered {recovered_count} stuck task(s)")
+
+        return recovered_count
+
+    except Exception as e:
+        logger.error(f"Error recovering stuck tasks: {e}", exc_info=True)
+        db.session.rollback()
+        return 0
+
+
 def get_bio_settings() -> Dict[str, str]:
     """
     Fetch bio prompt settings from database.

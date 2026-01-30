@@ -2,17 +2,24 @@
 Avatar Data Generator - Flask Application
 Main application file with authentication and routing.
 """
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file, Response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
-from models import db, User, Settings, GenerationTask
+from models import db, User, Settings, GenerationTask, GenerationResult
 import os
 import atexit
 import logging
+import io
+import csv
+import zipfile
+import requests
+import tempfile
+import shutil
+from datetime import datetime
 
 
 def create_app():
@@ -55,15 +62,41 @@ def create_app():
 
         print(f"[SCHEDULER] Background scheduler started - checking for tasks every {app.config['WORKER_INTERVAL']} seconds", flush=True)
 
-        # Add data generation task processor job
+        # Add data generation task processor job (supports up to 3 parallel tasks)
         def scheduled_task_processor():
             """Wrapper function to run data generation task processor with Flask app context."""
-            with app.app_context():
-                from workers.task_processor import process_single_task
-                try:
-                    process_single_task()
-                except Exception as e:
-                    logging.error(f"[SCHEDULER] Error processing data generation task: {e}", exc_info=True)
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            from workers.task_processor import process_single_task
+
+            def worker_with_context():
+                """Worker function that establishes its own Flask app context."""
+                with app.app_context():
+                    try:
+                        return process_single_task()
+                    except Exception as e:
+                        logging.error(f"[SCHEDULER] Error in worker thread: {e}", exc_info=True)
+                        return False
+
+            try:
+                # Process up to 3 tasks in parallel
+                max_parallel_tasks = 3
+                futures = []
+
+                with ThreadPoolExecutor(max_workers=max_parallel_tasks) as executor:
+                    # Submit up to 3 tasks
+                    for _ in range(max_parallel_tasks):
+                        future = executor.submit(worker_with_context)
+                        futures.append(future)
+
+                    # Wait for all to complete (they'll return False if no tasks available)
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logging.error(f"[SCHEDULER] Error in parallel data generation task: {e}", exc_info=True)
+
+            except Exception as e:
+                logging.error(f"[SCHEDULER] Error processing data generation tasks: {e}", exc_info=True)
 
         # Schedule the data generation task processor to run every WORKER_INTERVAL seconds
         scheduler.add_job(
@@ -74,15 +107,41 @@ def create_app():
             replace_existing=True
         )
 
-        # Add image generation task processor job
+        # Add image generation task processor job (supports up to 3 parallel tasks)
         def scheduled_image_processor():
             """Wrapper function to run image generation task processor with Flask app context."""
-            with app.app_context():
-                from workers.task_processor import process_image_generation
-                try:
-                    process_image_generation()
-                except Exception as e:
-                    logging.error(f"[SCHEDULER] Error processing image generation task: {e}", exc_info=True)
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            from workers.task_processor import process_image_generation
+
+            def worker_with_context():
+                """Worker function that establishes its own Flask app context."""
+                with app.app_context():
+                    try:
+                        return process_image_generation()
+                    except Exception as e:
+                        logging.error(f"[SCHEDULER] Error in worker thread: {e}", exc_info=True)
+                        return False
+
+            try:
+                # Process up to 3 tasks in parallel
+                max_parallel_tasks = 3
+                futures = []
+
+                with ThreadPoolExecutor(max_workers=max_parallel_tasks) as executor:
+                    # Submit up to 3 tasks
+                    for _ in range(max_parallel_tasks):
+                        future = executor.submit(worker_with_context)
+                        futures.append(future)
+
+                    # Wait for all to complete (they'll return False if no tasks available)
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as e:
+                            logging.error(f"[SCHEDULER] Error in parallel image generation task: {e}", exc_info=True)
+
+            except Exception as e:
+                logging.error(f"[SCHEDULER] Error processing image generation tasks: {e}", exc_info=True)
 
         # Schedule the image generation task processor to run every WORKER_INTERVAL seconds
         scheduler.add_job(
@@ -92,6 +151,40 @@ def create_app():
             name='Process image generation for completed data tasks',
             replace_existing=True
         )
+
+        # Add stuck task recovery job (runs every 5 minutes)
+        def scheduled_stuck_task_recovery():
+            """Check for and recover stuck tasks."""
+            with app.app_context():
+                try:
+                    from workers.task_processor import recover_stuck_tasks
+                    recovered = recover_stuck_tasks(stuck_threshold_minutes=15)
+                    if recovered > 0:
+                        logging.info(f"[SCHEDULER] Recovered {recovered} stuck task(s)")
+                except Exception as e:
+                    logging.error(f"[SCHEDULER] Error recovering stuck tasks: {e}", exc_info=True)
+
+        scheduler.add_job(
+            func=scheduled_stuck_task_recovery,
+            trigger=IntervalTrigger(minutes=5),
+            id='stuck_task_recovery_job',
+            name='Recover stuck tasks that have not progressed in 15+ minutes',
+            replace_existing=True
+        )
+
+        # Run stuck task recovery immediately on startup (with stricter checks)
+        print("[SCHEDULER] Running initial stuck task recovery check...", flush=True)
+        with app.app_context():
+            try:
+                from workers.task_processor import recover_stuck_tasks
+                # Startup recovery: check incomplete "completed" tasks AND use 0-min threshold
+                recovered = recover_stuck_tasks(stuck_threshold_minutes=0, check_incomplete_completed=True)
+                if recovered > 0:
+                    print(f"[SCHEDULER] Startup recovery: Recovered {recovered} task(s)", flush=True)
+                else:
+                    print("[SCHEDULER] Startup recovery: No tasks need recovery", flush=True)
+            except Exception as e:
+                logging.error(f"[SCHEDULER] Error in startup recovery: {e}", exc_info=True)
 
         # Shut down the scheduler when exiting the app
         atexit.register(lambda: scheduler.shutdown())
@@ -395,9 +488,39 @@ def create_app():
     @app.route('/datasets')
     @login_required
     def datasets():
-        """Datasets management page (placeholder)."""
-        flash('Datasets feature coming soon!', 'info')
-        return redirect(url_for('dashboard'))
+        """
+        Datasets management page - lists all tasks for current user.
+
+        Similar to /history but renders different template for dataset viewing.
+        """
+        user_name = current_user.email.split('@')[0]
+
+        # Get all tasks for current user, newest first
+        tasks = GenerationTask.query.filter_by(user_id=current_user.id)\
+            .order_by(GenerationTask.created_at.desc())\
+            .all()
+
+        return render_template('datasets.html', user_name=user_name, tasks=tasks)
+
+    @app.route('/datasets/<task_id>')
+    @login_required
+    def dataset_detail(task_id):
+        """
+        Dataset detail page - shows detailed view of a specific task.
+
+        The actual data is loaded via JavaScript from /datasets/<task_id>/data API endpoint.
+        This route just renders the template with the task_id.
+        """
+        user_name = current_user.email.split('@')[0]
+
+        # Verify task exists and belongs to current user
+        task = GenerationTask.query.filter_by(task_id=task_id, user_id=current_user.id).first()
+
+        if not task:
+            flash('Dataset not found.', 'error')
+            return redirect(url_for('datasets'))
+
+        return render_template('dataset_detail.html', user_name=user_name, task_id=task_id)
 
     @app.route('/history')
     @login_required
@@ -504,6 +627,613 @@ def create_app():
             return jsonify({
                 'success': False,
                 'error': 'An error occurred while saving settings'
+            }), 500
+
+    @app.route('/datasets/<task_id>/data')
+    @login_required
+    def dataset_detail_api(task_id):
+        """
+        Dataset detail API endpoint - returns JSON with task details, progress stats, and results.
+
+        Args:
+            task_id: Task ID (short UUID string)
+
+        Query params:
+            page: Page number (default: 1)
+            per_page: Results per page (default: 20)
+
+        Returns:
+            JSON response with task data, progress statistics, and paginated results
+        """
+        # Find task by task_id string
+        task = GenerationTask.query.filter_by(task_id=task_id).first()
+
+        # Return 404 if task not found
+        if not task:
+            return jsonify({
+                'success': False,
+                'error': 'Task not found'
+            }), 404
+
+        # Verify task belongs to current user (security check)
+        if task.user_id != current_user.id:
+            return jsonify({
+                'success': False,
+                'error': 'Access denied'
+            }), 403
+
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+
+        # Validate pagination parameters
+        if page < 1:
+            page = 1
+        if per_page < 1 or per_page > 100:
+            per_page = 20
+
+        # Get paginated results for this task
+        results_query = GenerationResult.query.filter_by(task_id=task.id)\
+            .order_by(GenerationResult.created_at.asc())
+
+        pagination = results_query.paginate(page=page, per_page=per_page, error_out=False)
+
+        # Calculate progress statistics
+        total_personas = task.number_to_generate
+        completed_personas = GenerationResult.query.filter_by(task_id=task.id).count()
+
+        # Count actual images (only split images, NOT base_image)
+        completed_images = 0
+        results_with_images = GenerationResult.query.filter_by(task_id=task.id)\
+            .filter(GenerationResult.images.isnot(None)).all()
+        for result in results_with_images:
+            # Count images in JSON array (base_image is for generation only, not part of dataset)
+            if result.images:
+                completed_images += len(result.images)
+
+        # Calculate progress based on total work (personas + images)
+        total_work_items = total_personas + (total_personas * task.images_per_persona)
+        completed_work_items = completed_personas + completed_images
+        progress_percentage = (completed_work_items / total_work_items * 100) if total_work_items > 0 else 0
+
+        # Calculate time elapsed
+        if task.completed_at:
+            time_elapsed = (task.completed_at - task.created_at).total_seconds()
+        else:
+            time_elapsed = (datetime.utcnow() - task.created_at).total_seconds()
+
+        # Format time elapsed as human-readable string
+        hours, remainder = divmod(int(time_elapsed), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours > 0:
+            time_elapsed_str = f"{hours}h {minutes}m {seconds}s"
+        elif minutes > 0:
+            time_elapsed_str = f"{minutes}m {seconds}s"
+        else:
+            time_elapsed_str = f"{seconds}s"
+
+        # Generate human-readable status message
+        status_messages = {
+            'pending': 'Waiting to start...',
+            'generating-data': f'Generating personas... ({completed_personas}/{total_personas})',
+            'generating-images': f'Generating images... ({completed_images}/{completed_personas})',
+            'completed': f'Completed! Generated {completed_personas} personas with images.',
+            'failed': 'Task failed. Check error log for details.'
+        }
+        status_message = status_messages.get(task.status, task.status)
+
+        # Build results array (exclude base_image_url - it's for generation only)
+        results_data = []
+        for result in pagination.items:
+            results_data.append({
+                'id': result.id,
+                'firstname': result.firstname,
+                'lastname': result.lastname,
+                'gender': result.gender,
+                'bios': {
+                    'facebook': result.bio_facebook,
+                    'instagram': result.bio_instagram,
+                    'x': result.bio_x,
+                    'tiktok': result.bio_tiktok
+                },
+                'images': result.images or []
+            })
+
+        # Return JSON response
+        return jsonify({
+            'success': True,
+            'task': {
+                'task_id': task.task_id,
+                'status': task.status,
+                'persona_description': task.persona_description,
+                'bio_language': task.bio_language,
+                'number_to_generate': task.number_to_generate,
+                'images_per_persona': task.images_per_persona,
+                'created_at': task.created_at.isoformat(),
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                'error_log': task.error_log
+            },
+            'progress': {
+                'total_personas': total_personas,
+                'completed_personas': completed_personas,
+                'completed_images': completed_images,
+                'progress_percentage': round(progress_percentage, 2),
+                'time_elapsed': time_elapsed_str,
+                'status_message': status_message
+            },
+            'results': results_data,
+            'pagination': {
+                'current_page': pagination.page,
+                'total_pages': pagination.pages,
+                'total_results': pagination.total,
+                'has_next': pagination.has_next,
+                'has_prev': pagination.has_prev,
+                'per_page': per_page
+            }
+        }), 200
+
+    @app.route('/datasets/<task_id>/export/json')
+    @login_required
+    def export_json(task_id):
+        """
+        Export complete task data and results as JSON file.
+
+        Args:
+            task_id: Task ID (short UUID string)
+
+        Returns:
+            JSON file download
+        """
+        # Find task by task_id string
+        task = GenerationTask.query.filter_by(task_id=task_id).first()
+
+        # Return 404 if task not found
+        if not task:
+            flash('Task not found.', 'error')
+            return redirect(url_for('datasets'))
+
+        # Verify task belongs to current user
+        if task.user_id != current_user.id:
+            flash('Access denied.', 'error')
+            return redirect(url_for('datasets'))
+
+        # Get all results for this task
+        results = GenerationResult.query.filter_by(task_id=task.id)\
+            .order_by(GenerationResult.created_at.asc())\
+            .all()
+
+        # Build export data structure
+        export_data = {
+            'task': {
+                'task_id': task.task_id,
+                'status': task.status,
+                'persona_description': task.persona_description,
+                'bio_language': task.bio_language,
+                'number_to_generate': task.number_to_generate,
+                'images_per_persona': task.images_per_persona,
+                'created_at': task.created_at.isoformat(),
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                'error_log': task.error_log
+            },
+            'results': []
+        }
+
+        for result in results:
+            export_data['results'].append({
+                'id': result.id,
+                'firstname': result.firstname,
+                'lastname': result.lastname,
+                'gender': result.gender,
+                'bios': {
+                    'facebook': result.bio_facebook,
+                    'instagram': result.bio_instagram,
+                    'x': result.bio_x,
+                    'tiktok': result.bio_tiktok
+                },
+                'images': result.images or []
+            })
+
+        # Create JSON file in memory
+        json_output = io.BytesIO()
+        json_output.write(jsonify(export_data).get_data())
+        json_output.seek(0)
+
+        # Return JSON file as download
+        return send_file(
+            json_output,
+            mimetype='application/json',
+            as_attachment=True,
+            download_name=f'dataset_{task_id}.json'
+        )
+
+    @app.route('/datasets/<task_id>/export/csv')
+    @login_required
+    def export_csv(task_id):
+        """
+        Export task results as flattened CSV file.
+
+        Args:
+            task_id: Task ID (short UUID string)
+
+        Returns:
+            CSV file download
+        """
+        # Find task by task_id string
+        task = GenerationTask.query.filter_by(task_id=task_id).first()
+
+        # Return 404 if task not found
+        if not task:
+            flash('Task not found.', 'error')
+            return redirect(url_for('datasets'))
+
+        # Verify task belongs to current user
+        if task.user_id != current_user.id:
+            flash('Access denied.', 'error')
+            return redirect(url_for('datasets'))
+
+        # Get all results for this task
+        results = GenerationResult.query.filter_by(task_id=task.id)\
+            .order_by(GenerationResult.created_at.asc())\
+            .all()
+
+        # Create CSV in memory
+        csv_output = io.StringIO()
+
+        # Determine max number of images (up to 8)
+        max_images = task.images_per_persona
+
+        # Build CSV headers (exclude base_image_url - it's for generation only)
+        headers = [
+            'firstname', 'lastname', 'gender',
+            'bio_facebook', 'bio_instagram', 'bio_x', 'bio_tiktok'
+        ]
+        # Add image columns based on images_per_persona
+        for i in range(1, max_images + 1):
+            headers.append(f'image_{i}')
+
+        writer = csv.DictWriter(csv_output, fieldnames=headers)
+        writer.writeheader()
+
+        # Write each result as a row
+        for result in results:
+            row = {
+                'firstname': result.firstname,
+                'lastname': result.lastname,
+                'gender': result.gender,
+                'bio_facebook': result.bio_facebook or '',
+                'bio_instagram': result.bio_instagram or '',
+                'bio_x': result.bio_x or '',
+                'bio_tiktok': result.bio_tiktok or ''
+            }
+
+            # Add image URLs
+            images = result.images or []
+            for i in range(1, max_images + 1):
+                image_key = f'image_{i}'
+                row[image_key] = images[i-1] if i <= len(images) else ''
+
+            writer.writerow(row)
+
+        # Prepare CSV for download
+        csv_output.seek(0)
+        csv_bytes = io.BytesIO()
+        csv_bytes.write(csv_output.getvalue().encode('utf-8'))
+        csv_bytes.seek(0)
+
+        # Return CSV file as download
+        return send_file(
+            csv_bytes,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'dataset_{task_id}.csv'
+        )
+
+    @app.route('/datasets/<task_id>/export/zip')
+    @login_required
+    def export_zip(task_id):
+        """
+        Export complete dataset as ZIP file with images and data.json.
+
+        Args:
+            task_id: Task ID (short UUID string)
+
+        Returns:
+            ZIP file download with images folder and data.json
+        """
+        # Find task by task_id string
+        task = GenerationTask.query.filter_by(task_id=task_id).first()
+
+        # Return 404 if task not found
+        if not task:
+            flash('Task not found.', 'error')
+            return redirect(url_for('datasets'))
+
+        # Verify task belongs to current user
+        if task.user_id != current_user.id:
+            flash('Access denied.', 'error')
+            return redirect(url_for('datasets'))
+
+        # Get all results for this task
+        results = GenerationResult.query.filter_by(task_id=task.id)\
+            .order_by(GenerationResult.created_at.asc())\
+            .all()
+
+        # Create temporary directory for processing
+        temp_dir = tempfile.mkdtemp()
+
+        try:
+            import json
+
+            # Create profiles directory
+            profiles_dir = os.path.join(temp_dir, 'profiles')
+            os.makedirs(profiles_dir, exist_ok=True)
+
+            # Process each result and create individual profile folders
+            for result in results:
+                # Create folder name from person's name (sanitize for filesystem)
+                folder_name = f"{result.firstname}_{result.lastname}".replace(' ', '_').replace('/', '_').replace('\\', '_')
+                person_dir = os.path.join(profiles_dir, folder_name)
+                os.makedirs(person_dir, exist_ok=True)
+
+                # Create images subdirectory for this person
+                person_images_dir = os.path.join(person_dir, 'images')
+                os.makedirs(person_images_dir, exist_ok=True)
+
+                # Build person's data
+                person_data = {
+                    'firstname': result.firstname,
+                    'lastname': result.lastname,
+                    'gender': result.gender,
+                    'bios': {
+                        'facebook': result.bio_facebook,
+                        'instagram': result.bio_instagram,
+                        'x': result.bio_x,
+                        'tiktok': result.bio_tiktok
+                    }
+                }
+
+                # Write details.json
+                details_json_path = os.path.join(person_dir, 'details.json')
+                with open(details_json_path, 'w', encoding='utf-8') as f:
+                    json.dump(person_data, f, indent=2, ensure_ascii=False)
+
+                # Write details.csv
+                details_csv_path = os.path.join(person_dir, 'details.csv')
+                with open(details_csv_path, 'w', encoding='utf-8', newline='') as f:
+                    writer = csv.DictWriter(f, fieldnames=['field', 'value'])
+                    writer.writeheader()
+                    writer.writerow({'field': 'firstname', 'value': result.firstname})
+                    writer.writerow({'field': 'lastname', 'value': result.lastname})
+                    writer.writerow({'field': 'gender', 'value': result.gender})
+                    writer.writerow({'field': 'bio_facebook', 'value': result.bio_facebook or ''})
+                    writer.writerow({'field': 'bio_instagram', 'value': result.bio_instagram or ''})
+                    writer.writerow({'field': 'bio_x', 'value': result.bio_x or ''})
+                    writer.writerow({'field': 'bio_tiktok', 'value': result.bio_tiktok or ''})
+
+                # Download split images for this person
+                if result.images:
+                    for idx, image_url in enumerate(result.images, start=1):
+                        try:
+                            response = requests.get(image_url, timeout=30)
+                            if response.status_code == 200:
+                                # Determine file extension
+                                extension = '.jpg'
+                                if '.' in image_url:
+                                    url_ext = image_url.split('.')[-1].split('?')[0]
+                                    if url_ext.lower() in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                                        extension = f'.{url_ext.lower()}'
+
+                                image_path = os.path.join(person_images_dir, f'{idx}{extension}')
+                                with open(image_path, 'wb') as f:
+                                    f.write(response.content)
+                            else:
+                                logging.warning(f"Failed to download image {idx} for {folder_name}: HTTP {response.status_code}")
+                        except Exception as e:
+                            logging.error(f"Error downloading image {idx} for {folder_name}: {e}")
+
+            # Create ZIP file in memory
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                # Add all profile folders with their contents
+                for root, dirs, files in os.walk(profiles_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        # Calculate relative path from temp_dir to maintain folder structure
+                        arcname = os.path.relpath(file_path, temp_dir)
+                        zip_file.write(file_path, arcname)
+
+            zip_buffer.seek(0)
+
+            # Clean up temp directory
+            shutil.rmtree(temp_dir)
+
+            # Return ZIP file as download
+            return send_file(
+                zip_buffer,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name=f'dataset_{task_id}.zip'
+            )
+
+        except Exception as e:
+            # Clean up temp directory on error
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+
+            logging.error(f"Error creating ZIP export: {e}")
+            flash('An error occurred while creating the ZIP export. Please try again.', 'error')
+            return redirect(url_for('datasets'))
+
+    @app.route('/api/dashboard/stats')
+    @login_required
+    def dashboard_stats():
+        """
+        Dashboard statistics API endpoint.
+
+        Returns overview statistics and last 7 days data for current user:
+        - Total tasks, personas, images
+        - Completed/failed/in-progress task counts
+        - Average personas per task and images per persona
+        - Daily task, persona, and image counts for last 7 days
+
+        Returns:
+            JSON response with overview and last_7_days data
+        """
+        from sqlalchemy import func
+        from datetime import timedelta
+
+        try:
+            # Calculate date range for last 7 days
+            today = datetime.utcnow().date()
+            seven_days_ago = today - timedelta(days=6)  # Include today = 7 days total
+
+            # === OVERVIEW STATISTICS ===
+
+            # Count all tasks for current user
+            total_tasks = GenerationTask.query.filter_by(user_id=current_user.id).count()
+
+            # Count tasks by status
+            completed_tasks = GenerationTask.query.filter_by(
+                user_id=current_user.id,
+                status='completed'
+            ).count()
+
+            failed_tasks = GenerationTask.query.filter_by(
+                user_id=current_user.id,
+                status='failed'
+            ).count()
+
+            # Tasks in progress (any status except completed or failed)
+            tasks_in_progress = GenerationTask.query.filter(
+                GenerationTask.user_id == current_user.id,
+                GenerationTask.status.notin_(['completed', 'failed'])
+            ).count()
+
+            # Count total personas (GenerationResult entries for user's tasks)
+            total_personas = db.session.query(func.count(GenerationResult.id))\
+                .join(GenerationTask, GenerationResult.task_id == GenerationTask.id)\
+                .filter(GenerationTask.user_id == current_user.id)\
+                .scalar() or 0
+
+            # Count total images (sum of image array lengths)
+            total_images = 0
+            results_with_images = db.session.query(GenerationResult.images)\
+                .join(GenerationTask, GenerationResult.task_id == GenerationTask.id)\
+                .filter(
+                    GenerationTask.user_id == current_user.id,
+                    GenerationResult.images.isnot(None)
+                ).all()
+
+            for result in results_with_images:
+                if result.images:
+                    total_images += len(result.images)
+
+            # Calculate averages
+            average_personas_per_task = round(total_personas / total_tasks, 1) if total_tasks > 0 else 0.0
+            average_images_per_persona = round(total_images / total_personas, 1) if total_personas > 0 else 0.0
+
+            # === LAST 7 DAYS DATA ===
+
+            # Generate list of all dates in range
+            date_range = []
+            for i in range(7):
+                date = seven_days_ago + timedelta(days=i)
+                date_range.append(date)
+
+            # Query tasks by date (group by date of created_at)
+            tasks_by_date_query = db.session.query(
+                func.date(GenerationTask.created_at).label('date'),
+                func.count(GenerationTask.id).label('count')
+            ).filter(
+                GenerationTask.user_id == current_user.id,
+                func.date(GenerationTask.created_at) >= seven_days_ago,
+                func.date(GenerationTask.created_at) <= today
+            ).group_by(func.date(GenerationTask.created_at)).all()
+
+            # Convert to dict for easy lookup
+            tasks_by_date_dict = {str(row.date): row.count for row in tasks_by_date_query}
+
+            # Query personas by date (based on task creation date)
+            personas_by_date_query = db.session.query(
+                func.date(GenerationTask.created_at).label('date'),
+                func.count(GenerationResult.id).label('count')
+            ).join(GenerationTask, GenerationResult.task_id == GenerationTask.id)\
+            .filter(
+                GenerationTask.user_id == current_user.id,
+                func.date(GenerationTask.created_at) >= seven_days_ago,
+                func.date(GenerationTask.created_at) <= today
+            ).group_by(func.date(GenerationTask.created_at)).all()
+
+            personas_by_date_dict = {str(row.date): row.count for row in personas_by_date_query}
+
+            # For images, we need to manually count since they're in JSON arrays
+            # Get all results grouped by task creation date
+            results_by_date = db.session.query(
+                func.date(GenerationTask.created_at).label('date'),
+                GenerationResult.images
+            ).join(GenerationTask, GenerationResult.task_id == GenerationTask.id)\
+            .filter(
+                GenerationTask.user_id == current_user.id,
+                func.date(GenerationTask.created_at) >= seven_days_ago,
+                func.date(GenerationTask.created_at) <= today,
+                GenerationResult.images.isnot(None)
+            ).all()
+
+            # Count images by date
+            images_by_date_dict = {}
+            for row in results_by_date:
+                date_str = str(row.date)
+                image_count = len(row.images) if row.images else 0
+                images_by_date_dict[date_str] = images_by_date_dict.get(date_str, 0) + image_count
+
+            # Build response arrays with all dates filled (0 for missing dates)
+            tasks_by_date = []
+            personas_by_date = []
+            images_by_date = []
+
+            for date in date_range:
+                date_str = str(date)
+                tasks_by_date.append({
+                    'date': date_str,
+                    'count': tasks_by_date_dict.get(date_str, 0)
+                })
+                personas_by_date.append({
+                    'date': date_str,
+                    'count': personas_by_date_dict.get(date_str, 0)
+                })
+                images_by_date.append({
+                    'date': date_str,
+                    'count': images_by_date_dict.get(date_str, 0)
+                })
+
+            # Build response
+            response_data = {
+                'overview': {
+                    'total_tasks': total_tasks,
+                    'total_personas': total_personas,
+                    'total_images': total_images,
+                    'completed_tasks': completed_tasks,
+                    'failed_tasks': failed_tasks,
+                    'tasks_in_progress': tasks_in_progress,
+                    'average_personas_per_task': average_personas_per_task,
+                    'average_images_per_persona': average_images_per_persona
+                },
+                'last_7_days': {
+                    'tasks_by_date': tasks_by_date,
+                    'personas_by_date': personas_by_date,
+                    'images_by_date': images_by_date
+                }
+            }
+
+            return jsonify(response_data), 200
+
+        except Exception as e:
+            # Log error
+            logging.error(f"Error generating dashboard stats: {e}", exc_info=True)
+
+            return jsonify({
+                'success': False,
+                'error': 'An error occurred while generating dashboard statistics'
             }), 500
 
     @app.route('/forgot-password')

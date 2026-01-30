@@ -6,56 +6,275 @@
  */
 
 /* ========================================
-   DASHBOARD-SPECIFIC STYLES
+   DASHBOARD CONTENT WRAPPER
    ======================================== */
 
-.dashboard-placeholder {
-  text-align: center;
-  padding: var(--spacing-12) var(--spacing-8);
-  background-color: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 0;
-}
-
-.dashboard-placeholder-icon {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto var(--spacing-6);
-  color: var(--color-accent-cyan);
-}
-
-.dashboard-placeholder-title {
-  font-size: var(--font-size-h2);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin-bottom: var(--spacing-4);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.dashboard-placeholder-description {
-  font-size: var(--font-size-body);
-  color: var(--color-text-secondary);
-  line-height: var(--line-height-relaxed);
-  max-width: 600px;
+.content-wrapper {
+  max-width: 1280px;
   margin: 0 auto;
+  padding: 0 var(--spacing-6);
 }
 
 /* ========================================
-   RESPONSIVE ADJUSTMENTS
+   STATISTICS CARDS GRID
    ======================================== */
 
+.stats-grid {
+  display: grid;
+  gap: var(--spacing-6);
+  margin-bottom: var(--spacing-8);
+}
+
+.stats-grid-primary {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.stats-grid-secondary {
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+/* ========================================
+   STAT CARD COMPONENT
+   ======================================== */
+
+.stat-card {
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-none);
+  padding: var(--spacing-6);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  transition: all var(--transition-base);
+}
+
+.stat-card:hover {
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 217, 255, 0.15);
+}
+
+/* Stat Card Variants */
+.stat-card-success .stat-card-icon {
+  color: var(--color-success);
+}
+
+.stat-card-success:hover {
+  border-color: var(--color-success);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.15);
+}
+
+.stat-card-error .stat-card-icon {
+  color: var(--color-error);
+}
+
+.stat-card-error:hover {
+  border-color: var(--color-error);
+  box-shadow: 0 0 20px rgba(255, 68, 102, 0.15);
+}
+
+/* Stat Card Icon */
+.stat-card-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent-cyan);
+  flex-shrink: 0;
+}
+
+.stat-card-icon i {
+  width: 32px;
+  height: 32px;
+}
+
+/* Stat Card Content */
+.stat-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  line-height: var(--line-height-tight);
+  margin-bottom: var(--spacing-2);
+}
+
+.stat-label {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--font-weight-medium);
+}
+
+/* ========================================
+   CHARTS GRID
+   ======================================== */
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: var(--spacing-6);
+  margin-bottom: var(--spacing-8);
+}
+
+/* ========================================
+   CHART CARD COMPONENT
+   ======================================== */
+
+.chart-card {
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-none);
+  padding: var(--spacing-6);
+  transition: all var(--transition-base);
+}
+
+.chart-card:hover {
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 217, 255, 0.15);
+}
+
+.chart-header {
+  margin-bottom: var(--spacing-4);
+}
+
+.chart-title {
+  font-size: var(--font-size-h4);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.chart-body {
+  position: relative;
+  min-height: 250px;
+}
+
+/* ========================================
+   SKELETON LOADERS
+   ======================================== */
+
+.skeleton-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-secondary) 0%,
+    var(--color-bg-elevated) 50%,
+    var(--color-bg-secondary) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  color: transparent !important;
+  user-select: none;
+  border-radius: var(--radius-none);
+  display: inline-block;
+  min-width: 60px;
+}
+
+.skeleton-chart {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-secondary) 0%,
+    var(--color-bg-elevated) 50%,
+    var(--color-bg-secondary) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  width: 100%;
+  height: 250px;
+  border-radius: var(--radius-none);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ========================================
+   LOADING STATE
+   ======================================== */
+
+.stat-card.loading,
+.chart-card.loading {
+  pointer-events: none;
+}
+
+/* ========================================
+   RESPONSIVE DESIGN
+   ======================================== */
+
+@media (max-width: 1024px) {
+  .stats-grid-primary,
+  .stats-grid-secondary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: 0 var(--spacing-4);
+  }
+
+  .stats-grid {
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-6);
+  }
+
+  .charts-grid {
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-6);
+  }
+}
+
 @media (max-width: 640px) {
-  .dashboard-placeholder {
-    padding: var(--spacing-8) var(--spacing-4);
+  .stats-grid-primary,
+  .stats-grid-secondary {
+    grid-template-columns: 1fr;
   }
 
-  .dashboard-placeholder-icon {
-    width: 48px;
-    height: 48px;
+  .charts-grid {
+    grid-template-columns: 1fr;
   }
 
-  .dashboard-placeholder-title {
+  .stat-card {
+    padding: var(--spacing-4);
+  }
+
+  .stat-card-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .stat-card-icon i {
+    width: 24px;
+    height: 24px;
+  }
+
+  .stat-value {
     font-size: var(--font-size-h3);
+  }
+
+  .chart-card {
+    padding: var(--spacing-4);
+  }
+
+  .chart-body {
+    min-height: 200px;
+  }
+
+  .skeleton-chart {
+    height: 200px;
   }
 }
