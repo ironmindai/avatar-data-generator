@@ -42,6 +42,7 @@
         faceSettingsForm: document.getElementById('faceSettingsForm'),
         saveFaceSettingsButton: document.getElementById('saveFaceSettingsButton'),
         resetFaceSettingsButton: document.getElementById('resetFaceSettingsButton'),
+        cropWhiteBordersCheckbox: document.getElementById('crop_white_borders'),
         randomizeFaceCheckbox: document.getElementById('randomize_face_base'),
         genderLockCheckbox: document.getElementById('randomize_face_gender_lock'),
         genderLockGroup: document.getElementById('genderLockGroup')
@@ -83,6 +84,7 @@
 
     function storeFaceSettingsOriginalValues() {
         state.faceSettings.originalValues = {
+            crop_white_borders: elements.cropWhiteBordersCheckbox.checked,
             randomize_face_base: elements.randomizeFaceCheckbox.checked,
             randomize_face_gender_lock: elements.genderLockCheckbox.checked
         };
@@ -108,6 +110,11 @@
     }
 
     function attachFaceSettingsListeners() {
+        // Crop white borders checkbox - check dirty state
+        elements.cropWhiteBordersCheckbox.addEventListener('change', function() {
+            checkFaceSettingsDirtyState();
+        });
+
         // Randomize face checkbox - toggle gender lock visibility
         elements.randomizeFaceCheckbox.addEventListener('change', function() {
             toggleGenderLockVisibility();
@@ -386,6 +393,7 @@
 
     function checkFaceSettingsDirtyState() {
         const hasChanges =
+            elements.cropWhiteBordersCheckbox.checked !== state.faceSettings.originalValues.crop_white_borders ||
             elements.randomizeFaceCheckbox.checked !== state.faceSettings.originalValues.randomize_face_base ||
             elements.genderLockCheckbox.checked !== state.faceSettings.originalValues.randomize_face_gender_lock;
 
@@ -422,6 +430,7 @@
 
         // Collect form data
         const formData = {
+            crop_white_borders: elements.cropWhiteBordersCheckbox.checked,
             randomize_face_base: elements.randomizeFaceCheckbox.checked,
             randomize_face_gender_lock: elements.genderLockCheckbox.checked
         };
@@ -493,6 +502,7 @@
         }
 
         // Restore original values
+        elements.cropWhiteBordersCheckbox.checked = state.faceSettings.originalValues.crop_white_borders;
         elements.randomizeFaceCheckbox.checked = state.faceSettings.originalValues.randomize_face_base;
         elements.genderLockCheckbox.checked = state.faceSettings.originalValues.randomize_face_gender_lock;
 

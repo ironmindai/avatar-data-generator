@@ -101,6 +101,7 @@ Stores global boolean configuration settings for application features.
 **Default Config Values (Populated on Migration):**
 - `randomize_face_base` (FALSE) - Enables randomizing faces for base image generation
 - `randomize_face_gender_lock` (FALSE) - When face randomization is on, locks to matching gender
+- `crop_white_borders` (FALSE) - Enables automatic cropping of white borders from generated avatar images
 
 **Face Randomization Feature:**
 - When `randomize_face_base` is TRUE, the image generation system uses a random face image from S3 as reference
@@ -368,6 +369,33 @@ Creates a new Config table for storing global boolean configuration settings. Th
 - Initial data seeded for face randomization feature
 - **Downgrade Warning**: Rolling back this migration will permanently delete the config table and all config values
 
+**Status**: APPLIED
+
+---
+
+### Migration: 70c50b9233b6 - add_crop_white_borders_config
+**Date**: 2026-01-31 15:02:23
+**Parent**: d59663db64e2
+
+**Changes:**
+- Added new config setting `crop_white_borders` (FALSE) to the `config` table
+- This setting controls whether white borders should be automatically cropped from generated avatar images
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/70c50b9233b6_add_crop_white_borders_config.py`
+
+**Purpose:**
+Adds a new boolean configuration flag to control image post-processing. When enabled, the image generation system will automatically detect and crop white borders from generated avatar images.
+
+**Data Migration:**
+- Upgrade: Inserts new row into `config` table with key `crop_white_borders` and value `FALSE`
+- Downgrade: Deletes the `crop_white_borders` row from `config` table
+
+**Safety Notes:**
+- Non-destructive operation (inserting new config row only)
+- Fully reversible via downgrade function
+- Default value is FALSE (feature disabled by default)
+- **Downgrade Warning**: Rolling back this migration will delete the `crop_white_borders` config setting
+
 **Status**: APPLIED (Current)
 
 ---
@@ -414,13 +442,14 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: d59663db64e2 (create_config_table_for_boolean_settings) - APPLIED
+**Latest Migration**: 70c50b9233b6 (add_crop_white_borders_config) - APPLIED
 **Total Tables**: 5
-**Total Migrations**: 7 (1 reverted)
+**Total Migrations**: 8 (1 reverted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
-- NEW `config` table created for global boolean configuration settings
+- NEW `config.crop_white_borders` (FALSE) - enables automatic cropping of white borders from generated images
+- `config` table created for global boolean configuration settings
 - `config.randomize_face_base` (FALSE) - enables face randomization for base image generation
 - `config.randomize_face_gender_lock` (FALSE) - locks face randomization to matching gender
 - `settings` table cleaned (removed incorrectly added boolean columns)

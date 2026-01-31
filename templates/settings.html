@@ -36,6 +36,26 @@
             <!-- Form Wrapper for Elevated Background -->
             <div class="settings-form-wrapper">
                 <form id="faceSettingsForm" class="settings-form">
+                    <!-- Crop White Borders Checkbox -->
+                    <div class="form-group">
+                        <label class="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="crop_white_borders"
+                                name="crop_white_borders"
+                                class="checkbox-input"
+                                {% if crop_white_borders %}checked{% endif %}
+                            >
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-label">
+                                CROP WHITE BORDERS
+                            </span>
+                        </label>
+                        <p class="form-help checkbox-help">
+                            Automatically remove white borders from generated images
+                        </p>
+                    </div>
+
                     <!-- Main Checkbox: Randomize Face -->
                     <div class="form-group">
                         <label class="checkbox-container">
@@ -44,7 +64,7 @@
                                 id="randomize_face_base"
                                 name="randomize_face_base"
                                 class="checkbox-input"
-                                {% if face_settings and face_settings.randomize_face_base %}checked{% endif %}
+                                {% if randomize_face_base %}checked{% endif %}
                             >
                             <span class="checkbox-custom"></span>
                             <span class="checkbox-label">
@@ -64,7 +84,7 @@
                                 id="randomize_face_gender_lock"
                                 name="randomize_face_gender_lock"
                                 class="checkbox-input"
-                                {% if face_settings and face_settings.randomize_face_gender_lock %}checked{% endif %}
+                                {% if randomize_face_gender_lock %}checked{% endif %}
                             >
                             <span class="checkbox-custom"></span>
                             <span class="checkbox-label">

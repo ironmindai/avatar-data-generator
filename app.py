@@ -557,13 +557,15 @@ def create_app():
         # Load face randomization settings from Config table (stored as boolean values)
         randomize_face_base = Config.get_value('randomize_face_base', False)
         randomize_face_gender_lock = Config.get_value('randomize_face_gender_lock', False)
+        crop_white_borders = Config.get_value('crop_white_borders', False)
 
         return render_template(
             'settings.html',
             user_name=user_name,
             bio_prompts=bio_prompts,
             randomize_face_base=randomize_face_base,
-            randomize_face_gender_lock=randomize_face_gender_lock
+            randomize_face_gender_lock=randomize_face_gender_lock,
+            crop_white_borders=crop_white_borders
         )
 
     @app.route('/settings/save', methods=['POST'])
@@ -595,7 +597,8 @@ def create_app():
 
             expected_boolean_keys = [
                 'randomize_face_base',
-                'randomize_face_gender_lock'
+                'randomize_face_gender_lock',
+                'crop_white_borders'
             ]
 
             # Validate that at least one expected key is present

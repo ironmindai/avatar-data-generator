@@ -44,6 +44,7 @@ from sqlalchemy import text
 from services.flowise_service import generate_image_prompt
 from services.image_generation import generate_base_image, generate_images_from_base
 from services.image_utils import split_and_trim_image, upload_to_s3
+from utils.image_cropper import remove_white_borders
 
 # Load environment variables
 load_dotenv()
@@ -867,6 +868,25 @@ async def process_persona_images(
             error_msg = f"Image splitting failed: {str(e)}"
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
+
+        # Step 7.5: Conditionally crop white borders from split images
+        crop_white_borders_enabled = Config.get_value('crop_white_borders', False)
+        if crop_white_borders_enabled:
+            logger.info(f"[Task {task_id_str}] [{persona_name}] White border cropping ENABLED - processing {len(split_images)} images...")
+            try:
+                cropped_images = []
+                for i, image_bytes in enumerate(split_images):
+                    cropped_bytes = remove_white_borders(image_bytes, threshold=230, min_border_width=1)
+                    cropped_images.append(cropped_bytes)
+                    logger.debug(f"[Task {task_id_str}] [{persona_name}] Cropped image {i}: {len(image_bytes)} -> {len(cropped_bytes)} bytes")
+
+                split_images = cropped_images
+                logger.info(f"[Task {task_id_str}] [{persona_name}] White border cropping completed for all {len(split_images)} images")
+            except Exception as e:
+                # Non-fatal: log warning and continue with uncropped images
+                logger.warning(f"[Task {task_id_str}] [{persona_name}] White border cropping failed: {str(e)} - continuing with uncropped images")
+        else:
+            logger.debug(f"[Task {task_id_str}] [{persona_name}] White border cropping DISABLED - skipping")
 
         # Step 8: Upload all 4 split images to S3 and SAVE IMMEDIATELY to JSONB array
         logger.info(f"[Task {task_id_str}] [{persona_name}] Uploading 4 split images to S3...")

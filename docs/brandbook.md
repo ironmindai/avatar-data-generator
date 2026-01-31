@@ -594,6 +594,31 @@ Provides:
 
 ---
 
+### 2026-01-31 - Crop White Borders Setting Added
+
+**New Setting Created:**
+- Added "Crop White Borders" toggle as the first setting in Face Generation Settings section
+- Boolean checkbox that controls automatic white border removal from generated images
+- Setting stored in Config table with key `crop_white_borders`
+- Default value: False (disabled)
+- Integrated with existing face settings form and state management
+- Saves via AJAX to `/settings/save` endpoint
+- Migration created: `70c50b9233b6_add_crop_white_borders_config.py`
+
+**Components Updated:**
+- Settings template: Added checkbox before "Randomize Face" option
+- Settings JavaScript: Integrated into face settings state tracking
+- Backend: Added to expected_boolean_keys and template rendering
+- Checkbox follows brandbook styling (sharp corners, neon cyan glow on checked)
+
+**Files Modified:**
+- `/templates/settings.html` - Added crop_white_borders checkbox
+- `/static/js/settings.js` - Added state management for new checkbox
+- `/app.py` - Added to settings loading and saving logic
+- `/migrations/versions/70c50b9233b6_add_crop_white_borders_config.py` - Database migration
+
+---
+
 ### 2026-01-30 - Settings Page Implementation
 
 **New Template Created:**
