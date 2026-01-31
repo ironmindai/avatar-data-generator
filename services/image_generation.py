@@ -27,6 +27,9 @@ OPENAI_API_BASE = "https://api.openai.com/v1"
 IMAGE_MODEL = "gpt-image-1.5"
 IMAGE_GENERATION_TIMEOUT = 600  # 10 minutes timeout
 
+# Image generation prompt configuration
+BASE_PROMPT_APPEND = os.getenv('BASE_PROMPT_APPEND', '').strip()
+
 
 async def generate_base_image(
     bio_facebook: str,
@@ -62,6 +65,10 @@ async def generate_base_image(
             f"the image should be not well-produced, amateur digital camera aesthetic, "
             f"low resolution. Person: {bio_facebook}. {gender_full}."
         )
+
+        # Append custom text if configured
+        if BASE_PROMPT_APPEND:
+            base_prompt = f"{base_prompt} {BASE_PROMPT_APPEND}"
 
         # Check if face randomization is enabled
         if randomize_face:
@@ -248,6 +255,10 @@ async def generate_images_from_base(
         Exception: If API call fails or returns invalid response
     """
     try:
+        # Append custom text if configured
+        if BASE_PROMPT_APPEND:
+            flowise_prompt = f"{flowise_prompt} {BASE_PROMPT_APPEND}"
+
         logger.info("Generating images from base image")
         logger.info("=" * 80)
         logger.info("FLOWISE IMAGE PROMPT (Image-to-Image for 4-grid):")
