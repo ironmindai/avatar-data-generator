@@ -23,6 +23,79 @@
 
     <!-- Settings Container -->
     <div class="settings-container">
+        <!-- Face Generation Settings Section -->
+        <div class="settings-section">
+            <div class="section-header">
+                <i data-feather="user" class="section-icon"></i>
+                <h2 class="section-title">FACE GENERATION SETTINGS</h2>
+            </div>
+            <p class="section-description">
+                Configure face randomization options for base image generation. These experimental features control how avatar faces are generated.
+            </p>
+
+            <!-- Form Wrapper for Elevated Background -->
+            <div class="settings-form-wrapper">
+                <form id="faceSettingsForm" class="settings-form">
+                    <!-- Main Checkbox: Randomize Face -->
+                    <div class="form-group">
+                        <label class="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="randomize_face_base"
+                                name="randomize_face_base"
+                                class="checkbox-input"
+                                {% if face_settings and face_settings.randomize_face_base %}checked{% endif %}
+                            >
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-label">
+                                RANDOMIZE FACE FOR BASE GENERATION (EXPERIMENTAL)
+                            </span>
+                        </label>
+                        <p class="form-help checkbox-help">
+                            Enable random face generation for avatar base images instead of using predefined faces
+                        </p>
+                    </div>
+
+                    <!-- Sub-Checkbox: Gender Lock (Nested) -->
+                    <div class="form-group form-group-nested" id="genderLockGroup" style="display: none;">
+                        <label class="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="randomize_face_gender_lock"
+                                name="randomize_face_gender_lock"
+                                class="checkbox-input"
+                                {% if face_settings and face_settings.randomize_face_gender_lock %}checked{% endif %}
+                            >
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-label">
+                                GENDER LOCK
+                            </span>
+                        </label>
+                        <p class="form-help checkbox-help">
+                            Lock the generated face to a specific gender during randomization
+                        </p>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="form-actions">
+                        <button type="submit" id="saveFaceSettingsButton" class="btn btn-primary" disabled>
+                            <i data-feather="save"></i>
+                            <span class="btn-text">SAVE CHANGES</span>
+                            <span class="btn-loading" style="display: none;">
+                                <span class="spinner-small"></span>
+                                SAVING...
+                            </span>
+                        </button>
+                        <button type="button" id="resetFaceSettingsButton" class="btn btn-secondary">
+                            <i data-feather="rotate-ccw"></i>
+                            RESET TO ORIGINAL
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <!-- End Form Wrapper -->
+        </div>
+
         <!-- Bio Prompts Configuration Section -->
         <div class="settings-section">
             <div class="section-header">

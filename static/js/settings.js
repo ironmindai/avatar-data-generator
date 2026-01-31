@@ -14,7 +14,12 @@
     const state = {
         originalValues: {},
         isDirty: false,
-        isSubmitting: false
+        isSubmitting: false,
+        faceSettings: {
+            originalValues: {},
+            isDirty: false,
+            isSubmitting: false
+        }
     };
 
     // ========================================
@@ -33,7 +38,13 @@
             instagram: document.getElementById('bio_prompt_instagram'),
             x: document.getElementById('bio_prompt_x'),
             tiktok: document.getElementById('bio_prompt_tiktok')
-        }
+        },
+        faceSettingsForm: document.getElementById('faceSettingsForm'),
+        saveFaceSettingsButton: document.getElementById('saveFaceSettingsButton'),
+        resetFaceSettingsButton: document.getElementById('resetFaceSettingsButton'),
+        randomizeFaceCheckbox: document.getElementById('randomize_face_base'),
+        genderLockCheckbox: document.getElementById('randomize_face_gender_lock'),
+        genderLockGroup: document.getElementById('genderLockGroup')
     };
 
     // ========================================
@@ -43,12 +54,17 @@
     function init() {
         // Store original values
         storeOriginalValues();
+        storeFaceSettingsOriginalValues();
 
         // Initialize character counters
         updateAllCharCounts();
 
+        // Initialize gender lock visibility
+        toggleGenderLockVisibility();
+
         // Attach event listeners
         attachEventListeners();
+        attachFaceSettingsListeners();
 
         console.log('[Settings] Initialized');
     }
@@ -63,6 +79,14 @@
             state.originalValues[textarea.id] = textarea.value.trim();
         });
         console.log('[Settings] Original values stored:', state.originalValues);
+    }
+
+    function storeFaceSettingsOriginalValues() {
+        state.faceSettings.originalValues = {
+            randomize_face_base: elements.randomizeFaceCheckbox.checked,
+            randomize_face_gender_lock: elements.genderLockCheckbox.checked
+        };
+        console.log('[Settings] Face settings original values stored:', state.faceSettings.originalValues);
     }
 
     // ========================================
@@ -81,6 +105,25 @@
 
         // Reset button
         elements.resetButton.addEventListener('click', handleReset);
+    }
+
+    function attachFaceSettingsListeners() {
+        // Randomize face checkbox - toggle gender lock visibility
+        elements.randomizeFaceCheckbox.addEventListener('change', function() {
+            toggleGenderLockVisibility();
+            checkFaceSettingsDirtyState();
+        });
+
+        // Gender lock checkbox - check dirty state
+        elements.genderLockCheckbox.addEventListener('change', function() {
+            checkFaceSettingsDirtyState();
+        });
+
+        // Face settings form submission
+        elements.faceSettingsForm.addEventListener('submit', handleFaceSettingsSubmit);
+
+        // Face settings reset button
+        elements.resetFaceSettingsButton.addEventListener('click', handleFaceSettingsReset);
     }
 
     // ========================================
@@ -317,6 +360,151 @@
             elements.toast.style.display = 'none';
             elements.toast.classList.remove('hiding');
         }, 300);
+    }
+
+    // ========================================
+    // Face Settings: Toggle Gender Lock Visibility
+    // ========================================
+
+    function toggleGenderLockVisibility() {
+        const isChecked = elements.randomizeFaceCheckbox.checked;
+
+        if (isChecked) {
+            elements.genderLockGroup.style.display = 'flex';
+        } else {
+            elements.genderLockGroup.style.display = 'none';
+            // Uncheck gender lock when hiding it
+            elements.genderLockCheckbox.checked = false;
+        }
+
+        console.log('[Settings] Gender lock visibility:', isChecked ? 'visible' : 'hidden');
+    }
+
+    // ========================================
+    // Face Settings: Check Dirty State
+    // ========================================
+
+    function checkFaceSettingsDirtyState() {
+        const hasChanges =
+            elements.randomizeFaceCheckbox.checked !== state.faceSettings.originalValues.randomize_face_base ||
+            elements.genderLockCheckbox.checked !== state.faceSettings.originalValues.randomize_face_gender_lock;
+
+        state.faceSettings.isDirty = hasChanges;
+
+        // Enable/disable save button
+        elements.saveFaceSettingsButton.disabled = !hasChanges;
+
+        console.log('[Settings] Face settings dirty state:', state.faceSettings.isDirty);
+    }
+
+    // ========================================
+    // Face Settings: Form Submission
+    // ========================================
+
+    async function handleFaceSettingsSubmit(event) {
+        event.preventDefault();
+
+        if (state.faceSettings.isSubmitting) {
+            console.log('[Settings] Already submitting face settings, ignoring duplicate submission');
+            return;
+        }
+
+        if (!state.faceSettings.isDirty) {
+            console.log('[Settings] No face settings changes to save');
+            return;
+        }
+
+        state.faceSettings.isSubmitting = true;
+
+        // Show loading state
+        elements.saveFaceSettingsButton.classList.add('loading');
+        elements.saveFaceSettingsButton.disabled = true;
+
+        // Collect form data
+        const formData = {
+            randomize_face_base: elements.randomizeFaceCheckbox.checked,
+            randomize_face_gender_lock: elements.genderLockCheckbox.checked
+        };
+
+        // Get CSRF token
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+        try {
+            console.log('[Settings] Submitting face settings data...', formData);
+
+            // Make AJAX request
+            const response = await fetch('/settings/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                console.log('[Settings] Face settings save successful:', result);
+
+                // Update original values to current values
+                storeFaceSettingsOriginalValues();
+
+                // Reset dirty state
+                state.faceSettings.isDirty = false;
+                elements.saveFaceSettingsButton.disabled = true;
+
+                // Show success notification
+                showToast('Face generation settings saved successfully', 'success');
+            } else {
+                console.error('[Settings] Face settings save failed:', result);
+                showToast(result.message || 'Failed to save face settings', 'error');
+            }
+        } catch (error) {
+            console.error('[Settings] Network error:', error);
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            // Hide loading state
+            elements.saveFaceSettingsButton.classList.remove('loading');
+            state.faceSettings.isSubmitting = false;
+
+            // Re-check dirty state
+            checkFaceSettingsDirtyState();
+        }
+    }
+
+    // ========================================
+    // Face Settings: Reset Handler
+    // ========================================
+
+    function handleFaceSettingsReset(event) {
+        event.preventDefault();
+
+        if (!state.faceSettings.isDirty) {
+            console.log('[Settings] No face settings changes to reset');
+            return;
+        }
+
+        // Confirm reset
+        const confirmReset = confirm('Are you sure you want to reset face settings to their original values? Unsaved changes will be lost.');
+
+        if (!confirmReset) {
+            return;
+        }
+
+        // Restore original values
+        elements.randomizeFaceCheckbox.checked = state.faceSettings.originalValues.randomize_face_base;
+        elements.genderLockCheckbox.checked = state.faceSettings.originalValues.randomize_face_gender_lock;
+
+        // Toggle visibility based on restored value
+        toggleGenderLockVisibility();
+
+        // Reset dirty state
+        state.faceSettings.isDirty = false;
+        elements.saveFaceSettingsButton.disabled = true;
+
+        console.log('[Settings] Face settings reset to original values');
+        showToast('Face settings reset to original values', 'success');
     }
 
     // ========================================

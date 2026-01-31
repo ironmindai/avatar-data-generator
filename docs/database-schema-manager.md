@@ -17,9 +17,10 @@ This document tracks the database schema state, migration history, and structure
 The database currently contains the following tables:
 
 1. **users** - User authentication and management
-2. **settings** - Application configuration key-value store
-3. **generation_tasks** - Avatar generation task tracking and management
-4. **generation_results** - Persona data and avatar image URLs for each generated avatar
+2. **settings** - Application configuration key-value store for bio prompts
+3. **config** - Global boolean configuration settings
+4. **generation_tasks** - Avatar generation task tracking and management
+5. **generation_results** - Persona data and avatar image URLs for each generated avatar
 
 ---
 
@@ -72,6 +73,44 @@ Stores application settings as key-value pairs, primarily used for bio prompts f
 - `bio_prompt_tiktok` - Bio prompt for TikTok
 
 **Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `Settings` class
+
+**Helper Methods:**
+- `get_value(key, default)` - Class method to get a setting value
+- `set_value(key, value)` - Class method to set a setting value
+
+---
+
+### config
+
+Stores global boolean configuration settings for application features.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Config unique identifier
+- `key` (String(255), UNIQUE, NOT NULL, Indexed) - Config key/name
+- `value` (Boolean, NOT NULL) - Boolean config value (TRUE/FALSE)
+- `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of config creation
+- `updated_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of last update
+
+**Indexes:**
+- `ix_config_key` (UNIQUE) on `key`
+
+**Constraints:**
+- Primary Key: `id`
+- Unique: `key`
+
+**Default Config Values (Populated on Migration):**
+- `randomize_face_base` (FALSE) - Enables randomizing faces for base image generation
+- `randomize_face_gender_lock` (FALSE) - When face randomization is on, locks to matching gender
+
+**Face Randomization Feature:**
+- When `randomize_face_base` is TRUE, the image generation system uses a random face image from S3 as reference
+- When `randomize_face_gender_lock` is TRUE (with randomization enabled), only faces matching the persona's gender are selected
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `Config` class
+
+**Helper Methods:**
+- `get_value(key, default=False)` - Class method to get a boolean config value
+- `set_value(key, value)` - Class method to set a boolean config value
 
 ---
 
@@ -297,6 +336,59 @@ BREAKING CHANGE - Converts individual image URL columns to a JSONB array for bet
 
 ---
 
+### Migration: d59663db64e2 - create_config_table_for_boolean_settings
+**Date**: 2026-01-31 14:13:31
+**Parent**: 30c18b6939ce
+
+**Changes:**
+- Created `config` table for storing global boolean configuration settings
+- Added unique index on `config.key` for fast lookups
+- Seeded initial data: `randomize_face_base` (FALSE), `randomize_face_gender_lock` (FALSE)
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/d59663db64e2_create_config_table_for_boolean_settings.py`
+
+**Purpose:**
+Creates a new Config table for storing global boolean configuration settings. This replaces the flawed design where boolean flags were incorrectly added as columns to the Settings table (which is meant for key-value bio prompts with only 4 rows).
+
+**Design Rationale:**
+- Settings table is for bio prompts (4 rows with key-value pairs for text)
+- Config table is for global boolean flags (separate rows for each config)
+- This separation provides proper schema normalization and flexibility
+
+**Table Structure:**
+- `id` - Integer primary key
+- `key` - String(255), unique, indexed
+- `value` - Boolean (TRUE/FALSE)
+- `created_at` - DateTime with server default NOW()
+- `updated_at` - DateTime with server default NOW()
+
+**Safety Notes:**
+- Non-destructive operation (creating new table only)
+- Fully reversible via downgrade function
+- Initial data seeded for face randomization feature
+- **Downgrade Warning**: Rolling back this migration will permanently delete the config table and all config values
+
+**Status**: APPLIED (Current)
+
+---
+
+### Migration: 9d413bd6c3bd - add_face_randomization_settings_to_settings_table
+**Date**: 2026-01-31 14:03:48
+**Parent**: 30c18b6939ce
+
+**Status**: REVERTED (Bad Design)
+
+**Why Reverted:**
+This migration incorrectly added `randomize_face_base` and `randomize_face_gender_lock` boolean columns to the `settings` table. The settings table is designed for key-value bio prompts (4 rows), not for boolean configuration flags. This created a flawed schema where global config booleans were columns on rows meant for text prompts.
+
+**Resolution:**
+- Migration was rolled back on 2026-01-31
+- Migration file deleted from versions directory
+- Replaced with proper Config table design (migration d59663db64e2)
+- Face randomization settings moved to dedicated Config table
+
+---
+
 ## How to Apply Migrations
 
 ```bash
@@ -322,14 +414,17 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 30c18b6939ce (convert_image_urls_to_jsonb_array) - APPLIED
-**Total Tables**: 4
-**Total Migrations**: 6
+**Latest Migration**: d59663db64e2 (create_config_table_for_boolean_settings) - APPLIED
+**Total Tables**: 5
+**Total Migrations**: 7 (1 reverted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
-- `generation_results.images` is now JSONB array (supports 4, 8, or any number of images)
-- `generation_results.image_1_url` through `image_4_url` columns removed
+- NEW `config` table created for global boolean configuration settings
+- `config.randomize_face_base` (FALSE) - enables face randomization for base image generation
+- `config.randomize_face_gender_lock` (FALSE) - locks face randomization to matching gender
+- `settings` table cleaned (removed incorrectly added boolean columns)
+- `generation_results.images` is JSONB array (supports 4, 8, or any number of images)
 - `generation_results.base_image_url` retained as-is
 
 ---
@@ -337,7 +432,24 @@ alembic downgrade -1
 ## Notes
 
 - All migrations are fully reversible with proper `upgrade()` and `downgrade()` functions
-- The `settings` table uses server-side defaults (NOW()) for timestamp fields
+- The `settings` and `config` tables use server-side defaults (NOW()) for timestamp fields
 - Bio prompts are pre-populated during migration and can be updated via the application
+- Config values are pre-populated during migration for face randomization features
 - The initial migration (25698f3f906f) was stamped as the database already had the users table
-- Settings can be accessed via the `Settings.get_value(key, default)` and `Settings.set_value(key, value)` class methods
+- Settings can be accessed via `Settings.get_value(key, default)` and `Settings.set_value(key, value)` class methods
+- Config values can be accessed via `Config.get_value(key, default=False)` and `Config.set_value(key, value)` class methods
+
+## Design Principles
+
+**Settings Table vs Config Table:**
+- **Settings table**: For text-based key-value configuration (bio prompts for social platforms)
+  - Uses Text data type for values
+  - Currently contains 4 rows (Facebook, Instagram, X, TikTok bio prompts)
+  - Accessed via `Settings.get_value()` / `Settings.set_value()`
+
+- **Config table**: For boolean feature flags and global configuration
+  - Uses Boolean data type for values
+  - Each config is a separate row (scalable design)
+  - Accessed via `Config.get_value()` / `Config.set_value()`
+
+This separation ensures proper schema normalization and prevents the anti-pattern of adding configuration columns to existing tables.

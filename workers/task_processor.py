@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 from flask import current_app
-from models import db, GenerationTask, GenerationResult, Settings
+from models import db, GenerationTask, GenerationResult, Settings, Config
 from sqlalchemy import text
 
 # Import service modules for image generation
@@ -734,6 +734,14 @@ async def process_persona_images(
         persona_name = f"{result.firstname} {result.lastname}"
         logger.info(f"[Task {task_id_str}] Processing images for persona: {persona_name} (result_id={result.id})")
 
+        # Step 0: Fetch face randomization settings from Config table
+        randomize_face = Config.get_value('randomize_face_base', False)
+        randomize_face_gender_lock = Config.get_value('randomize_face_gender_lock', False)
+
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Face randomization settings:")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] - randomize_face_base: {randomize_face}")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] - randomize_face_gender_lock: {randomize_face_gender_lock}")
+
         # Step 1: Check if base image already exists (resumption support)
         base_image_bytes = None
 
@@ -749,7 +757,9 @@ async def process_persona_images(
             try:
                 base_image_bytes = await generate_base_image(
                     bio_facebook=result.bio_facebook or '',
-                    gender=result.gender
+                    gender=result.gender,
+                    randomize_face=randomize_face,
+                    randomize_face_gender_lock=randomize_face_gender_lock
                 )
                 if not base_image_bytes:
                     raise Exception("OpenAI returned empty image")

@@ -9,7 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
-from models import db, User, Settings, GenerationTask, GenerationResult
+from models import db, User, Settings, Config, GenerationTask, GenerationResult
 import os
 import atexit
 import logging
@@ -539,7 +539,7 @@ def create_app():
     @login_required
     def settings():
         """
-        Settings page - display current bio prompt settings.
+        Settings page - display current bio prompt settings and face randomization settings.
 
         GET: Display settings form with current values
         """
@@ -554,7 +554,17 @@ def create_app():
             'bio_prompt_tiktok': Settings.get_value('bio_prompt_tiktok', '')
         }
 
-        return render_template('settings.html', user_name=user_name, bio_prompts=bio_prompts)
+        # Load face randomization settings from Config table (stored as boolean values)
+        randomize_face_base = Config.get_value('randomize_face_base', False)
+        randomize_face_gender_lock = Config.get_value('randomize_face_gender_lock', False)
+
+        return render_template(
+            'settings.html',
+            user_name=user_name,
+            bio_prompts=bio_prompts,
+            randomize_face_base=randomize_face_base,
+            randomize_face_gender_lock=randomize_face_gender_lock
+        )
 
     @app.route('/settings/save', methods=['POST'])
     @login_required
@@ -562,7 +572,7 @@ def create_app():
         """
         Save settings endpoint (AJAX).
 
-        POST: Save updated bio prompts to database
+        POST: Save updated bio prompts and face randomization settings to database
         Returns: JSON response with success/error status
         """
         try:
@@ -575,16 +585,22 @@ def create_app():
                     'error': 'No data provided'
                 }), 400
 
-            # Define expected settings keys
-            expected_keys = [
+            # Define expected settings keys with their types
+            expected_string_keys = [
                 'bio_prompt_facebook',
                 'bio_prompt_instagram',
                 'bio_prompt_x',
                 'bio_prompt_tiktok'
             ]
 
+            expected_boolean_keys = [
+                'randomize_face_base',
+                'randomize_face_gender_lock'
+            ]
+
             # Validate that at least one expected key is present
-            has_valid_key = any(key in data for key in expected_keys)
+            all_expected_keys = expected_string_keys + expected_boolean_keys
+            has_valid_key = any(key in data for key in all_expected_keys)
             if not has_valid_key:
                 return jsonify({
                     'success': False,
@@ -593,7 +609,9 @@ def create_app():
 
             # Save each setting
             saved_settings = []
-            for key in expected_keys:
+
+            # Save string settings (bio prompts)
+            for key in expected_string_keys:
                 if key in data:
                     value = data[key]
 
@@ -606,6 +624,22 @@ def create_app():
 
                     # Save or update setting
                     Settings.set_value(key, value)
+                    saved_settings.append(key)
+
+            # Save boolean settings (face randomization) to Config table
+            for key in expected_boolean_keys:
+                if key in data:
+                    value = data[key]
+
+                    # Validate value type (should be boolean)
+                    if not isinstance(value, bool):
+                        return jsonify({
+                            'success': False,
+                            'error': f'Invalid value type for {key} - expected boolean'
+                        }), 400
+
+                    # Save or update config setting (value is already boolean)
+                    Config.set_value(key, value)
                     saved_settings.append(key)
 
             # Commit all changes to database

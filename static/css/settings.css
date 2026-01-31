@@ -109,6 +109,15 @@
     flex-direction: column;
 }
 
+/* Nested Form Group (Indented for Sub-options) */
+.form-group-nested {
+    margin-left: 2rem;
+    padding-left: 1.5rem;
+    border-left: 2px solid var(--color-border);
+    margin-top: 1rem;
+    transition: all 0.2s ease-out;
+}
+
 .form-label {
     display: flex;
     align-items: center;
@@ -184,6 +193,100 @@
     text-align: right;
     margin-top: 0.5rem;
     font-family: var(--font-mono);
+}
+
+/* ========================================
+   Checkbox Styles (Sharp, Technical)
+   ======================================== */
+
+.checkbox-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+}
+
+/* Hide Default Checkbox */
+.checkbox-input {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+/* Custom Checkbox (Sharp Square) */
+.checkbox-custom {
+    position: relative;
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0; /* SHARP CORNERS */
+    transition: all 0.2s ease-out;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* Checkbox Label */
+.checkbox-label {
+    font-size: 0.75rem; /* 12px */
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: 0.05em;
+    line-height: 1.4;
+}
+
+/* Hover State */
+.checkbox-container:hover .checkbox-custom {
+    border-color: var(--color-accent-cyan);
+}
+
+/* Checked State */
+.checkbox-input:checked ~ .checkbox-custom {
+    background: var(--color-accent-cyan);
+    border-color: var(--color-accent-cyan);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.5);
+}
+
+/* Checkmark Icon (Sharp Inner Square) */
+.checkbox-input:checked ~ .checkbox-custom::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    background: var(--color-bg-secondary);
+    border-radius: 0; /* SHARP CORNERS */
+}
+
+/* Focus State (Accessibility) */
+.checkbox-input:focus ~ .checkbox-custom {
+    box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.4);
+}
+
+/* Disabled State */
+.checkbox-input:disabled ~ .checkbox-custom {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.checkbox-input:disabled ~ .checkbox-label {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Checkbox Help Text */
+.checkbox-help {
+    margin-left: 32px; /* Align with label text (20px checkbox + 12px gap) */
+    margin-top: 0.5rem;
+    margin-bottom: 0;
 }
 
 /* ========================================
