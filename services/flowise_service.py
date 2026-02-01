@@ -26,7 +26,7 @@ FLOWISE_AUTH_TOKEN = "JJXI5CYV55QYkal9-uce7dyJfyKj3EeRkROOpBgxeO4"
 FLOWISE_PROMPT_TIMEOUT = 120  # 2 minutes timeout (workflow takes ~20 seconds)
 
 
-async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
+async def generate_image_prompt(person_data: Dict[str, str], prompts_history: Optional[str] = None) -> Optional[str]:
     """
     Generate image prompt from person data using Flowise workflow.
 
@@ -43,6 +43,8 @@ async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
             - bio_instagram: Instagram bio text
             - bio_x: X (Twitter) bio text
             - bio_tiktok: TikTok bio text
+        prompts_history: Optional string containing previously used prompts
+            to avoid repetition (e.g., "Ideas already used, to avoid: prompt1, prompt2")
 
     Returns:
         str: Generated image prompt, or None if generation fails
@@ -75,6 +77,8 @@ async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
             raise ValueError(f"Missing required person data fields: {missing_fields}")
 
         logger.info(f"Generating image prompt for {person_data['firstname']} {person_data['lastname']}")
+        if prompts_history:
+            logger.info(f"Using prompts_history: {prompts_history}")
 
         # Prepare request payload
         # Per Flowise KB: parameters must be sent as startState.startAgentflow_0 array
@@ -89,13 +93,20 @@ async def generate_image_prompt(person_data: Dict[str, str]) -> Optional[str]:
             "bio_tiktok": person_data['bio_tiktok']
         })
 
+        # Build startAgentflow_0 array with person_data and optional prompts_history
+        start_agent_flow = [
+            {"key": "person_data", "value": person_data_json}
+        ]
+
+        # Add prompts_history if provided
+        if prompts_history:
+            start_agent_flow.append({"key": "prompts_history", "value": prompts_history})
+
         payload = {
             "question": "go",
             "overrideConfig": {
                 "startState": {
-                    "startAgentflow_0": [
-                        {"key": "person_data", "value": person_data_json}
-                    ]
+                    "startAgentflow_0": start_agent_flow
                 }
             }
         }

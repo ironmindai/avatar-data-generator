@@ -13,6 +13,7 @@ import httpx
 import logging
 from io import BytesIO
 from typing import Optional
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -20,6 +21,9 @@ load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Flagged images log file path
+FLAGGED_IMAGES_LOG = '/home/niro/galacticos/avatar-data-generator/flagged-images.log'
 
 # OpenAI Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -29,6 +33,62 @@ IMAGE_GENERATION_TIMEOUT = 600  # 10 minutes timeout
 
 # Image generation prompt configuration
 BASE_PROMPT_APPEND = os.getenv('BASE_PROMPT_APPEND', '').strip()
+
+
+def log_flagged_image(image_url: str, reason: str, request_id: Optional[str] = None):
+    """
+    Log a flagged image URL to the flagged images log file.
+
+    Args:
+        image_url: The S3 public URL of the flagged image
+        reason: The reason for flagging (e.g., 'moderation_blocked')
+        request_id: Optional OpenAI request ID for tracking
+    """
+    try:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        request_id_str = f" - Request ID: {request_id}" if request_id else ""
+        log_entry = f"[{timestamp}] FLAGGED: {image_url} - Reason: {reason}{request_id_str}\n"
+
+        with open(FLAGGED_IMAGES_LOG, 'a') as f:
+            f.write(log_entry)
+
+        logger.warning(f"Logged flagged image: {image_url}")
+
+    except Exception as e:
+        logger.error(f"Failed to log flagged image: {e}")
+
+
+def is_moderation_blocked_error(error_detail: dict) -> bool:
+    """
+    Check if an error response indicates a moderation block.
+
+    Args:
+        error_detail: Error response dictionary from OpenAI API
+
+    Returns:
+        True if error is a moderation block, False otherwise
+    """
+    try:
+        # Check for 'code' field
+        if 'code' in error_detail and error_detail['code'] == 'moderation_blocked':
+            return True
+
+        # Check for error dict with code
+        if 'error' in error_detail:
+            error_obj = error_detail['error']
+            if isinstance(error_obj, dict) and error_obj.get('code') == 'moderation_blocked':
+                return True
+
+        # Check message for moderation keywords
+        message = str(error_detail.get('message', ''))
+        if 'moderation_blocked' in message or 'safety_violations' in message:
+            return True
+
+        return False
+
+    except Exception as e:
+        logger.debug(f"Error checking moderation status: {e}")
+        return False
 
 
 async def generate_base_image(
@@ -103,62 +163,140 @@ async def generate_base_image(
         # Generate image based on mode
         if randomize_face and face_image_bytes:
             # MODE: Image-to-Image (img2img) with random face reference
-            prompt = (
-                f"{base_prompt} "
-                f"Attached is an image just to draw inspiration from regarding facial anatomy "
-                f"and features, not ethnicity or gender."
-            )
+            # Implement retry logic for moderation blocks
+            MAX_RETRIES = 3
+            current_attempt = 0
+            current_face_url = public_url
+            current_face_bytes = face_image_bytes
 
-            logger.info(f"Generating base image for gender '{gender}' using img2img")
-            logger.info("=" * 80)
-            logger.info("BASE IMAGE GENERATION PROMPT (Image-to-Image with Face Reference):")
-            logger.info(f"{prompt}")
-            logger.info("=" * 80)
+            while current_attempt < MAX_RETRIES:
+                try:
+                    current_attempt += 1
 
-            # Prepare multipart form data for /images/edits endpoint
-            image_file = BytesIO(face_image_bytes)
-            files = [
-                ('image[]', ('reference_face.png', image_file, 'image/png'))
-            ]
+                    prompt = (
+                        f"{base_prompt} "
+                        f"Attached is an image just to draw inspiration from regarding facial anatomy "
+                        f"and features, not ethnicity or gender."
+                    )
 
-            data = {
-                'prompt': prompt,
-                'model': IMAGE_MODEL,
-                'n': 1,
-                'size': 'auto'
-            }
+                    logger.info(f"Generating base image for gender '{gender}' using img2img (attempt {current_attempt}/{MAX_RETRIES})")
+                    logger.info("=" * 80)
+                    logger.info("BASE IMAGE GENERATION PROMPT (Image-to-Image with Face Reference):")
+                    logger.info(f"{prompt}")
+                    logger.info(f"Using face: {current_face_url}")
+                    logger.info("=" * 80)
 
-            headers = {
-                'Authorization': f'Bearer {OPENAI_API_KEY}'
-            }
+                    # Prepare multipart form data for /images/edits endpoint
+                    image_file = BytesIO(current_face_bytes)
+                    files = [
+                        ('image[]', ('reference_face.png', image_file, 'image/png'))
+                    ]
 
-            # Make async HTTP request to OpenAI img2img endpoint
-            async with httpx.AsyncClient(timeout=IMAGE_GENERATION_TIMEOUT) as client:
-                response = await client.post(
-                    f"{OPENAI_API_BASE}/images/edits",
-                    files=files,
-                    data=data,
-                    headers=headers
-                )
+                    data = {
+                        'prompt': prompt,
+                        'model': IMAGE_MODEL,
+                        'n': 1,
+                        'size': 'auto'
+                    }
 
-                # Check for errors
-                response.raise_for_status()
-                result = response.json()
+                    headers = {
+                        'Authorization': f'Bearer {OPENAI_API_KEY}'
+                    }
 
-                # Extract base64 image data
-                if 'data' in result and len(result['data']) > 0:
-                    if 'b64_json' in result['data'][0]:
-                        base64_image = result['data'][0]['b64_json']
-                        image_bytes = base64.b64decode(base64_image)
+                    # Make async HTTP request to OpenAI img2img endpoint
+                    async with httpx.AsyncClient(timeout=IMAGE_GENERATION_TIMEOUT) as client:
+                        response = await client.post(
+                            f"{OPENAI_API_BASE}/images/edits",
+                            files=files,
+                            data=data,
+                            headers=headers
+                        )
 
-                        logger.info(f"Successfully generated base image with face reference ({len(image_bytes)} bytes)")
-                        return image_bytes
+                        # Check for errors
+                        response.raise_for_status()
+                        result = response.json()
+
+                        # Extract base64 image data
+                        if 'data' in result and len(result['data']) > 0:
+                            if 'b64_json' in result['data'][0]:
+                                base64_image = result['data'][0]['b64_json']
+                                image_bytes = base64.b64decode(base64_image)
+
+                                logger.info(f"Successfully generated base image with face reference ({len(image_bytes)} bytes)")
+                                return image_bytes
+                            else:
+                                logger.error("Response data missing 'b64_json' field")
+                                raise Exception("Invalid response format: missing b64_json")
+                        else:
+                            logger.error("Response missing 'data' field or data is empty")
+                            raise Exception("Invalid response format: missing data")
+
+                except httpx.HTTPStatusError as e:
+                    error_detail = {}
+                    request_id = None
+
+                    try:
+                        error_detail = e.response.json()
+                        # Extract request ID if available
+                        request_id = e.response.headers.get('x-request-id') or error_detail.get('request_id')
+                    except Exception:
+                        error_detail = {'text': e.response.text}
+
+                    logger.error(f"OpenAI API HTTP error on attempt {current_attempt}: {e.response.status_code} - {error_detail}")
+
+                    # Check if this is a moderation block error
+                    if is_moderation_blocked_error(error_detail):
+                        logger.warning(f"Moderation block detected for face: {current_face_url}")
+
+                        # Log the flagged image
+                        log_flagged_image(current_face_url, 'moderation_blocked', request_id)
+
+                        # If we haven't exhausted retries, get a new random face
+                        if current_attempt < MAX_RETRIES:
+                            logger.info(f"Retrying with a new random face (attempt {current_attempt + 1}/{MAX_RETRIES})")
+
+                            # Import S3 faces service
+                            from services.s3_faces import get_random_face_for_generation
+
+                            try:
+                                # Get a NEW random face
+                                new_face_data = await get_random_face_for_generation(
+                                    gender=gender,
+                                    gender_lock=randomize_face_gender_lock
+                                )
+
+                                if not new_face_data:
+                                    logger.error("No face images available for retry. Cannot continue.")
+                                    raise Exception(f"Moderation blocked and no alternative faces available: {error_detail}")
+
+                                s3_key, current_face_url, current_face_bytes = new_face_data
+                                logger.info(f"Selected new random face for retry: {s3_key}")
+                                logger.info(f"New face URL: {current_face_url}")
+
+                                # Continue to next iteration of while loop
+                                continue
+
+                            except Exception as retry_error:
+                                logger.error(f"Failed to get new random face for retry: {retry_error}")
+                                raise Exception(f"Moderation blocked and retry failed: {error_detail}")
+                        else:
+                            # Exhausted retries
+                            logger.error(f"Exhausted all {MAX_RETRIES} retry attempts due to moderation blocks")
+                            raise Exception(f"Image generation failed after {MAX_RETRIES} attempts due to moderation blocks")
+
                     else:
-                        logger.error("Response data missing 'b64_json' field")
-                        raise Exception("Invalid response format: missing b64_json")
-                else:
-                    logger.error("Response missing 'data' field or data is empty")
-                    raise Exception("Invalid response format: missing data")
+                        # Not a moderation error, propagate immediately
+                        raise Exception(f"OpenAI API error: {error_detail}")
+
+                except httpx.TimeoutException:
+                    logger.error(f"Request timed out after {IMAGE_GENERATION_TIMEOUT}s on attempt {current_attempt}")
+                    # Timeout errors should not retry - propagate immediately
+                    raise Exception(f"Image generation timed out after {IMAGE_GENERATION_TIMEOUT}s")
+
+                except Exception as e:
+                    # Any other exception should propagate immediately (not a moderation issue)
+                    logger.error(f"Error in img2img generation on attempt {current_attempt}: {str(e)}")
+                    raise
 
         else:
             # MODE: Text-to-Image (txt2img) - Original behavior

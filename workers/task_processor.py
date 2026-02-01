@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
 from flask import current_app
-from models import db, GenerationTask, GenerationResult, Settings, Config
+from models import db, GenerationTask, GenerationResult, Settings, Config, IntConfig
 from sqlalchemy import text
 
 # Import service modules for image generation
@@ -45,6 +45,7 @@ from services.flowise_service import generate_image_prompt
 from services.image_generation import generate_base_image, generate_images_from_base
 from services.image_utils import split_and_trim_image, upload_to_s3
 from utils.image_cropper import remove_white_borders
+from utils.image_style_randomizer import randomize_image_style
 
 # Load environment variables
 load_dotenv()
@@ -706,25 +707,30 @@ def process_single_task() -> bool:
 async def process_persona_images(
     task_id_str: str,
     task_db_id: int,
-    result: GenerationResult
+    result: GenerationResult,
+    images_per_persona: int
 ) -> Tuple[bool, Optional[str]]:
     """
-    Process image generation for a single persona.
+    Process image generation for a single persona with multi-batch support.
 
     This function handles the complete image generation workflow with immediate saves:
     1. Check if base image exists (resumption support)
     2. Generate base selfie image using OpenAI (if not exists)
     3. Upload base image to S3 and SAVE IMMEDIATELY
-    4. Check if images exist (resumption support)
-    5. Generate image prompt from person data using Flowise
-    6. Generate 4-image grid from base image
-    7. Split grid into 4 individual images
-    8. Upload all 4 images to S3 and SAVE IMMEDIATELY to JSONB array
+    4. Check if images already exist (resumption support)
+    5. Loop through batches (4, 8, 12, 16, or 20 images = 1-5 batches):
+       - Generate image prompt from person data using Flowise (with prompts_history)
+       - Generate 4-image grid from SAME base image
+       - Split grid into 4 individual images
+       - Apply post-processing (crop, randomize) to all 4 images
+       - Collect images and prompts for next iteration
+    6. Upload ALL images to S3 and SAVE IMMEDIATELY to JSONB array
 
     Args:
         task_id_str: Task ID string for logging
         task_db_id: Database ID of GenerationTask
         result: GenerationResult object containing persona data
+        images_per_persona: Number of images to generate (4, 8, 12, 16, or 20)
 
     Returns:
         Tuple of (success: bool, error_message: Optional[str])
@@ -734,6 +740,17 @@ async def process_persona_images(
     try:
         persona_name = f"{result.firstname} {result.lastname}"
         logger.info(f"[Task {task_id_str}] Processing images for persona: {persona_name} (result_id={result.id})")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Images per persona: {images_per_persona}")
+
+        # Validate images_per_persona
+        if images_per_persona not in [4, 8, 12, 16, 20]:
+            error_msg = f"Invalid images_per_persona: {images_per_persona}. Must be 4, 8, 12, 16, or 20."
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
+        # Calculate number of batches (each batch generates 4 images)
+        num_batches = images_per_persona // 4
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Will generate {num_batches} batches of 4 images each")
 
         # Step 0: Fetch face randomization settings from Config table
         randomize_face = Config.get_value('randomize_face_base', False)
@@ -752,8 +769,8 @@ async def process_persona_images(
             # Note: We don't download the base image here unless needed for grid generation
             # The base image will be regenerated if needed
         else:
-            # Step 2: Generate base selfie image
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 1/4: Generating base selfie image...")
+            # Step 2: Generate base selfie image ONCE
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 1/{num_batches + 2}: Generating base selfie image...")
 
             try:
                 base_image_bytes = await generate_base_image(
@@ -771,7 +788,7 @@ async def process_persona_images(
                 return False, error_msg
 
             # Step 3: Upload base image to S3 and SAVE IMMEDIATELY
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 2/4: Uploading base image to S3...")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 2/{num_batches + 2}: Uploading base image to S3...")
 
             base_object_key = f"avatars/task_{task_db_id}/persona_{result.id}/base.png"
 
@@ -791,14 +808,44 @@ async def process_persona_images(
                 return False, error_msg
 
         # Step 4: Check if images already exist (resumption support)
-        if result.images and len(result.images) > 0:
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Images already exist ({len(result.images)} images)")
+        if result.images and len(result.images) >= images_per_persona:
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Images already exist ({len(result.images)} images, need {images_per_persona})")
             logger.info(f"[Task {task_id_str}] [{persona_name}] Skipping image generation (resumption mode)")
             logger.info(f"[Task {task_id_str}] [{persona_name}] Image processing completed successfully (from cache)!")
             return True, None
 
-        # Step 5: Generate image prompt from person data
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/4: Generating image prompt via Flowise...")
+        # If we didn't generate base image earlier (resumption mode), generate it now for grid
+        if not base_image_bytes:
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Regenerating base image for grid generation...")
+            try:
+                base_image_bytes = await generate_base_image(
+                    bio_facebook=result.bio_facebook or '',
+                    gender=result.gender,
+                    randomize_face=randomize_face,
+                    randomize_face_gender_lock=randomize_face_gender_lock
+                )
+                if not base_image_bytes:
+                    raise Exception("OpenAI returned empty image")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image regenerated ({len(base_image_bytes)} bytes)")
+            except Exception as e:
+                error_msg = f"Base image regeneration failed: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+                return False, error_msg
+
+        # Step 5: Two-Phase Parallel Multi-batch Image Generation
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Starting PARALLEL multi-batch image generation ({num_batches} batches)...")
+        logger.info("=" * 80)
+        logger.info(f"BASE IMAGE S3 URL (will be reused for ALL batches):")
+        logger.info(f"{result.base_image_url}")
+        logger.info("=" * 80)
+
+        # Fetch post-processing settings (apply consistently across all batches)
+        crop_white_borders_enabled = Config.get_value('crop_white_borders', False)
+        randomize_image_style_enabled = Config.get_value('randomize_image_style', False)
+
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Post-processing settings (sticky across all batches):")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] - crop_white_borders: {crop_white_borders_enabled}")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] - randomize_image_style: {randomize_image_style_enabled}")
 
         person_data = {
             'firstname': result.firstname,
@@ -810,108 +857,160 @@ async def process_persona_images(
             'bio_tiktok': result.bio_tiktok or ''
         }
 
-        try:
-            flowise_prompt = await generate_image_prompt(person_data)
-            if not flowise_prompt:
-                raise Exception("Flowise returned empty prompt")
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Image prompt generated ({len(flowise_prompt)} chars)")
-        except Exception as e:
-            error_msg = f"Flowise prompt generation failed: {str(e)}"
-            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
-            return False, error_msg
+        # ===== PHASE 1: Sequential Flowise Prompt Collection =====
+        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1: Collecting {num_batches} prompts sequentially (to build history)...")
 
-        # If we didn't generate base image earlier (resumption mode), generate it now for grid
-        if not base_image_bytes:
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Regenerating base image for grid generation...")
+        prompts = []
+        prompts_history_list = []
+
+        for batch_num in range(num_batches):
+            batch_label = f"Batch {batch_num + 1}/{num_batches}"
+
+            # Prepare prompts_history parameter
+            if batch_num == 0:
+                prompts_history = None
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] First batch - no prompts_history")
+            else:
+                prompts_history = "Ideas already used, to avoid: " + ", ".join(prompts_history_list)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] Using prompts_history with {len(prompts_history_list)} previous prompts")
+
+            # Generate image prompt via Flowise (with optional history)
+            logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] Generating image prompt via Flowise...")
+
             try:
-                base_image_bytes = await generate_base_image(
-                    bio_facebook=result.bio_facebook or '',
-                    gender=result.gender
+                flowise_prompt = await generate_image_prompt(person_data, prompts_history)
+                if not flowise_prompt:
+                    raise Exception("Flowise returned empty prompt")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] Image prompt generated ({len(flowise_prompt)} chars)")
+
+                # Add prompt to collections
+                prompts.append(flowise_prompt)
+                prompts_history_list.append(flowise_prompt)
+            except Exception as e:
+                error_msg = f"Flowise prompt generation failed for {batch_label}: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+                return False, error_msg
+
+        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1 COMPLETE: Collected {len(prompts)} prompts")
+
+        # ===== PHASE 2: Parallel Image Generation =====
+        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2: Generating ALL {num_batches} batches in PARALLEL...")
+
+        async def generate_single_batch(batch_num: int, flowise_prompt: str) -> List[str]:
+            """
+            Generate, split, post-process, and upload a single batch of 4 images.
+
+            Args:
+                batch_num: Batch number (0-indexed)
+                flowise_prompt: Pre-generated Flowise prompt for this batch
+
+            Returns:
+                List of 4 S3 image URLs
+            """
+            batch_label = f"Batch {batch_num + 1}/{num_batches}"
+            logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Start")
+
+            try:
+                # Generate 4-image grid from SAME base image
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Generating 4-image grid...")
+
+                grid_image_bytes = await generate_images_from_base(
+                    base_image_bytes=base_image_bytes,
+                    flowise_prompt=flowise_prompt
                 )
-                if not base_image_bytes:
-                    raise Exception("OpenAI returned empty image")
-                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image regenerated ({len(base_image_bytes)} bytes)")
-            except Exception as e:
-                error_msg = f"Base image regeneration failed: {str(e)}"
-                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
-                return False, error_msg
+                if not grid_image_bytes:
+                    raise Exception("OpenAI returned empty grid image")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Grid image generated ({len(grid_image_bytes)} bytes)")
 
-        # Step 6: Generate 4-image grid from base image
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 4/4: Generating 4-image grid...")
-        logger.info("=" * 80)
-        logger.info(f"BASE IMAGE S3 URL (being used for 4-image grid generation):")
-        logger.info(f"{result.base_image_url}")
-        logger.info("=" * 80)
+                # Split grid into 4 individual images
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Splitting and trimming grid image...")
 
-        try:
-            grid_image_bytes = await generate_images_from_base(
-                base_image_bytes=base_image_bytes,
-                flowise_prompt=flowise_prompt
-            )
-            if not grid_image_bytes:
-                raise Exception("OpenAI returned empty grid image")
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Grid image generated ({len(grid_image_bytes)} bytes)")
-        except Exception as e:
-            error_msg = f"Grid image generation failed: {str(e)}"
-            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
-            return False, error_msg
+                split_images = split_and_trim_image(grid_image_bytes, num_rows=2, num_cols=2)
+                if len(split_images) != 4:
+                    raise Exception(f"Expected 4 images, got {len(split_images)}")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Grid split into {len(split_images)} images")
 
-        # Step 7: Split grid into 4 individual images
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Splitting and trimming grid image...")
+                # Conditionally crop white borders from split images
+                if crop_white_borders_enabled:
+                    logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Cropping white borders from {len(split_images)} images...")
+                    try:
+                        cropped_images = []
+                        for i, image_bytes in enumerate(split_images):
+                            cropped_bytes = remove_white_borders(image_bytes, threshold=220, min_border_width=1)
+                            cropped_images.append(cropped_bytes)
+                            logger.debug(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Cropped image {i}: {len(image_bytes)} -> {len(cropped_bytes)} bytes")
 
-        try:
-            split_images = split_and_trim_image(grid_image_bytes, num_rows=2, num_cols=2)
-            if len(split_images) != 4:
-                raise Exception(f"Expected 4 images, got {len(split_images)}")
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Grid split into {len(split_images)} images")
-        except Exception as e:
-            error_msg = f"Image splitting failed: {str(e)}"
-            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
-            return False, error_msg
+                        split_images = cropped_images
+                        logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: White border cropping completed")
+                    except Exception as e:
+                        # Non-fatal: log warning and continue with uncropped images
+                        logger.warning(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: White border cropping failed: {str(e)} - continuing with uncropped images")
 
-        # Step 7.5: Conditionally crop white borders from split images
-        crop_white_borders_enabled = Config.get_value('crop_white_borders', False)
-        if crop_white_borders_enabled:
-            logger.info(f"[Task {task_id_str}] [{persona_name}] White border cropping ENABLED - processing {len(split_images)} images...")
-            try:
-                cropped_images = []
+                # Conditionally apply style randomization to split images
+                if randomize_image_style_enabled:
+                    logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Randomizing image styles for {len(split_images)} images...")
+                    try:
+                        styled_images = []
+                        for i, image_bytes in enumerate(split_images):
+                            styled_bytes = randomize_image_style(image_bytes)
+                            styled_images.append(styled_bytes)
+                            logger.debug(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Styled image {i}: {len(image_bytes)} -> {len(styled_bytes)} bytes")
+
+                        split_images = styled_images
+                        logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Image style randomization completed")
+                    except Exception as e:
+                        # Non-fatal: log warning and continue with unstyled images
+                        logger.warning(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Image style randomization failed: {str(e)} - continuing with unstyled images")
+
+                # Upload batch images to S3
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Uploading {len(split_images)} images to S3...")
+
+                batch_image_urls = []
                 for i, image_bytes in enumerate(split_images):
-                    cropped_bytes = remove_white_borders(image_bytes, threshold=220, min_border_width=1)
-                    cropped_images.append(cropped_bytes)
-                    logger.debug(f"[Task {task_id_str}] [{persona_name}] Cropped image {i}: {len(image_bytes)} -> {len(cropped_bytes)} bytes")
+                    # Use batch_num to create unique image keys across batches
+                    image_index = (batch_num * 4) + i
+                    object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}.png"
 
-                split_images = cropped_images
-                logger.info(f"[Task {task_id_str}] [{persona_name}] White border cropping completed for all {len(split_images)} images")
+                    _, image_url = upload_to_s3(image_bytes, object_key)
+                    batch_image_urls.append(image_url)
+                    logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Uploaded image {image_index}: {image_url}")
+
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: Complete - {len(batch_image_urls)} images uploaded")
+                return batch_image_urls
+
             except Exception as e:
-                # Non-fatal: log warning and continue with uncropped images
-                logger.warning(f"[Task {task_id_str}] [{persona_name}] White border cropping failed: {str(e)} - continuing with uncropped images")
-        else:
-            logger.debug(f"[Task {task_id_str}] [{persona_name}] White border cropping DISABLED - skipping")
+                error_msg = f"Batch generation failed for {batch_label}: {str(e)}"
+                logger.error(f"[Task {task_id_str}] [{persona_name}] [{batch_label}] PARALLEL: {error_msg}")
+                raise Exception(error_msg)
 
-        # Step 8: Upload all 4 split images to S3 and SAVE IMMEDIATELY to JSONB array
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Uploading 4 split images to S3...")
-
-        image_urls = []
-        for i, image_bytes in enumerate(split_images):
-            object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{i}.png"
-
-            try:
-                _, image_url = upload_to_s3(image_bytes, object_key)
-                image_urls.append(image_url)
-                logger.info(f"[Task {task_id_str}] [{persona_name}] Uploaded image {i}: {image_url}")
-            except Exception as e:
-                error_msg = f"S3 upload failed for image {i}: {str(e)}"
-                logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
-                return False, error_msg
-
-        # SAVE IMMEDIATELY to JSONB array
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(image_urls)} images to JSONB array...")
+        # Run all batches in parallel using asyncio.gather()
+        batch_tasks = [
+            generate_single_batch(batch_num, prompts[batch_num])
+            for batch_num in range(num_batches)
+        ]
 
         try:
-            result.images = image_urls
+            all_batches_results = await asyncio.gather(*batch_tasks)
+        except Exception as e:
+            error_msg = f"Parallel batch generation failed: {str(e)}"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
+        # Flatten results
+        all_image_urls = []
+        for batch_images in all_batches_results:
+            all_image_urls.extend(batch_images)
+
+        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2 COMPLETE: Generated {len(all_image_urls)} images across {num_batches} parallel batches")
+
+        # Step 6: Save ALL images to database IMMEDIATELY
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(all_image_urls)} images to JSONB array...")
+
+        try:
+            result.images = all_image_urls
             flag_modified(result, 'images')
             db.session.commit()
-            logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED {len(image_urls)} images to database immediately")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED {len(all_image_urls)} images to database immediately")
         except Exception as e:
             error_msg = f"Database update failed: {str(e)}"
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
@@ -919,6 +1018,7 @@ async def process_persona_images(
             return False, error_msg
 
         logger.info(f"[Task {task_id_str}] [{persona_name}] Image processing completed successfully!")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Total images generated: {len(all_image_urls)}")
         return True, None
 
     except Exception as e:
@@ -969,6 +1069,7 @@ def process_image_generation() -> bool:
             return True
 
         logger.info(f"[Task {task.task_id}] Found {len(results)} personas to process")
+        logger.info(f"[Task {task.task_id}] Images per persona: {task.images_per_persona}")
 
         # Process each persona sequentially
         # Sequential processing prevents overwhelming OpenAI API
@@ -985,7 +1086,7 @@ def process_image_generation() -> bool:
                 asyncio.set_event_loop(loop)
 
                 success, error_msg = loop.run_until_complete(
-                    process_persona_images(task.task_id, task.id, result)
+                    process_persona_images(task.task_id, task.id, result, task.images_per_persona)
                 )
 
                 loop.close()

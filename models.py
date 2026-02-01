@@ -201,6 +201,65 @@ class Config(db.Model):
         return config
 
 
+class IntConfig(db.Model):
+    """
+    IntConfig model for storing global integer configuration settings.
+
+    Attributes:
+        id: Primary key
+        key: Unique config key
+        value: Integer config value
+        created_at: Timestamp of config creation
+        updated_at: Timestamp of last update
+    """
+    __tablename__ = 'int_config'
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    value = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'), onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<IntConfig {self.key}={self.value}>'
+
+    @classmethod
+    def get_value(cls, key: str, default: int = 1) -> int:
+        """
+        Get an integer config value by key.
+
+        Args:
+            key: Config key to retrieve
+            default: Default value if config doesn't exist
+
+        Returns:
+            Integer config value or default
+        """
+        config = cls.query.filter_by(key=key).first()
+        return config.value if config else default
+
+    @classmethod
+    def set_value(cls, key: str, value: int) -> 'IntConfig':
+        """
+        Set an integer config value by key. Creates if doesn't exist, updates if exists.
+
+        Args:
+            key: Config key
+            value: Integer config value
+
+        Returns:
+            IntConfig object
+        """
+        config = cls.query.filter_by(key=key).first()
+        if config:
+            config.value = value
+            config.updated_at = datetime.utcnow()
+        else:
+            config = cls(key=key, value=value)
+            db.session.add(config)
+        return config
+
+
 class GenerationTask(db.Model):
     """
     GenerationTask model for tracking avatar generation requests.

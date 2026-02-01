@@ -43,9 +43,11 @@
         saveFaceSettingsButton: document.getElementById('saveFaceSettingsButton'),
         resetFaceSettingsButton: document.getElementById('resetFaceSettingsButton'),
         cropWhiteBordersCheckbox: document.getElementById('crop_white_borders'),
+        randomizeImageStyleCheckbox: document.getElementById('randomize_image_style'),
         randomizeFaceCheckbox: document.getElementById('randomize_face_base'),
         genderLockCheckbox: document.getElementById('randomize_face_gender_lock'),
-        genderLockGroup: document.getElementById('genderLockGroup')
+        genderLockGroup: document.getElementById('genderLockGroup'),
+        maxConcurrentTasksInput: document.getElementById('max_concurrent_tasks')
     };
 
     // ========================================
@@ -85,8 +87,10 @@
     function storeFaceSettingsOriginalValues() {
         state.faceSettings.originalValues = {
             crop_white_borders: elements.cropWhiteBordersCheckbox.checked,
+            randomize_image_style: elements.randomizeImageStyleCheckbox.checked,
             randomize_face_base: elements.randomizeFaceCheckbox.checked,
-            randomize_face_gender_lock: elements.genderLockCheckbox.checked
+            randomize_face_gender_lock: elements.genderLockCheckbox.checked,
+            max_concurrent_tasks: parseInt(elements.maxConcurrentTasksInput.value, 10)
         };
         console.log('[Settings] Face settings original values stored:', state.faceSettings.originalValues);
     }
@@ -115,6 +119,11 @@
             checkFaceSettingsDirtyState();
         });
 
+        // Randomize image style checkbox - check dirty state
+        elements.randomizeImageStyleCheckbox.addEventListener('change', function() {
+            checkFaceSettingsDirtyState();
+        });
+
         // Randomize face checkbox - toggle gender lock visibility
         elements.randomizeFaceCheckbox.addEventListener('change', function() {
             toggleGenderLockVisibility();
@@ -124,6 +133,17 @@
         // Gender lock checkbox - check dirty state
         elements.genderLockCheckbox.addEventListener('change', function() {
             checkFaceSettingsDirtyState();
+        });
+
+        // Max concurrent tasks input - validate and check dirty state
+        elements.maxConcurrentTasksInput.addEventListener('input', function() {
+            validateMaxConcurrentTasks();
+            checkFaceSettingsDirtyState();
+        });
+
+        // Validate on blur (ensure value is within constraints)
+        elements.maxConcurrentTasksInput.addEventListener('blur', function() {
+            validateMaxConcurrentTasks();
         });
 
         // Face settings form submission
@@ -388,14 +408,49 @@
     }
 
     // ========================================
+    // Face Settings: Validate Max Concurrent Tasks
+    // ========================================
+
+    function validateMaxConcurrentTasks() {
+        const input = elements.maxConcurrentTasksInput;
+        let value = parseInt(input.value, 10);
+
+        // Ensure value is a valid number
+        if (isNaN(value)) {
+            value = 1; // Default to 1
+        }
+
+        // Clamp value between min and max
+        const min = parseInt(input.getAttribute('min'), 10) || 1;
+        const max = parseInt(input.getAttribute('max'), 10) || 5;
+
+        if (value < min) {
+            value = min;
+        } else if (value > max) {
+            value = max;
+        }
+
+        // Update input value if it was changed
+        if (parseInt(input.value, 10) !== value) {
+            input.value = value;
+        }
+
+        return value;
+    }
+
+    // ========================================
     // Face Settings: Check Dirty State
     // ========================================
 
     function checkFaceSettingsDirtyState() {
+        const currentMaxConcurrent = parseInt(elements.maxConcurrentTasksInput.value, 10);
+
         const hasChanges =
             elements.cropWhiteBordersCheckbox.checked !== state.faceSettings.originalValues.crop_white_borders ||
+            elements.randomizeImageStyleCheckbox.checked !== state.faceSettings.originalValues.randomize_image_style ||
             elements.randomizeFaceCheckbox.checked !== state.faceSettings.originalValues.randomize_face_base ||
-            elements.genderLockCheckbox.checked !== state.faceSettings.originalValues.randomize_face_gender_lock;
+            elements.genderLockCheckbox.checked !== state.faceSettings.originalValues.randomize_face_gender_lock ||
+            currentMaxConcurrent !== state.faceSettings.originalValues.max_concurrent_tasks;
 
         state.faceSettings.isDirty = hasChanges;
 
@@ -428,11 +483,16 @@
         elements.saveFaceSettingsButton.classList.add('loading');
         elements.saveFaceSettingsButton.disabled = true;
 
+        // Validate max_concurrent_tasks before submission
+        const validatedMaxConcurrent = validateMaxConcurrentTasks();
+
         // Collect form data
         const formData = {
             crop_white_borders: elements.cropWhiteBordersCheckbox.checked,
+            randomize_image_style: elements.randomizeImageStyleCheckbox.checked,
             randomize_face_base: elements.randomizeFaceCheckbox.checked,
-            randomize_face_gender_lock: elements.genderLockCheckbox.checked
+            randomize_face_gender_lock: elements.genderLockCheckbox.checked,
+            max_concurrent_tasks: validatedMaxConcurrent
         };
 
         // Get CSRF token
@@ -503,8 +563,10 @@
 
         // Restore original values
         elements.cropWhiteBordersCheckbox.checked = state.faceSettings.originalValues.crop_white_borders;
+        elements.randomizeImageStyleCheckbox.checked = state.faceSettings.originalValues.randomize_image_style;
         elements.randomizeFaceCheckbox.checked = state.faceSettings.originalValues.randomize_face_base;
         elements.genderLockCheckbox.checked = state.faceSettings.originalValues.randomize_face_gender_lock;
+        elements.maxConcurrentTasksInput.value = state.faceSettings.originalValues.max_concurrent_tasks;
 
         // Toggle visibility based on restored value
         toggleGenderLockVisibility();

@@ -58,6 +58,8 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - Werkzeug==3.0.1
 - gunicorn==24.1.1 (production WSGI server)
 - APScheduler==3.11.0 (background task scheduling - installed 2026-01-30)
+- opencv-python==4.13.0.90 (image processing - installed 2026-02-01)
+- numpy==2.4.2 (dependency for opencv-python)
 
 ## Nginx Sites
 **Subdomain**: avatar-data-generator.dev.iron-mind.ai

@@ -14,6 +14,7 @@
   document.addEventListener('DOMContentLoaded', function() {
     initializeSelect2();
     initializeNumberInputSync();
+    initializeImagesSliderSync();
     initializeFormValidation();
     initializeFormSubmission();
     initializeFormReset();
@@ -111,6 +112,55 @@
   }
 
   // ========================================
+  // IMAGES SLIDER & NUMBER INPUT SYNCHRONIZATION
+  // ========================================
+
+  function initializeImagesSliderSync() {
+    const imagesInput = document.getElementById('images_per_persona');
+    const imagesSlider = document.getElementById('images_slider');
+
+    if (imagesInput && imagesSlider) {
+      // Sync slider to number input
+      imagesInput.addEventListener('input', function() {
+        let value = parseInt(this.value, 10);
+
+        // Enforce min/max
+        if (value < 4) value = 4;
+        if (value > 20) value = 20;
+
+        // Round to nearest increment of 4
+        value = Math.round(value / 4) * 4;
+
+        // Update both inputs
+        this.value = value;
+        imagesSlider.value = value;
+      });
+
+      // Sync number input to slider
+      imagesSlider.addEventListener('input', function() {
+        const value = parseInt(this.value, 10);
+        imagesInput.value = value;
+      });
+
+      // Validate on blur
+      imagesInput.addEventListener('blur', function() {
+        let value = parseInt(this.value, 10);
+
+        if (isNaN(value) || value < 4) {
+          value = 4;
+        } else if (value > 20) {
+          value = 20;
+        } else {
+          value = Math.round(value / 4) * 4;
+        }
+
+        this.value = value;
+        imagesSlider.value = value;
+      });
+    }
+  }
+
+  // ========================================
   // FORM VALIDATION
   // ========================================
 
@@ -154,11 +204,15 @@
       clearError(numberToGenerate);
     }
 
-    // Validate images per persona selection
-    const imagesPerPersona = document.querySelector('input[name="images_per_persona"]:checked');
-    if (!imagesPerPersona) {
-      errors.push('Please select images per persona');
+    // Validate images per persona
+    const imagesPerPersona = document.getElementById('images_per_persona');
+    const imagesValue = parseInt(imagesPerPersona.value, 10);
+    if (imagesPerPersona && (isNaN(imagesValue) || imagesValue < 4 || imagesValue > 20 || imagesValue % 4 !== 0)) {
+      errors.push('Images per persona must be between 4-20 in increments of 4');
       isValid = false;
+      highlightError(imagesPerPersona);
+    } else if (imagesPerPersona) {
+      clearError(imagesPerPersona);
     }
 
     // Display errors if any
@@ -232,12 +286,17 @@
         }
 
         // Reset number input and slider to default (50)
+        // Reset images slider to default (4)
         setTimeout(function() {
           const numberInput = document.getElementById('number_to_generate');
           const rangeSlider = document.getElementById('number_slider');
+          const imagesInput = document.getElementById('images_per_persona');
+          const imagesSlider = document.getElementById('images_slider');
 
           if (numberInput) numberInput.value = 50;
           if (rangeSlider) rangeSlider.value = 50;
+          if (imagesInput) imagesInput.value = 4;
+          if (imagesSlider) imagesSlider.value = 4;
 
           // Clear any error highlights
           clearAllErrors();

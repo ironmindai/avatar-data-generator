@@ -9,7 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
-from models import db, User, Settings, Config, GenerationTask, GenerationResult
+from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult
 import os
 import atexit
 import logging
@@ -62,7 +62,7 @@ def create_app():
 
         print(f"[SCHEDULER] Background scheduler started - checking for tasks every {app.config['WORKER_INTERVAL']} seconds", flush=True)
 
-        # Add data generation task processor job (supports up to 3 parallel tasks)
+        # Add data generation task processor job (supports configurable concurrent tasks)
         def scheduled_task_processor():
             """Wrapper function to run data generation task processor with Flask app context."""
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -78,12 +78,32 @@ def create_app():
                         return False
 
             try:
-                # Process up to 3 tasks in parallel
-                max_parallel_tasks = 3
+                # Get max concurrent tasks from config (default: 1)
+                with app.app_context():
+                    max_concurrent = IntConfig.get_value('max_concurrent_tasks', default=1)
+
+                # Count currently processing tasks
+                with app.app_context():
+                    processing_count = GenerationTask.query.filter(
+                        GenerationTask.status.in_(['generating-data', 'generating-images'])
+                    ).count()
+
+                # Check if we have capacity to start new tasks
+                available_slots = max_concurrent - processing_count
+
+                if available_slots <= 0:
+                    logging.info(f"[SCHEDULER] Max concurrent tasks ({max_concurrent}) reached. Currently processing: {processing_count}. Skipping new tasks.")
+                    return
+
+                # Process up to available_slots tasks in parallel
+                # But limit to 3 max to avoid overwhelming the thread pool
+                max_parallel_tasks = min(available_slots, 3)
+                logging.info(f"[SCHEDULER] Available slots: {available_slots}, will process up to {max_parallel_tasks} tasks")
+
                 futures = []
 
                 with ThreadPoolExecutor(max_workers=max_parallel_tasks) as executor:
-                    # Submit up to 3 tasks
+                    # Submit up to max_parallel_tasks
                     for _ in range(max_parallel_tasks):
                         future = executor.submit(worker_with_context)
                         futures.append(future)
@@ -107,7 +127,7 @@ def create_app():
             replace_existing=True
         )
 
-        # Add image generation task processor job (supports up to 3 parallel tasks)
+        # Add image generation task processor job (supports configurable concurrent tasks)
         def scheduled_image_processor():
             """Wrapper function to run image generation task processor with Flask app context."""
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -123,12 +143,32 @@ def create_app():
                         return False
 
             try:
-                # Process up to 3 tasks in parallel
-                max_parallel_tasks = 3
+                # Get max concurrent tasks from config (default: 1)
+                with app.app_context():
+                    max_concurrent = IntConfig.get_value('max_concurrent_tasks', default=1)
+
+                # Count currently processing tasks
+                with app.app_context():
+                    processing_count = GenerationTask.query.filter(
+                        GenerationTask.status.in_(['generating-data', 'generating-images'])
+                    ).count()
+
+                # Check if we have capacity to start new tasks
+                available_slots = max_concurrent - processing_count
+
+                if available_slots <= 0:
+                    logging.info(f"[SCHEDULER] Max concurrent tasks ({max_concurrent}) reached. Currently processing: {processing_count}. Skipping new tasks.")
+                    return
+
+                # Process up to available_slots tasks in parallel
+                # But limit to 3 max to avoid overwhelming the thread pool
+                max_parallel_tasks = min(available_slots, 3)
+                logging.info(f"[SCHEDULER] Available slots: {available_slots}, will process up to {max_parallel_tasks} tasks")
+
                 futures = []
 
                 with ThreadPoolExecutor(max_workers=max_parallel_tasks) as executor:
-                    # Submit up to 3 tasks
+                    # Submit up to max_parallel_tasks
                     for _ in range(max_parallel_tasks):
                         future = executor.submit(worker_with_context)
                         futures.append(future)
@@ -442,8 +482,8 @@ def create_app():
             else:
                 try:
                     images_per_persona = int(images_per_persona)
-                    if images_per_persona not in [4, 8]:
-                        validation_errors.append('Images per persona must be either 4 or 8.')
+                    if images_per_persona not in [4, 8, 12, 16, 20]:
+                        validation_errors.append('Images per persona must be 4, 8, 12, 16, or 20.')
                 except ValueError:
                     validation_errors.append('Images per persona must be a valid number.')
 
@@ -558,6 +598,10 @@ def create_app():
         randomize_face_base = Config.get_value('randomize_face_base', False)
         randomize_face_gender_lock = Config.get_value('randomize_face_gender_lock', False)
         crop_white_borders = Config.get_value('crop_white_borders', False)
+        randomize_image_style = Config.get_value('randomize_image_style', False)
+
+        # Load concurrency settings from IntConfig table (stored as integer values)
+        max_concurrent_tasks = IntConfig.get_value('max_concurrent_tasks', 1)
 
         return render_template(
             'settings.html',
@@ -565,7 +609,9 @@ def create_app():
             bio_prompts=bio_prompts,
             randomize_face_base=randomize_face_base,
             randomize_face_gender_lock=randomize_face_gender_lock,
-            crop_white_borders=crop_white_borders
+            crop_white_borders=crop_white_borders,
+            randomize_image_style=randomize_image_style,
+            max_concurrent_tasks=max_concurrent_tasks
         )
 
     @app.route('/settings/save', methods=['POST'])
@@ -598,11 +644,16 @@ def create_app():
             expected_boolean_keys = [
                 'randomize_face_base',
                 'randomize_face_gender_lock',
-                'crop_white_borders'
+                'crop_white_borders',
+                'randomize_image_style'
+            ]
+
+            expected_integer_keys = [
+                'max_concurrent_tasks'
             ]
 
             # Validate that at least one expected key is present
-            all_expected_keys = expected_string_keys + expected_boolean_keys
+            all_expected_keys = expected_string_keys + expected_boolean_keys + expected_integer_keys
             has_valid_key = any(key in data for key in all_expected_keys)
             if not has_valid_key:
                 return jsonify({
@@ -643,6 +694,30 @@ def create_app():
 
                     # Save or update config setting (value is already boolean)
                     Config.set_value(key, value)
+                    saved_settings.append(key)
+
+            # Save integer settings (concurrency) to IntConfig table
+            for key in expected_integer_keys:
+                if key in data:
+                    value = data[key]
+
+                    # Validate value type (should be integer)
+                    if not isinstance(value, int):
+                        return jsonify({
+                            'success': False,
+                            'error': f'Invalid value type for {key} - expected integer'
+                        }), 400
+
+                    # Validate max_concurrent_tasks range (1-5)
+                    if key == 'max_concurrent_tasks':
+                        if value < 1 or value > 5:
+                            return jsonify({
+                                'success': False,
+                                'error': 'max_concurrent_tasks must be between 1 and 5'
+                            }), 400
+
+                    # Save or update integer config setting
+                    IntConfig.set_value(key, value)
                     saved_settings.append(key)
 
             # Commit all changes to database

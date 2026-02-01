@@ -71,6 +71,7 @@ Stores application settings as key-value pairs, primarily used for bio prompts f
 - `bio_prompt_instagram` - Bio prompt for Instagram
 - `bio_prompt_x` - Bio prompt for X (Twitter)
 - `bio_prompt_tiktok` - Bio prompt for TikTok
+- `max_concurrent_tasks` - Maximum number of avatar generation tasks that can process simultaneously (default: '1' = sequential processing)
 
 **Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `Settings` class
 
@@ -102,6 +103,7 @@ Stores global boolean configuration settings for application features.
 - `randomize_face_base` (FALSE) - Enables randomizing faces for base image generation
 - `randomize_face_gender_lock` (FALSE) - When face randomization is on, locks to matching gender
 - `crop_white_borders` (FALSE) - Enables automatic cropping of white borders from generated avatar images
+- `randomize_image_style` (FALSE) - Enables randomized style processing (color presets, contrast, sharpness, grain, vignette) to make images look like they came from different sources/photographers
 
 **Face Randomization Feature:**
 - When `randomize_face_base` is TRUE, the image generation system uses a random face image from S3 as reference
@@ -396,6 +398,67 @@ Adds a new boolean configuration flag to control image post-processing. When ena
 - Default value is FALSE (feature disabled by default)
 - **Downgrade Warning**: Rolling back this migration will delete the `crop_white_borders` config setting
 
+**Status**: APPLIED
+
+---
+
+### Migration: d8982580d2a4 - add_randomize_image_style_config
+**Date**: 2026-02-01 07:24:32
+**Parent**: 70c50b9233b6
+
+**Changes:**
+- Added new config setting `randomize_image_style` (FALSE) to the `config` table
+- This setting controls whether images should have randomized style processing applied
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/d8982580d2a4_add_randomize_image_style_config.py`
+
+**Purpose:**
+Adds a new boolean configuration flag to control image style randomization. When enabled, the image generation system will apply randomized style processing (color presets, contrast, sharpness, grain, vignette variations) to make images look like they came from different sources/photographers, increasing dataset diversity.
+
+**Data Migration:**
+- Upgrade: Inserts new row into `config` table with key `randomize_image_style` and value `FALSE`
+- Downgrade: Deletes the `randomize_image_style` row from `config` table
+
+**Safety Notes:**
+- Non-destructive operation (inserting new config row only)
+- Fully reversible via downgrade function
+- Default value is FALSE (feature disabled by default)
+- **Downgrade Warning**: Rolling back this migration will delete the `randomize_image_style` config setting
+
+**Status**: APPLIED
+
+---
+
+### Migration: 7e1fabd32d40 - add_max_concurrent_tasks_setting
+**Date**: 2026-02-01 08:18:07
+**Parent**: d8982580d2a4
+
+**Changes:**
+- Added new setting `max_concurrent_tasks` (default value '1') to the `settings` table
+- This setting controls how many avatar generation tasks can process simultaneously
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/7e1fabd32d40_add_max_concurrent_tasks_setting.py`
+
+**Purpose:**
+Adds a new integer setting to control task concurrency for avatar generation. The value determines how many tasks can be processed in parallel:
+- Value of '1': Tasks process sequentially (one at a time)
+- Value of '2+': Multiple tasks can run concurrently up to the specified limit
+
+**Data Migration:**
+- Upgrade: Inserts new row into `settings` table with key `max_concurrent_tasks` and value `'1'`
+- Downgrade: Deletes the `max_concurrent_tasks` row from `settings` table
+
+**Implementation Notes:**
+- Value stored as Text in `settings` table (must be converted to integer when reading)
+- Default value '1' ensures backward-compatible sequential processing
+- Use `Settings.get_value('max_concurrent_tasks', '1')` and convert to int in application code
+
+**Safety Notes:**
+- Non-destructive operation (inserting new setting row only)
+- Fully reversible via downgrade function
+- Default value is '1' (sequential processing, safest default)
+- **Downgrade Warning**: Rolling back this migration will delete the `max_concurrent_tasks` setting
+
 **Status**: APPLIED (Current)
 
 ---
@@ -442,13 +505,15 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 70c50b9233b6 (add_crop_white_borders_config) - APPLIED
+**Latest Migration**: 7e1fabd32d40 (add_max_concurrent_tasks_setting) - APPLIED
 **Total Tables**: 5
-**Total Migrations**: 8 (1 reverted)
+**Total Migrations**: 10 (1 reverted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
-- NEW `config.crop_white_borders` (FALSE) - enables automatic cropping of white borders from generated images
+- NEW `settings.max_concurrent_tasks` ('1') - controls maximum number of concurrent avatar generation tasks
+- `config.randomize_image_style` (FALSE) - enables randomized style processing for image diversity (color presets, contrast, sharpness, grain, vignette)
+- `config.crop_white_borders` (FALSE) - enables automatic cropping of white borders from generated images
 - `config` table created for global boolean configuration settings
 - `config.randomize_face_base` (FALSE) - enables face randomization for base image generation
 - `config.randomize_face_gender_lock` (FALSE) - locks face randomization to matching gender

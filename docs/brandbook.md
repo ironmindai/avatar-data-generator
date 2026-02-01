@@ -619,6 +619,107 @@ Provides:
 
 ---
 
+### 2026-02-01 - Max Concurrent Tasks Setting Added
+
+**New Setting Created:**
+- Added "Max Concurrent Tasks" number input in Face Generation Settings section
+- Number input allowing users to control how many tasks process simultaneously
+- Setting stored in IntConfig table with key `max_concurrent_tasks`
+- Default value: 1 (sequential processing)
+- Range: 1-5 with step of 1
+- Positioned after "Gender Lock" and before form action buttons
+
+**Components Updated:**
+- Settings template: Added number input with validation attributes and range info
+- Settings CSS: Added `.form-number-input` and `.number-input-wrapper` styles with:
+  - Monospace font (H3 size, 20px) for technical prominence
+  - Cyan color for value display
+  - Centered text alignment
+  - Sharp corners, neon cyan glow on focus
+  - Hidden browser spinners for cleaner appearance
+  - Max-width 150px for compact display
+  - Range label showing "Range: 1-5" in small monospace text
+- Settings JavaScript:
+  - Added `maxConcurrentTasksInput` to elements object
+  - Added `validateMaxConcurrentTasks()` function with min/max clamping
+  - Integrated into face settings state tracking
+  - Added input/blur event listeners for validation and dirty state
+  - Included in form submission data
+  - Added to reset functionality
+- Backend:
+  - Added `expected_integer_keys` list with `max_concurrent_tasks`
+  - Added integer validation (type check + range 1-5)
+  - Saves to IntConfig table via `IntConfig.set_value()`
+  - Loads from IntConfig with default value of 1
+  - Passes to template rendering
+
+**Implementation Details:**
+- Label: "MAX CONCURRENT TASKS" with zap icon (lightning bolt)
+- Description: "Maximum number of generation tasks that can run simultaneously (1 = sequential processing)"
+- Input type: number with min="1", max="5", step="1"
+- Validation: Client-side clamping on input/blur, server-side range validation
+- State tracking: Independent from other settings, tracked in faceSettings state
+- Save button: Enables when value differs from original database value
+- Reset button: Restores original database value
+
+**Files Modified:**
+- `/templates/settings.html` - Added max_concurrent_tasks number input (lines 119-144)
+- `/static/css/settings.css` - Added number input styles (lines 292-353)
+- `/static/js/settings.js` - Added state management, validation, event listeners (lines 50, 93, 138-147, 414-439, 446-453, 486-487, 495, 569)
+- `/app.py` - Added IntConfig loading/saving with range validation (lines 604, 614, 651-653, 656, 699-721)
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Number input provides precise control over concurrency level
+- Monospace cyan number display follows technical aesthetic
+- Range 1-5 prevents system overload while allowing parallelization
+- Consistent with brandbook: Sharp corners, neon accents, validation feedback
+- Clear labeling explains sequential (1) vs parallel (2-5) behavior
+
+---
+
+### 2026-02-01 - Randomize Image Styles Setting Added
+
+**New Setting Created:**
+- Added "Randomize Image Styles" toggle as the second setting in Face Generation Settings section
+- Boolean checkbox that controls random style variations to make images look like different sources
+- Setting stored in Config table with key `randomize_image_style`
+- Positioned after "Crop White Borders" and before "Randomize Face" options
+- Integrated with existing face settings form and state management
+- Saves via AJAX to `/settings/save` endpoint
+- Default value: False (disabled)
+
+**Components Updated:**
+- Settings template: Added checkbox after "Crop White Borders" option
+- Settings JavaScript:
+  - Added randomizeImageStyleCheckbox to elements object
+  - Integrated into face settings state tracking (storeFaceSettingsOriginalValues)
+  - Added change event listener for dirty state detection
+  - Included in checkFaceSettingsDirtyState function
+  - Added to form submission data (handleFaceSettingsSubmit)
+  - Added to reset functionality (handleFaceSettingsReset)
+- Checkbox follows brandbook styling (sharp corners, neon cyan glow on checked)
+
+**Implementation Details:**
+- Label: "RANDOMIZE IMAGE STYLES" (uppercase, semibold, letter-spacing 0.05em)
+- Description: "Apply random style variations to make images look like different sources"
+- Consistent styling with other Face Generation Settings checkboxes
+- State tracked independently from other settings
+- Save button enables only when changes are detected
+- Reset button restores original database value
+
+**Files Modified:**
+- `/templates/settings.html` - Added randomize_image_style checkbox between crop_white_borders and randomize_face_base
+- `/static/js/settings.js` - Added complete state management, event listeners, submission, and reset handling
+- `/docs/brandbook.md` - Documented new setting implementation
+
+**Backend Integration Required:**
+- Backend must handle `randomize_image_style` boolean field in `/settings/save` endpoint
+- Backend must pass `randomize_image_style` value to template when rendering settings page
+- Database migration required to add `randomize_image_style` to Config table (if not already present)
+
+---
+
 ### 2026-01-30 - Settings Page Implementation
 
 **New Template Created:**
@@ -1214,4 +1315,41 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-01-30 (Dashboard Page Implementation)*
+### 2026-02-01 - Images per Persona Slider Implementation
+
+**UI Update:**
+- Replaced radio button selection (4 or 8 images) with range slider control
+- New range: 4 to 20 images with increments of 4 (values: 4, 8, 12, 16, 20)
+- Slider follows brandbook styling: Sharp corners, neon cyan glow, monospace number display
+- Synchronized slider and number input with real-time validation
+- Form validation updated to enforce min/max and step constraints
+
+**Components Updated:**
+- Generate template: Replaced radio buttons with slider input group structure
+- CSS: Added `.images-slider-group` and `.form-images-number` styles matching number input pattern
+- JavaScript: Added `initializeImagesSliderSync()` function with same sync pattern as persona count slider
+- Validation: Updated to check range (4-20) and step (4) constraints
+
+**Implementation Details:**
+- Number input: Monospace font, H3 size, cyan color, centered text, max-width 150px
+- Slider: Sharp square thumb (20px), cyan background with glow, 4px track height
+- Range labels: Show min (4) and max (20) below slider
+- Real-time sync between number input and slider
+- Blur validation rounds to nearest valid increment
+- Reset button restores default value of 4
+
+**Files Modified:**
+- `/templates/generate.html` - Replaced radio group with slider input group (lines 235-273)
+- `/static/css/generate.css` - Added images slider styles (lines 346-365)
+- `/static/js/generate.js` - Added slider sync and validation (lines 115-161, 207-216, 288-299)
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Slider provides more granular control than binary radio buttons
+- Consistent UI pattern with existing "Number to Generate" slider
+- Maintains brandbook compliance: Sharp corners, neon cyan accents, monospace technical display
+- Better scalability for future range adjustments
+
+---
+
+*Last Updated: 2026-02-01 (Images per Persona Slider Implementation)*

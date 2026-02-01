@@ -290,6 +290,69 @@
 }
 
 /* ========================================
+   Number Input Styles (Technical)
+   ======================================== */
+
+.number-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.form-number-input {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 0; /* SHARP CORNERS */
+    padding: 0.75rem 1rem;
+    font-size: 1.25rem; /* 20px - Larger for number prominence */
+    font-family: var(--font-mono); /* Monospace for technical feel */
+    font-weight: 600;
+    color: var(--color-accent-cyan);
+    text-align: center;
+    max-width: 150px;
+    transition: all 0.2s ease-out;
+}
+
+.form-number-input::placeholder {
+    color: var(--color-text-placeholder);
+}
+
+.form-number-input:hover {
+    border-color: #444444;
+}
+
+.form-number-input:focus {
+    outline: none;
+    border-color: var(--color-accent-cyan);
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);
+}
+
+/* Remove default number input spinners in WebKit/Blink */
+.form-number-input::-webkit-outer-spin-button,
+.form-number-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Remove default number input spinners in Firefox */
+.form-number-input[type=number] {
+    -moz-appearance: textfield;
+}
+
+.number-input-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.6875rem; /* 11px */
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+}
+
+.number-input-range {
+    display: inline-block;
+}
+
+/* ========================================
    Form Actions (Buttons)
    ======================================== */
 

@@ -56,6 +56,26 @@
                         </p>
                     </div>
 
+                    <!-- Randomize Image Styles Checkbox -->
+                    <div class="form-group">
+                        <label class="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="randomize_image_style"
+                                name="randomize_image_style"
+                                class="checkbox-input"
+                                {% if randomize_image_style %}checked{% endif %}
+                            >
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-label">
+                                RANDOMIZE IMAGE STYLES
+                            </span>
+                        </label>
+                        <p class="form-help checkbox-help">
+                            Apply random style variations to make images look like different sources
+                        </p>
+                    </div>
+
                     <!-- Main Checkbox: Randomize Face -->
                     <div class="form-group">
                         <label class="checkbox-container">
@@ -94,6 +114,33 @@
                         <p class="form-help checkbox-help">
                             Lock the generated face to a specific gender during randomization
                         </p>
+                    </div>
+
+                    <!-- Max Concurrent Tasks Number Input -->
+                    <div class="form-group">
+                        <label for="max_concurrent_tasks" class="form-label">
+                            <i data-feather="zap" class="form-label-icon"></i>
+                            MAX CONCURRENT TASKS
+                        </label>
+                        <p class="form-help">
+                            Maximum number of generation tasks that can run simultaneously (1 = sequential processing)
+                        </p>
+                        <div class="number-input-wrapper">
+                            <input
+                                type="number"
+                                id="max_concurrent_tasks"
+                                name="max_concurrent_tasks"
+                                class="form-input form-number-input"
+                                min="1"
+                                max="5"
+                                step="1"
+                                value="{{ max_concurrent_tasks or 1 }}"
+                                aria-label="Max Concurrent Tasks"
+                            >
+                            <div class="number-input-info">
+                                <span class="number-input-range">Range: 1-5</span>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Form Actions -->
