@@ -876,7 +876,7 @@ async def process_persona_images(
             try:
                 cropped_images = []
                 for i, image_bytes in enumerate(split_images):
-                    cropped_bytes = remove_white_borders(image_bytes, threshold=230, min_border_width=1)
+                    cropped_bytes = remove_white_borders(image_bytes, threshold=220, min_border_width=1)
                     cropped_images.append(cropped_bytes)
                     logger.debug(f"[Task {task_id_str}] [{persona_name}] Cropped image {i}: {len(image_bytes)} -> {len(cropped_bytes)} bytes")
 
