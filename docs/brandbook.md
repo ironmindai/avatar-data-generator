@@ -1205,6 +1205,49 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
+### 2026-02-02 - Dashboard Unified Chart Implementation
+
+**Chart Redesign:**
+- Combined 3 separate charts into 1 unified chart with 3 colored line series
+- Single chart card for easier comparison and cleaner layout
+- Full-width chart container (no grid layout)
+- Increased chart height: 350px (280px on mobile) for better visibility
+
+**Unified Chart Configuration:**
+- Single Chart.js line chart with 3 datasets:
+  1. Tasks - Neon Cyan (#00d9ff)
+  2. Personas - Neon Green (#00ff88)
+  3. Images - Neon Blue (#0088ff)
+- Legend displayed at top-right with line-style indicators
+- All series share same X-axis (dates) for synchronized comparison
+- No fill under lines (fill: false) for clarity with multiple series
+- Interactive tooltip shows all 3 values on hover
+- Sharp corners maintained throughout
+- Smooth curves (tension: 0.4)
+- Point styling consistent with brandbook
+
+**Legend Styling:**
+- Position: top, align: end (right side)
+- Color: #cccccc (secondary text)
+- Font: Inter, 12px, weight 500
+- Padding: 16px
+- Point style: line with 40px width, 3px height
+- Box indicators match line colors
+
+**Benefits:**
+- Easier to compare metrics at a glance
+- Cleaner dashboard layout with single chart
+- Better use of screen space
+- All metrics share same timeline for direct comparison
+- Modern, professional visualization
+
+**Files Modified:**
+- `/templates/dashboard.html` - Replaced 3 chart cards with single unified chart
+- `/static/css/dashboard.css` - Removed charts-grid, added chart-unified container, increased heights
+- `/static/js/dashboard.js` - Replaced 3 chart instances with single unified chart containing 3 datasets
+
+---
+
 ### 2026-01-30 - Dashboard Page Implementation
 
 **New Page Created:**
@@ -1237,30 +1280,6 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 2. Failed Tasks (icon: x-circle, error red)
 3. Avg Personas/Task (icon: trending-up)
 4. Avg Images/Persona (icon: bar-chart-2)
-
-**Chart Cards (3 Charts in Row)**
-- Grid layout: Auto-fit, minimum 350px columns, 24px gap
-- Card: Primary background, border, 24px padding, sharp corners
-- Header: H4 title, semibold, primary text, 16px bottom margin
-- Chart body: 250px min-height (200px on mobile)
-- Hover: Cyan border with subtle glow
-
-**Chart Types:**
-1. Tasks Created (Last 7 Days) - Line chart, neon cyan (#00d9ff)
-2. Personas Generated (Last 7 Days) - Line chart, neon green (#00ff88)
-3. Images Generated (Last 7 Days) - Line chart, neon purple (#c77dff)
-
-**Chart.js Configuration:**
-- Line charts with smooth curves (tension: 0.4)
-- Fill area under line with 20% opacity
-- Point radius: 4px (6px on hover)
-- Points: Colored with dark border (#1a1a1a), white hover border
-- Grid lines: Subtle (#333333), no borders
-- X-axis labels: Inter font, 11px, tertiary color
-- Y-axis labels: Monospace font, 11px, formatted with commas
-- Tooltips: Elevated background (#242424), colored border, 12px padding
-- Dark theme colors throughout
-- Responsive design with maintainAspectRatio: false
 
 **Skeleton Loaders (Loading State)**
 - Background: Gradient from secondary to elevated charcoal
@@ -1352,4 +1371,4 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-01 (Images per Persona Slider Implementation)*
+*Last Updated: 2026-02-02 (Dashboard Unified Chart Implementation)*

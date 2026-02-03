@@ -123,7 +123,7 @@ async def generate_base_image(
         base_prompt = (
             f"generate an image of how this person would look like in a selfie. "
             f"the image should be not well-produced, amateur digital camera aesthetic, "
-            f"low resolution. Person: {bio_facebook}. {gender_full}."
+            f"low resolution. Person: {bio_facebook}. {gender_full}. Please consider ethnicity if it's an obvious one, for a better match"
         )
 
         # Append custom text if configured

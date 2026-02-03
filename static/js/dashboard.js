@@ -5,10 +5,8 @@
  * Last Updated: 2026-01-30
  */
 
-// Store chart instances globally
-let tasksChart = null;
-let personasChart = null;
-let imagesChart = null;
+// Store unified chart instance globally
+let unifiedChart = null;
 
 // Auto-refresh interval (30 seconds)
 let refreshInterval = null;
@@ -143,63 +141,30 @@ function updateStatistics(overview) {
 }
 
 /**
- * Update or initialize all charts
+ * Update or initialize unified chart with all 3 series
  * @param {Object} last7Days - Last 7 days data object
  */
 function updateCharts(last7Days) {
-    // Process data for charts
-    const tasksDates = last7Days.tasks_by_date.map(item => formatDate(item.date));
+    // Process data for unified chart - all series share the same dates
+    const dates = last7Days.tasks_by_date.map(item => formatDate(item.date));
     const tasksCounts = last7Days.tasks_by_date.map(item => item.count);
-
-    const personasDates = last7Days.personas_by_date.map(item => formatDate(item.date));
     const personasCounts = last7Days.personas_by_date.map(item => item.count);
-
-    const imagesDates = last7Days.images_by_date.map(item => formatDate(item.date));
     const imagesCounts = last7Days.images_by_date.map(item => item.count);
 
-    // Initialize or update tasks chart
-    initializeChart(
-        'tasks-chart',
-        tasksChart,
-        tasksDates,
-        tasksCounts,
-        'Tasks',
-        '#00d9ff' // neon cyan
-    );
-
-    // Initialize or update personas chart
-    initializeChart(
-        'personas-chart',
-        personasChart,
-        personasDates,
-        personasCounts,
-        'Personas',
-        '#00ff88' // neon green
-    );
-
-    // Initialize or update images chart
-    initializeChart(
-        'images-chart',
-        imagesChart,
-        imagesDates,
-        imagesCounts,
-        'Images',
-        '#c77dff' // neon purple
-    );
+    // Initialize or update unified chart
+    initializeUnifiedChart(dates, tasksCounts, personasCounts, imagesCounts);
 }
 
 /**
- * Initialize or update a Chart.js line chart
- * @param {string} canvasId - Canvas element ID
- * @param {Object} chartInstance - Existing chart instance (or null)
- * @param {Array} labels - X-axis labels
- * @param {Array} data - Y-axis data points
- * @param {string} label - Dataset label
- * @param {string} color - Line color
+ * Initialize or update unified Chart.js line chart with all 3 series
+ * @param {Array} labels - X-axis labels (dates)
+ * @param {Array} tasksData - Tasks data points
+ * @param {Array} personasData - Personas data points
+ * @param {Array} imagesData - Images data points
  */
-function initializeChart(canvasId, chartInstance, labels, data, label, color) {
-    const canvas = document.getElementById(canvasId);
-    const skeleton = document.getElementById(canvasId + '-skeleton');
+function initializeUnifiedChart(labels, tasksData, personasData, imagesData) {
+    const canvas = document.getElementById('unified-chart');
+    const skeleton = document.getElementById('unified-chart-skeleton');
 
     // Hide skeleton, show canvas
     if (skeleton) {
@@ -208,56 +173,122 @@ function initializeChart(canvasId, chartInstance, labels, data, label, color) {
     canvas.style.display = 'block';
 
     // If chart exists, update data
-    if (chartInstance) {
-        chartInstance.data.labels = labels;
-        chartInstance.data.datasets[0].data = data;
-        chartInstance.update('none'); // Update without animation
+    if (unifiedChart) {
+        unifiedChart.data.labels = labels;
+        unifiedChart.data.datasets[0].data = tasksData;
+        unifiedChart.data.datasets[1].data = personasData;
+        unifiedChart.data.datasets[2].data = imagesData;
+        unifiedChart.update('none'); // Update without animation
         return;
     }
 
-    // Create new chart
+    // Create new unified chart with 3 series
     const ctx = canvas.getContext('2d');
 
     const chartConfig = {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [{
-                label: label,
-                data: data,
-                borderColor: color,
-                backgroundColor: color + '20', // 20% opacity
-                borderWidth: 2,
-                tension: 0.4, // Smooth curves
-                fill: true,
-                pointRadius: 4,
-                pointHoverRadius: 6,
-                pointBackgroundColor: color,
-                pointBorderColor: '#1a1a1a',
-                pointBorderWidth: 2,
-                pointHoverBackgroundColor: color,
-                pointHoverBorderColor: '#ffffff',
-                pointHoverBorderWidth: 2
-            }]
+            datasets: [
+                {
+                    label: 'Tasks',
+                    data: tasksData,
+                    borderColor: '#00d9ff', // neon cyan
+                    backgroundColor: '#00d9ff20', // 20% opacity
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#00d9ff',
+                    pointBorderColor: '#1a1a1a',
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: '#00d9ff',
+                    pointHoverBorderColor: '#ffffff',
+                    pointHoverBorderWidth: 2
+                },
+                {
+                    label: 'Personas',
+                    data: personasData,
+                    borderColor: '#00ff88', // neon green
+                    backgroundColor: '#00ff8820', // 20% opacity
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#00ff88',
+                    pointBorderColor: '#1a1a1a',
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: '#00ff88',
+                    pointHoverBorderColor: '#ffffff',
+                    pointHoverBorderWidth: 2
+                },
+                {
+                    label: 'Images',
+                    data: imagesData,
+                    borderColor: '#0088ff', // neon blue
+                    backgroundColor: '#0088ff20', // 20% opacity
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: false,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#0088ff',
+                    pointBorderColor: '#1a1a1a',
+                    pointBorderWidth: 2,
+                    pointHoverBackgroundColor: '#0088ff',
+                    pointHoverBorderColor: '#ffffff',
+                    pointHoverBorderWidth: 2
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: {
-                    display: false
+                    display: true,
+                    position: 'top',
+                    align: 'end',
+                    labels: {
+                        font: {
+                            family: 'Inter, sans-serif',
+                            size: 12,
+                            weight: '500'
+                        },
+                        padding: 16,
+                        usePointStyle: true,
+                        pointStyle: 'line',
+                        boxWidth: 40,
+                        boxHeight: 3,
+                        generateLabels: function(chart) {
+                            // Custom label generator to color each label text to match its line
+                            const datasets = chart.data.datasets;
+                            return datasets.map((dataset, i) => ({
+                                text: dataset.label,
+                                fillStyle: dataset.borderColor, // Use line color for the indicator
+                                strokeStyle: dataset.borderColor,
+                                lineWidth: 2,
+                                hidden: !chart.isDatasetVisible(i),
+                                index: i,
+                                // Color the text to match the line color
+                                fontColor: dataset.borderColor
+                            }));
+                        }
+                    }
                 },
                 tooltip: {
                     backgroundColor: '#242424',
                     titleColor: '#ffffff',
                     bodyColor: '#cccccc',
-                    borderColor: color,
+                    borderColor: '#00d9ff',
                     borderWidth: 1,
                     padding: 12,
-                    displayColors: false,
+                    displayColors: true,
                     callbacks: {
                         label: function(context) {
-                            return label + ': ' + context.parsed.y.toLocaleString();
+                            return context.dataset.label + ': ' + context.parsed.y.toLocaleString();
                         }
                     }
                 }
@@ -302,13 +333,7 @@ function initializeChart(canvasId, chartInstance, labels, data, label, color) {
     };
 
     // Store chart instance
-    if (canvasId === 'tasks-chart') {
-        tasksChart = new Chart(ctx, chartConfig);
-    } else if (canvasId === 'personas-chart') {
-        personasChart = new Chart(ctx, chartConfig);
-    } else if (canvasId === 'images-chart') {
-        imagesChart = new Chart(ctx, chartConfig);
-    }
+    unifiedChart = new Chart(ctx, chartConfig);
 }
 
 /**
@@ -334,25 +359,25 @@ function showErrorState() {
         element.style.color = 'var(--color-error)';
     });
 
-    // Hide chart skeletons
-    const skeletons = document.querySelectorAll('.skeleton-chart');
-    skeletons.forEach(function(skeleton) {
+    // Hide chart skeleton
+    const skeleton = document.getElementById('unified-chart-skeleton');
+    if (skeleton) {
         skeleton.style.display = 'none';
-    });
+    }
 
-    // Show error message in charts
-    const chartBodies = document.querySelectorAll('.chart-body');
-    chartBodies.forEach(function(body) {
-        const canvas = body.querySelector('canvas');
-        if (canvas) {
-            canvas.style.display = 'none';
-        }
+    // Show error message in chart
+    const canvas = document.getElementById('unified-chart');
+    if (canvas) {
+        canvas.style.display = 'none';
+    }
 
+    const chartBody = document.querySelector('.chart-body');
+    if (chartBody) {
         const errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; height: 250px; color: var(--color-error); font-size: var(--font-size-small);';
+        errorDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; height: 350px; color: var(--color-error); font-size: var(--font-size-small);';
         errorDiv.textContent = 'Failed to load chart data';
-        body.appendChild(errorDiv);
-    });
+        chartBody.appendChild(errorDiv);
+    }
 
     // Stop auto-refresh
     if (refreshInterval) {
