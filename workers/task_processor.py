@@ -502,7 +502,16 @@ def parse_flowise_response(text_content: str, batch_number: int, task_id: str) -
                                 'bio_facebook': bios_json.get('facebook_bio', ''),
                                 'bio_instagram': bios_json.get('instagram_bio', ''),
                                 'bio_x': bios_json.get('x_bio', ''),
-                                'bio_tiktok': bios_json.get('tiktok_bio', '')
+                                'bio_tiktok': bios_json.get('tiktok_bio', ''),
+                                'job_title': bios_json.get('job_title', ''),
+                                'workplace': bios_json.get('workplace', ''),
+                                'edu_establishment': bios_json.get('edu_establishment', ''),
+                                'edu_study': bios_json.get('edu_study', ''),
+                                'current_city': bios_json.get('current_city', ''),
+                                'current_state': bios_json.get('current_state', ''),
+                                'prev_city': bios_json.get('prev_city', ''),
+                                'prev_state': bios_json.get('prev_state', ''),
+                                'about': bios_json.get('about', '')
                             }
 
                             personas.append(persona)
@@ -547,7 +556,16 @@ def store_results(task_db_id: int, batch_number: int, personas: List[Dict]) -> i
                 bio_facebook=persona['bio_facebook'],
                 bio_instagram=persona['bio_instagram'],
                 bio_x=persona['bio_x'],
-                bio_tiktok=persona['bio_tiktok']
+                bio_tiktok=persona['bio_tiktok'],
+                job_title=persona['job_title'],
+                workplace=persona['workplace'],
+                edu_establishment=persona['edu_establishment'],
+                edu_study=persona['edu_study'],
+                current_city=persona['current_city'],
+                current_state=persona['current_state'],
+                prev_city=persona['prev_city'],
+                prev_state=persona['prev_state'],
+                about=persona['about']
             )
             db.session.add(result)
             stored_count += 1

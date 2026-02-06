@@ -848,6 +848,17 @@ def create_app():
                     'x': result.bio_x,
                     'tiktok': result.bio_tiktok
                 },
+                'supplementary': {
+                    'job_title': result.job_title,
+                    'workplace': result.workplace,
+                    'edu_establishment': result.edu_establishment,
+                    'edu_study': result.edu_study,
+                    'current_city': result.current_city,
+                    'current_state': result.current_state,
+                    'prev_city': result.prev_city,
+                    'prev_state': result.prev_state,
+                    'about': result.about
+                },
                 'images': result.images or []
             })
 
@@ -942,6 +953,17 @@ def create_app():
                     'x': result.bio_x,
                     'tiktok': result.bio_tiktok
                 },
+                'supplementary': {
+                    'job_title': result.job_title,
+                    'workplace': result.workplace,
+                    'edu_establishment': result.edu_establishment,
+                    'edu_study': result.edu_study,
+                    'current_city': result.current_city,
+                    'current_state': result.current_state,
+                    'prev_city': result.prev_city,
+                    'prev_state': result.prev_state,
+                    'about': result.about
+                },
                 'images': result.images or []
             })
 
@@ -997,7 +1019,12 @@ def create_app():
         # Build CSV headers (exclude base_image_url - it's for generation only)
         headers = [
             'firstname', 'lastname', 'gender',
-            'bio_facebook', 'bio_instagram', 'bio_x', 'bio_tiktok'
+            'bio_facebook', 'bio_instagram', 'bio_x', 'bio_tiktok',
+            'job_title', 'workplace',
+            'edu_establishment', 'edu_study',
+            'current_city', 'current_state',
+            'prev_city', 'prev_state',
+            'about'
         ]
         # Add image columns based on images_per_persona
         for i in range(1, max_images + 1):
@@ -1015,7 +1042,16 @@ def create_app():
                 'bio_facebook': result.bio_facebook or '',
                 'bio_instagram': result.bio_instagram or '',
                 'bio_x': result.bio_x or '',
-                'bio_tiktok': result.bio_tiktok or ''
+                'bio_tiktok': result.bio_tiktok or '',
+                'job_title': result.job_title or '',
+                'workplace': result.workplace or '',
+                'edu_establishment': result.edu_establishment or '',
+                'edu_study': result.edu_study or '',
+                'current_city': result.current_city or '',
+                'current_state': result.current_state or '',
+                'prev_city': result.prev_city or '',
+                'prev_state': result.prev_state or '',
+                'about': result.about or ''
             }
 
             # Add image URLs
@@ -1101,6 +1137,17 @@ def create_app():
                         'instagram': result.bio_instagram,
                         'x': result.bio_x,
                         'tiktok': result.bio_tiktok
+                    },
+                    'supplementary': {
+                        'job_title': result.job_title,
+                        'workplace': result.workplace,
+                        'edu_establishment': result.edu_establishment,
+                        'edu_study': result.edu_study,
+                        'current_city': result.current_city,
+                        'current_state': result.current_state,
+                        'prev_city': result.prev_city,
+                        'prev_state': result.prev_state,
+                        'about': result.about
                     }
                 }
 
@@ -1121,6 +1168,15 @@ def create_app():
                     writer.writerow({'field': 'bio_instagram', 'value': result.bio_instagram or ''})
                     writer.writerow({'field': 'bio_x', 'value': result.bio_x or ''})
                     writer.writerow({'field': 'bio_tiktok', 'value': result.bio_tiktok or ''})
+                    writer.writerow({'field': 'job_title', 'value': result.job_title or ''})
+                    writer.writerow({'field': 'workplace', 'value': result.workplace or ''})
+                    writer.writerow({'field': 'edu_establishment', 'value': result.edu_establishment or ''})
+                    writer.writerow({'field': 'edu_study', 'value': result.edu_study or ''})
+                    writer.writerow({'field': 'current_city', 'value': result.current_city or ''})
+                    writer.writerow({'field': 'current_state', 'value': result.current_state or ''})
+                    writer.writerow({'field': 'prev_city', 'value': result.prev_city or ''})
+                    writer.writerow({'field': 'prev_state', 'value': result.prev_state or ''})
+                    writer.writerow({'field': 'about', 'value': result.about or ''})
 
                 # Download split images for this person
                 if result.images:

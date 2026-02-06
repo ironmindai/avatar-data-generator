@@ -387,6 +387,15 @@ class GenerationResult(db.Model):
         bio_instagram: Instagram bio text
         bio_x: X (Twitter) bio text
         bio_tiktok: TikTok bio text
+        job_title: Job title/occupation
+        workplace: Workplace/company name
+        edu_establishment: Educational establishment name
+        edu_study: Field of study/degree
+        current_city: Current city of residence
+        current_state: Current state of residence
+        prev_city: Previous city of residence
+        prev_state: Previous state of residence
+        about: About/bio text
         base_image_url: Public S3 URL for base selfie image
         images: JSONB array of public S3 URLs for split images (flexible array: 4, 8, or any number)
         created_at: Timestamp of result creation
@@ -403,6 +412,15 @@ class GenerationResult(db.Model):
     bio_instagram = db.Column(db.Text, nullable=True)
     bio_x = db.Column(db.Text, nullable=True)
     bio_tiktok = db.Column(db.Text, nullable=True)
+    job_title = db.Column(db.Text, nullable=True)
+    workplace = db.Column(db.Text, nullable=True)
+    edu_establishment = db.Column(db.Text, nullable=True)
+    edu_study = db.Column(db.Text, nullable=True)
+    current_city = db.Column(db.String(255), nullable=True)
+    current_state = db.Column(db.String(255), nullable=True)
+    prev_city = db.Column(db.String(255), nullable=True)
+    prev_state = db.Column(db.String(255), nullable=True)
+    about = db.Column(db.Text, nullable=True)
     base_image_url = db.Column(db.Text, nullable=True)
     images = db.Column(db.JSON, nullable=True)  # JSONB array of image URLs
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
@@ -411,4 +429,6 @@ class GenerationResult(db.Model):
     task = db.relationship('GenerationTask', backref=db.backref('results', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f'<GenerationResult {self.firstname} {self.lastname} for task_id={self.task_id} batch={self.batch_number}>'
+        job_info = f' ({self.job_title})' if self.job_title else ''
+        location_info = f' in {self.current_city}, {self.current_state}' if self.current_city and self.current_state else ''
+        return f'<GenerationResult {self.firstname} {self.lastname}{job_info}{location_info} task_id={self.task_id} batch={self.batch_number}>'

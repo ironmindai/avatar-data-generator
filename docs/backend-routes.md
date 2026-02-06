@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-01-30 (Added /api/dashboard/stats endpoint)*
+> *Last Updated: 2026-02-05 (Added supplementary persona fields to all export routes)*
 
 ## Application Information
 
@@ -265,7 +265,17 @@ Lists all avatar generation tasks for the current user, similar to /history but 
         "x": "Building the future...",
         "tiktok": "Developer life..."
       },
-      "base_image_url": "https://s3.amazonaws.com/...",
+      "supplementary": {
+        "job_title": "Software Engineer",
+        "workplace": "Tech Corp",
+        "edu_establishment": "MIT",
+        "edu_study": "Computer Science",
+        "current_city": "San Francisco",
+        "current_state": "California",
+        "prev_city": "New York",
+        "prev_state": "New York",
+        "about": "Passionate about technology"
+      },
       "images": ["https://s3.amazonaws.com/...", ...]
     }
   ],
@@ -304,8 +314,41 @@ Lists all avatar generation tasks for the current user, similar to /history but 
 **Export Structure**:
 ```json
 {
-  "task": { ... },
-  "results": [ ... ]
+  "task": {
+    "task_id": "abc123",
+    "status": "completed",
+    "persona_description": "...",
+    "bio_language": "English",
+    "number_to_generate": 10,
+    "images_per_persona": 8,
+    "created_at": "2026-02-05T12:00:00",
+    "completed_at": "2026-02-05T12:15:00"
+  },
+  "results": [
+    {
+      "firstname": "John",
+      "lastname": "Doe",
+      "gender": "m",
+      "bios": {
+        "facebook": "...",
+        "instagram": "...",
+        "x": "...",
+        "tiktok": "..."
+      },
+      "supplementary": {
+        "job_title": "Software Engineer",
+        "workplace": "Tech Corp",
+        "edu_establishment": "MIT",
+        "edu_study": "Computer Science",
+        "current_city": "San Francisco",
+        "current_state": "California",
+        "prev_city": "New York",
+        "prev_state": "New York",
+        "about": "Passionate about technology"
+      },
+      "images": ["url1", "url2", ...]
+    }
+  ]
 }
 ```
 
@@ -330,8 +373,12 @@ Lists all avatar generation tasks for the current user, similar to /history but 
 **CSV Columns**:
 - firstname, lastname, gender
 - bio_facebook, bio_instagram, bio_x, bio_tiktok
-- base_image_url
-- image_1, image_2, ..., image_N (N = images_per_persona, up to 8)
+- job_title, workplace (supplementary fields)
+- edu_establishment, edu_study (supplementary fields)
+- current_city, current_state (supplementary fields)
+- prev_city, prev_state (supplementary fields)
+- about (supplementary field)
+- image_1, image_2, ..., image_N (N = images_per_persona, up to 20)
 
 **Notes**:
 - Column count adapts to images_per_persona setting

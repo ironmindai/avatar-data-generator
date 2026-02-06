@@ -1371,4 +1371,74 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-02 (Dashboard Unified Chart Implementation)*
+### 2026-02-05 - Persona Supplementary Fields Display
+
+**New UI Components for Dataset Detail Page:**
+- Added comprehensive persona information display in result cards
+- Displays supplementary fields from updated Flowise workflow
+
+**New Persona Sections:**
+
+**1. About Section**
+- Icon: file-text (14px, cyan)
+- Content: Italic text, relaxed line-height
+- Displays 1-liner about the person
+
+**2. Work Section**
+- Icon: briefcase (14px, cyan)
+- Fields: Job Title, Workplace
+- Format: Label-value pairs with colon separator
+
+**3. Education Section**
+- Icon: book (14px, cyan)
+- Fields: School (edu_establishment), Study (edu_study)
+- Format: Label-value pairs with colon separator
+
+**4. Location Section**
+- Icon: map-pin (14px, cyan)
+- Fields: Current (city, state), Previous (city, state)
+- Format: City, State with comma separator
+- Label-value pairs for Current and Previous locations
+
+**Visual Design:**
+- Sections positioned between gender badge and bio tabs
+- Top border separator (1px solid border)
+- Vertical stack layout with 12px gap between sections
+- Section headers: Icon + uppercase label (small size, semibold, tertiary color)
+- Content indented 24px with 8px vertical gap between items
+- Labels: Tertiary color, medium weight
+- Values: Primary text color
+- About text: Italic, secondary color, relaxed line-height
+
+**Smart Display Logic:**
+- Only shows sections with at least one non-empty field
+- Gracefully handles null/empty values
+- Entire supplementary block hidden if no data available
+- Location section combines city and state with proper formatting
+
+**CSS Classes Added:**
+- `.persona-supplementary` - Container with top border and vertical gap
+- `.persona-section` - Individual section wrapper
+- `.persona-section-header` - Icon + title flex layout
+- `.persona-section-title` - Uppercase label styling
+- `.persona-section-content` - Indented content area
+- `.persona-about` - Italic about text styling
+- `.persona-info-item` - Label-value pair container
+- `.info-label` - Label styling (tertiary, medium weight)
+- `.info-value` - Value styling (primary text)
+
+**Files Modified:**
+- `/static/js/datasets.js` - Updated `createResultCardHTML()` function to include new fields (lines 359-485)
+- `/static/css/datasets.css` - Added persona supplementary section styles (lines 624-668)
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Icon-based sections provide visual hierarchy and quick scanning
+- Consistent with existing bio sections and result card patterns
+- Compact display prevents UI clutter
+- Smart conditional rendering improves user experience
+- Maintains brandbook compliance: Sharp corners, neon cyan accents, proper spacing
+
+---
+
+*Last Updated: 2026-02-05 (Persona Supplementary Fields Display)*

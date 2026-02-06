@@ -365,6 +365,20 @@
       ? result.images[Math.floor(Math.random() * result.images.length)]
       : IMAGE_PLACEHOLDER;
 
+    // Helper to check if value exists and is not empty
+    const hasValue = (val) => val && val.trim() !== '';
+
+    // Build supplementary info sections
+    const supp = result.supplementary || {};
+    const hasJobInfo = hasValue(supp.job_title) || hasValue(supp.workplace);
+    const hasEducation = hasValue(supp.edu_establishment) || hasValue(supp.edu_study);
+    const hasCurrentLocation = hasValue(supp.current_city) || hasValue(supp.current_state);
+    const hasPrevLocation = hasValue(supp.prev_city) || hasValue(supp.prev_state);
+    const hasLocation = hasCurrentLocation || hasPrevLocation;
+    const hasAbout = hasValue(supp.about);
+
+    const showSupplementaryInfo = hasJobInfo || hasEducation || hasLocation || hasAbout;
+
     return `
       <div class="result-card" data-result-id="${result.id || ''}">
         <div class="result-image-container" data-image-url="${displayImage}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)}">
@@ -376,6 +390,61 @@
             <i data-feather="${genderIcon}"></i>
             ${escapeHtml(result.gender)}
           </div>
+
+          ${showSupplementaryInfo ? `
+          <div class="persona-supplementary">
+            ${hasAbout ? `
+            <div class="persona-section">
+              <div class="persona-section-header">
+                <i data-feather="file-text"></i>
+                <span class="persona-section-title">About</span>
+              </div>
+              <div class="persona-section-content">
+                <p class="persona-about">${escapeHtml(supp.about)}</p>
+              </div>
+            </div>
+            ` : ''}
+
+            ${hasJobInfo ? `
+            <div class="persona-section">
+              <div class="persona-section-header">
+                <i data-feather="briefcase"></i>
+                <span class="persona-section-title">Work</span>
+              </div>
+              <div class="persona-section-content">
+                ${hasValue(supp.job_title) ? `<div class="persona-info-item"><span class="info-label">Title:</span> <span class="info-value">${escapeHtml(supp.job_title)}</span></div>` : ''}
+                ${hasValue(supp.workplace) ? `<div class="persona-info-item"><span class="info-label">Workplace:</span> <span class="info-value">${escapeHtml(supp.workplace)}</span></div>` : ''}
+              </div>
+            </div>
+            ` : ''}
+
+            ${hasEducation ? `
+            <div class="persona-section">
+              <div class="persona-section-header">
+                <i data-feather="book"></i>
+                <span class="persona-section-title">Education</span>
+              </div>
+              <div class="persona-section-content">
+                ${hasValue(supp.edu_establishment) ? `<div class="persona-info-item"><span class="info-label">School:</span> <span class="info-value">${escapeHtml(supp.edu_establishment)}</span></div>` : ''}
+                ${hasValue(supp.edu_study) ? `<div class="persona-info-item"><span class="info-label">Study:</span> <span class="info-value">${escapeHtml(supp.edu_study)}</span></div>` : ''}
+              </div>
+            </div>
+            ` : ''}
+
+            ${hasLocation ? `
+            <div class="persona-section">
+              <div class="persona-section-header">
+                <i data-feather="map-pin"></i>
+                <span class="persona-section-title">Location</span>
+              </div>
+              <div class="persona-section-content">
+                ${hasCurrentLocation ? `<div class="persona-info-item"><span class="info-label">Current:</span> <span class="info-value">${escapeHtml(supp.current_city || '')}${hasValue(supp.current_city) && hasValue(supp.current_state) ? ', ' : ''}${escapeHtml(supp.current_state || '')}</span></div>` : ''}
+                ${hasPrevLocation ? `<div class="persona-info-item"><span class="info-label">Previous:</span> <span class="info-value">${escapeHtml(supp.prev_city || '')}${hasValue(supp.prev_city) && hasValue(supp.prev_state) ? ', ' : ''}${escapeHtml(supp.prev_state || '')}</span></div>` : ''}
+              </div>
+            </div>
+            ` : ''}
+          </div>
+          ` : ''}
 
           ${result.bios ? `
           <div class="result-bios">

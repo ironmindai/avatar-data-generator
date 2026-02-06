@@ -621,6 +621,72 @@
   background-color: rgba(255, 68, 102, 0.1);
 }
 
+/* Persona Supplementary Information */
+.persona-supplementary {
+  margin-top: var(--spacing-4);
+  padding-top: var(--spacing-4);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.persona-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.persona-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.persona-section-header svg {
+  width: 14px;
+  height: 14px;
+  color: var(--color-accent-cyan);
+}
+
+.persona-section-title {
+  font-size: var(--font-size-small);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--font-weight-semibold);
+}
+
+.persona-section-content {
+  padding-left: var(--spacing-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.persona-about {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+  margin: 0;
+  font-style: italic;
+}
+
+.persona-info-item {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.persona-info-item .info-label {
+  color: var(--color-text-tertiary);
+  font-weight: var(--font-weight-medium);
+}
+
+.persona-info-item .info-value {
+  color: var(--color-text-primary);
+}
+
 /* Bio Section */
 .result-bios {
   margin-top: var(--spacing-4);
