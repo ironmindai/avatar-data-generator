@@ -34,6 +34,7 @@ S3_ACCESS_KEY = os.getenv('S3_ACCESS_KEY')
 S3_SECRET_KEY = os.getenv('S3_SECRET_KEY')
 S3_REGION = os.getenv('S3_REGION', 'us-east-1')
 S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME')
+S3_PUBLIC_URL_BASE = os.getenv('S3_PUBLIC_URL_BASE', 'https://minio.electric-marinade.com')
 
 
 def split_and_trim_image(
@@ -223,9 +224,9 @@ def upload_to_s3(
         )
 
         # Construct public URL
-        # Format: https://s3-api.dev.iron-mind.ai/bucket/object_key
+        # Format: {S3_PUBLIC_URL_BASE}/bucket/object_key
         # Note: Use public endpoint, not internal S3_ENDPOINT (which is localhost)
-        public_url = f"https://s3-api.dev.iron-mind.ai/{bucket}/{object_key}"
+        public_url = f"{S3_PUBLIC_URL_BASE}/{bucket}/{object_key}"
 
         logger.info(f"Successfully uploaded to S3: {public_url}")
         return object_key, public_url
