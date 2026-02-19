@@ -400,6 +400,7 @@ class GenerationResult(db.Model):
         about: About/bio text
         base_image_url: Public S3 URL for base selfie image
         images: JSONB array of public S3 URLs for split images (flexible array: 4, 8, or any number)
+        image_ideas_history: JSONB array of image idea strings to avoid duplicates (e.g., ["Mirror selfie", "Coffee shop"])
         created_at: Timestamp of result creation
     """
     __tablename__ = 'generation_results'
@@ -427,6 +428,7 @@ class GenerationResult(db.Model):
     about = db.Column(db.Text, nullable=True)
     base_image_url = db.Column(db.Text, nullable=True)
     images = db.Column(db.JSON, nullable=True)  # JSONB array of image URLs
+    image_ideas_history = db.Column(db.JSON, nullable=True)  # JSONB array of image idea strings
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
 
     # Relationship to GenerationTask

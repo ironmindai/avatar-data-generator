@@ -186,6 +186,7 @@ Stores persona data and S3 image URLs for generated avatars. Each record represe
 - `about` (Text, NULLABLE) - Generated "About" section text
 - `base_image_url` (Text, NULLABLE) - Public S3 URL for base selfie image
 - `images` (JSONB, NULLABLE) - JSON array of public S3 URLs for split images (flexible: 4, 8, or any number)
+- `image_ideas_history` (JSONB, NULLABLE) - JSON array of image idea strings to avoid duplicates in future generations
 - `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of result creation
 
 **Indexes:**
@@ -541,6 +542,40 @@ Extends the generation_results table to capture ethnicity and age fields from th
 - Backward compatible - existing records will have NULL values for new fields
 - **Downgrade Warning**: Rolling back this migration will permanently delete all ethnicity and age data
 
+**Status**: APPLIED
+
+---
+
+### Migration: 312faec904ca - add_image_ideas_history_to_generation_results
+**Date**: 2026-02-19 12:42:06
+**Parent**: fbc78f685fa2
+
+**Changes:**
+- Added `image_ideas_history` (JSONB, NULLABLE) - JSONB array for storing image idea/prompt history
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/312faec904ca_add_image_ideas_history_to_generation_.py`
+
+**Purpose:**
+Adds a new JSONB column to track image ideas/prompts that have been generated for each persona. This enables duplicate detection and prevention in future image generation cycles, ensuring variety and avoiding repetitive content.
+
+**JSONB Format:**
+```json
+["Mirror selfie in bedroom", "Coffee shop laptop work", "Gym workout selfie", "Beach sunset photo"]
+```
+
+**Use Cases:**
+- Track all image ideas generated for a persona
+- Prevent duplicate image prompts across multiple generation cycles
+- Maintain variety and diversity in generated content
+- Support intelligent prompt generation by excluding previously used ideas
+
+**Safety Notes:**
+- Non-destructive operation (adding nullable column only)
+- Fully reversible via downgrade function
+- Backward compatible - existing records will have NULL values for this field
+- JSONB type is efficient for storing and querying array data in PostgreSQL
+- **Downgrade Warning**: Rolling back this migration will permanently delete all image ideas history data
+
 **Status**: APPLIED (Current)
 
 ---
@@ -587,12 +622,13 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: fbc78f685fa2 (add_ethnicity_and_age_to_generation_results) - APPLIED
+**Latest Migration**: 312faec904ca (add_image_ideas_history_to_generation_results) - APPLIED
 **Total Tables**: 5
-**Total Migrations**: 12 (1 reverted)
+**Total Migrations**: 13 (1 reverted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
+- NEW `generation_results.image_ideas_history` (JSONB array) - tracks image ideas/prompts to prevent duplicates in future generations
 - NEW `generation_results.ethnicity` (String(100)), `age` (Integer) - demographic fields from updated Flowise workflow (71bf0c86-c802-4221-b6e7-0af16e350bb6)
 - NEW `generation_results.job_title`, `workplace`, `edu_establishment`, `edu_study`, `current_city`, `current_state`, `prev_city`, `prev_state`, `about` - supplementary persona fields from updated Flowise workflow
 - `settings.max_concurrent_tasks` ('1') - controls maximum number of concurrent avatar generation tasks

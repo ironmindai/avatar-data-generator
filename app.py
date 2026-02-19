@@ -482,8 +482,8 @@ def create_app():
             else:
                 try:
                     images_per_persona = int(images_per_persona)
-                    if images_per_persona not in [4, 8, 12, 16, 20]:
-                        validation_errors.append('Images per persona must be 4, 8, 12, 16, or 20.')
+                    if images_per_persona < 1 or images_per_persona > 20:
+                        validation_errors.append('Images per persona must be between 1 and 20.')
                 except ValueError:
                     validation_errors.append('Images per persona must be a valid number.')
 

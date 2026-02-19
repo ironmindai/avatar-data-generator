@@ -125,11 +125,10 @@
         let value = parseInt(this.value, 10);
 
         // Enforce min/max
-        if (value < 4) value = 4;
+        if (value < 1) value = 1;
         if (value > 20) value = 20;
 
-        // Round to nearest increment of 4
-        value = Math.round(value / 4) * 4;
+        // No rounding needed - allow any value 1-20
 
         // Update both inputs
         this.value = value;
@@ -146,13 +145,12 @@
       imagesInput.addEventListener('blur', function() {
         let value = parseInt(this.value, 10);
 
-        if (isNaN(value) || value < 4) {
-          value = 4;
+        if (isNaN(value) || value < 1) {
+          value = 1;
         } else if (value > 20) {
           value = 20;
-        } else {
-          value = Math.round(value / 4) * 4;
         }
+        // No rounding - allow any value 1-20
 
         this.value = value;
         imagesSlider.value = value;
@@ -207,8 +205,8 @@
     // Validate images per persona
     const imagesPerPersona = document.getElementById('images_per_persona');
     const imagesValue = parseInt(imagesPerPersona.value, 10);
-    if (imagesPerPersona && (isNaN(imagesValue) || imagesValue < 4 || imagesValue > 20 || imagesValue % 4 !== 0)) {
-      errors.push('Images per persona must be between 4-20 in increments of 4');
+    if (imagesPerPersona && (isNaN(imagesValue) || imagesValue < 1 || imagesValue > 20)) {
+      errors.push('Images per persona must be between 1-20');
       isValid = false;
       highlightError(imagesPerPersona);
     } else if (imagesPerPersona) {

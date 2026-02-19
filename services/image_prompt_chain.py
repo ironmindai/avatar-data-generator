@@ -49,7 +49,7 @@ class ImagePromptChain:
         person_data: Dict[str, any],
         num_images: int = 4,
         prompts_history: Optional[List[str]] = None
-    ) -> List[str]:
+    ) -> tuple[List[str], List[str]]:
         """
         Generate N image prompts sequentially with context awareness.
 
@@ -63,10 +63,12 @@ class ImagePromptChain:
                 - ethnicity: Ethnicity (optional)
                 - age: Age (optional)
             num_images: Number of image prompts to generate (default: 4)
-            prompts_history: Optional list of previously used prompts to avoid
+            prompts_history: Optional list of previously used image ideas to avoid
 
         Returns:
-            List of final image generation prompts
+            Tuple of (final_prompts, image_ideas):
+                - final_prompts: List of complete prompts ready for image generation
+                - image_ideas: List of raw image ideas (for history tracking)
         """
         try:
             logger.info(f"Generating {num_images} image prompts for {person_data.get('firstname')} {person_data.get('lastname')}")
@@ -121,8 +123,8 @@ class ImagePromptChain:
                 generated_ideas.append(idea)
                 final_prompts.append(final_prompt)
 
-            logger.info(f"Successfully generated {len(final_prompts)} image prompts")
-            return final_prompts
+            logger.info(f"Successfully generated {len(final_prompts)} image prompts with {len(generated_ideas)} ideas")
+            return final_prompts, generated_ideas
 
         except Exception as e:
             logger.error(f"Error generating image prompts: {str(e)}", exc_info=True)

@@ -767,15 +767,13 @@ async def process_persona_images(
         logger.info(f"[Task {task_id_str}] Processing images for persona: {persona_name} (result_id={result.id})")
         logger.info(f"[Task {task_id_str}] [{persona_name}] Images per persona: {images_per_persona}")
 
-        # Validate images_per_persona
-        if images_per_persona not in [4, 8, 12, 16, 20]:
-            error_msg = f"Invalid images_per_persona: {images_per_persona}. Must be 4, 8, 12, 16, or 20."
+        # Validate images_per_persona (now supports 1-20 instead of multiples of 4)
+        if images_per_persona < 1 or images_per_persona > 20:
+            error_msg = f"Invalid images_per_persona: {images_per_persona}. Must be between 1 and 20."
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
 
-        # Calculate number of batches (each batch generates 4 images)
-        num_batches = images_per_persona // 4
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Will generate {num_batches} batches of 4 images each")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Will generate {images_per_persona} individual images")
 
         # Step 0: Fetch face randomization settings from Config table
         randomize_face = Config.get_value('randomize_face_base', False)
@@ -795,7 +793,7 @@ async def process_persona_images(
             # The base image will be regenerated if needed
         else:
             # Step 2: Generate base selfie image ONCE
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 1/{num_batches + 2}: Generating base selfie image...")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 1/3: Generating base selfie image...")
 
             try:
                 base_image_bytes = await generate_base_image(
@@ -815,7 +813,7 @@ async def process_persona_images(
                 return False, error_msg
 
             # Step 3: Upload base image to S3 and SAVE IMMEDIATELY
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 2/{num_batches + 2}: Uploading base image to S3...")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Step 2/3: Uploading base image to S3...")
 
             base_object_key = f"avatars/task_{task_db_id}/persona_{result.id}/base.png"
 
@@ -861,18 +859,18 @@ async def process_persona_images(
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
                 return False, error_msg
 
-        # Step 5: Two-Phase Parallel Multi-batch Image Generation
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Starting PARALLEL multi-batch image generation ({num_batches} batches)...")
+        # Step 3: Parallel Individual Image Generation
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/3: Starting parallel image generation ({images_per_persona} images)...")
         logger.info("=" * 80)
-        logger.info(f"BASE IMAGE S3 URL (will be reused for ALL batches):")
+        logger.info(f"BASE IMAGE S3 URL (will be used as reference for ALL images):")
         logger.info(f"{result.base_image_url}")
         logger.info("=" * 80)
 
-        # Fetch post-processing settings (apply consistently across all batches)
+        # Fetch post-processing settings (apply consistently to all images)
         crop_white_borders_enabled = Config.get_value('crop_white_borders', False)
         randomize_image_style_enabled = Config.get_value('randomize_image_style', False)
 
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Post-processing settings (sticky across all batches):")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Post-processing settings:")
         logger.info(f"[Task {task_id_str}] [{persona_name}] - crop_white_borders: {crop_white_borders_enabled}")
         logger.info(f"[Task {task_id_str}] [{persona_name}] - randomize_image_style: {randomize_image_style_enabled}")
 
@@ -895,17 +893,25 @@ async def process_persona_images(
             # Get the prompt chain instance
             prompt_chain = get_prompt_chain()
 
+            # Load existing image ideas history to avoid duplicates
+            existing_history = result.image_ideas_history or []
+            if existing_history:
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Found {len(existing_history)} previous image ideas to avoid")
+                logger.debug(f"[Task {task_id_str}] [{persona_name}] Previous ideas: {existing_history}")
+
             # Generate all prompts at once (chain handles history internally)
-            prompts = await prompt_chain.generate_image_prompts(
+            # Returns: (final_prompts, image_ideas)
+            prompts, new_ideas = await prompt_chain.generate_image_prompts(
                 person_data=person_data,
                 num_images=images_per_persona,
-                prompts_history=None  # No cross-persona history for now
+                prompts_history=existing_history  # Pass history to avoid duplicates
             )
 
             if not prompts or len(prompts) != images_per_persona:
                 raise Exception(f"Expected {images_per_persona} prompts, got {len(prompts) if prompts else 0}")
 
-            logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1 COMPLETE: Generated {len(prompts)} prompts")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1 COMPLETE: Generated {len(prompts)} prompts with {len(new_ideas)} new ideas")
+            logger.debug(f"[Task {task_id_str}] [{persona_name}] New ideas: {new_ideas}")
 
         except Exception as e:
             error_msg = f"LLM prompt chain failed: {str(e)}"
@@ -1004,14 +1010,22 @@ async def process_persona_images(
 
         logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2 COMPLETE: Generated {len(all_image_urls)} images with SeeDream")
 
-        # Step 6: Save ALL images to database IMMEDIATELY
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(all_image_urls)} images to JSONB array...")
+        # Step 6: Save ALL images AND image ideas history to database IMMEDIATELY
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(all_image_urls)} images and updating history...")
 
         try:
+            # Save image URLs
             result.images = all_image_urls
             flag_modified(result, 'images')
+
+            # Update image ideas history (append new ideas to existing)
+            updated_history = existing_history + new_ideas
+            result.image_ideas_history = updated_history
+            flag_modified(result, 'image_ideas_history')
+
             db.session.commit()
-            logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED {len(all_image_urls)} images to database immediately")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED {len(all_image_urls)} images to database")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] UPDATED history: {len(existing_history)} → {len(updated_history)} total ideas")
         except Exception as e:
             error_msg = f"Database update failed: {str(e)}"
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
