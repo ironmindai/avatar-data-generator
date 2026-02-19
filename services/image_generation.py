@@ -204,11 +204,11 @@ async def generate_base_image(
 
                     prompt = (
                         f"{base_prompt} "
-                        f"Use the attached reference image ONLY for facial feature variation and diversity "
-                        f"(different eye shapes, nose shapes, face structures, facial proportions). "
-                        f"IMPORTANT: The person MUST match the ethnicity described in the text prompt above. "
-                        f"Use the reference only to randomize facial features, NOT to copy ethnicity, skin tone, or hair color. "
-                        f"Generate a person with the correct ethnicity from the description, but with unique facial features inspired by the reference's facial structure."
+                        f"Reference image attached: Use it to create facial feature diversity. "
+                        f"Copy the reference's unique facial structure (eye shape, nose bridge/width, "
+                        f"face shape, lip shape, eyebrow shape, cheekbone structure, jaw line). "
+                        f"Adjust skin tone and hair to match the ethnicity in the text, but keep the "
+                        f"reference's distinctive facial geometry and proportions for variety."
                     )
 
                     logger.info(f"Generating base image for gender '{gender}' using img2img (attempt {current_attempt}/{MAX_RETRIES})")
