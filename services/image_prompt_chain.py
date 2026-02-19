@@ -211,29 +211,28 @@ class ImagePromptChain:
             gender = 'male' if person_data['gender'].lower() == 'm' else 'female'
             age_str = str(person_data.get('age', 'unknown age'))
 
-            # System prompt with example
+            # System prompt with example (NEUTRAL - no quality descriptors)
             system_prompt = (
-                "You are to generate a prompt for image generation. We generate individual images.\n\n"
+                "You are to generate a NEUTRAL scene description for image generation. "
+                "Do NOT add any quality descriptors, lighting details, or camera type - those will be added later.\n\n"
                 "Here is an example for the structure:\n\n"
                 "<EXAMPLE>\n"
-                f"Generate an image of a 29 year old female, casual social media quality—not well-produced, "
-                "amateur digital camera aesthetic, low resolution. Create a composition showing: "
-                "mirror selfie trying on clothes in a dressing room\n"
+                f"{age_str} year old {gender}. mirror selfie trying on clothes in a dressing room\n"
                 "</EXAMPLE>\n\n"
                 "GUARDRAILS:\n"
-                "- Don't generate mobile device in their hands on selfies unless they are involving a mirror\n"
-                "- Face expressions and attire should be varied and unique\n"
-                "- Keep the natural and amateur quality aesthetic\n\n"
-                "The natural and amateur quality is a must to preserve and the wording in the example was tested and works well!\n\n"
-                "Now you are going to be given the person's info and requested image idea, and you will compose the final prompt.\n\n"
-                "Output ONLY the final prompt, nothing else."
+                "- Don't mention mobile device in their hands on selfies unless involving a mirror\n"
+                "- Describe the scene, pose, and activity ONLY\n"
+                "- Do NOT add quality descriptors like 'casual', 'amateur', 'low quality', etc.\n"
+                "- Do NOT add lighting or camera details\n\n"
+                "Keep it simple and neutral. Quality/aesthetic will be added in next step.\n\n"
+                "Output ONLY the neutral scene description, nothing else."
             )
 
             # User prompt
             user_prompt = (
                 f"Person: {age_str} year old {gender}\n"
                 f"Image idea: {image_idea}\n\n"
-                "Compose the prompt maintaining the guardrails."
+                "Compose a neutral scene description (no quality descriptors)."
             )
 
             # Call LLM
@@ -268,7 +267,7 @@ class ImagePromptChain:
         try:
             import random
 
-            # 4 winning quality styles from experimentation
+            # 6 winning quality styles from experimentation (playground/test_quality_styles.py)
             QUALITY_STYLES = {
                 "style_a_ultra_amateur": {
                     "prefix": "Low quality phone camera photo. Shot on old smartphone camera, bad lighting, not professional.",
@@ -278,6 +277,10 @@ class ImagePromptChain:
                     "prefix": "Candid unposed moment captured on phone camera.",
                     "suffix": "Not paying attention to camera. Natural everyday lighting, random background clutter visible, not photogenic angle, caught mid-motion, real authentic moment, imperfect composition"
                 },
+                "style_c_social_2014": {
+                    "prefix": "Authentic unfiltered social media photo from 2014-2016.",
+                    "suffix": "Shot on iPhone 6, compressed JPEG artifacts, slightly overexposed from phone flash, casual pose, not posed professionally, everyday person energy, relatable and mundane"
+                },
                 "style_d_chaos_natural": {
                     "prefix": "Deliberately bad photo quality, opposite of Instagram aesthetic.",
                     "suffix": "No filters, no editing, straight from camera, unflattering fluorescent lights, weird shadows, awkward crop, finger partially visible in corner, background is messy, very relatable and human"
@@ -285,6 +288,10 @@ class ImagePromptChain:
                 "style_e_low_effort": {
                     "prefix": "Quick snapshot taken without care or composition.",
                     "suffix": "Poor framing, subject not centered, amateur lighting from whatever source available, slightly blurry from movement, casual everyday moment captured hastily, very natural and unpolished"
+                },
+                "style_f_compressed_real": {
+                    "prefix": "Real person, real moment, heavily compressed phone photo.",
+                    "suffix": "JPEG compression artifacts visible, colors slightly washed out, image quality degraded from multiple uploads/downloads, authentic social media energy, no professional touches, raw and genuine"
                 }
             }
 

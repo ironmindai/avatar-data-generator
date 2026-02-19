@@ -120,14 +120,29 @@ async def generate_base_image(
         Exception: If API call fails or returns invalid response
     """
     try:
+        import random
+
         # Convert gender shorthand to full word
         gender_full = 'male' if gender.lower() == 'm' else 'female'
 
-        # Construct the base prompt
+        # Randomize base image quality (same styles as additional images)
+        BASE_QUALITY_STYLES = [
+            "Low quality phone camera photo. Shot on old smartphone camera, bad lighting, not professional.",
+            "Candid unposed selfie captured on phone camera.",
+            "Authentic unfiltered social media photo from 2014-2016. Shot on iPhone 6, compressed JPEG artifacts.",
+            "Deliberately bad photo quality, opposite of Instagram aesthetic. No filters, no editing, straight from camera.",
+            "Quick snapshot taken without care or composition. Poor framing, amateur lighting.",
+            "Real person, real moment, heavily compressed phone photo. JPEG compression artifacts visible."
+        ]
+
+        quality_prefix = random.choice(BASE_QUALITY_STYLES)
+
+        # Construct the base prompt with randomized quality
         base_prompt = (
+            f"{quality_prefix} "
             f"generate an image of how this person would look like in a selfie. "
-            f"the image should be not well-produced, amateur digital camera aesthetic, "
-            f"low resolution. Person: {bio_facebook}. {gender_full}."
+            f"not well-produced, amateur aesthetic, low resolution. "
+            f"Person: {bio_facebook}. {gender_full}."
         )
 
         # Add ethnicity if available
@@ -141,6 +156,8 @@ async def generate_base_image(
         # Append custom text if configured
         if BASE_PROMPT_APPEND:
             base_prompt = f"{base_prompt} {BASE_PROMPT_APPEND}"
+
+        logger.info(f"Base image quality style: {quality_prefix[:50]}...")
 
         # Check if face randomization is enabled
         if randomize_face:
@@ -187,8 +204,11 @@ async def generate_base_image(
 
                     prompt = (
                         f"{base_prompt} "
-                        f"Attached is an image just to draw inspiration from regarding facial anatomy "
-                        f"and features, not ethnicity or gender."
+                        f"Use the attached reference image ONLY for facial feature variation and diversity "
+                        f"(different eye shapes, nose shapes, face structures, facial proportions). "
+                        f"IMPORTANT: The person MUST match the ethnicity described in the text prompt above. "
+                        f"Use the reference only to randomize facial features, NOT to copy ethnicity, skin tone, or hair color. "
+                        f"Generate a person with the correct ethnicity from the description, but with unique facial features inspired by the reference's facial structure."
                     )
 
                     logger.info(f"Generating base image for gender '{gender}' using img2img (attempt {current_attempt}/{MAX_RETRIES})")
