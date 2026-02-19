@@ -43,6 +43,8 @@ async def generate_image_prompt(person_data: Dict[str, str], prompts_history: Op
             - bio_instagram: Instagram bio text
             - bio_x: X (Twitter) bio text
             - bio_tiktok: TikTok bio text
+            - ethnicity: Ethnicity (optional)
+            - age: Age (optional)
         prompts_history: Optional string containing previously used prompts
             to avoid repetition (e.g., "Ideas already used, to avoid: prompt1, prompt2")
 
@@ -90,7 +92,9 @@ async def generate_image_prompt(person_data: Dict[str, str], prompts_history: Op
             "bio_facebook": person_data['bio_facebook'],
             "bio_instagram": person_data['bio_instagram'],
             "bio_x": person_data['bio_x'],
-            "bio_tiktok": person_data['bio_tiktok']
+            "bio_tiktok": person_data['bio_tiktok'],
+            "ethnicity": person_data.get('ethnicity', ''),
+            "age": person_data.get('age', None)
         })
 
         # Build startAgentflow_0 array with person_data and optional prompts_history

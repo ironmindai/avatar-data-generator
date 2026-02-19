@@ -834,6 +834,26 @@ def create_app():
         }
         status_message = status_messages.get(task.status, task.status)
 
+        # Calculate ethnicity and age statistics from all results (not just current page)
+        all_results = GenerationResult.query.filter_by(task_id=task.id).all()
+
+        # Ethnicity distribution
+        ethnicity_counts = {}
+        for result in all_results:
+            if result.ethnicity:
+                ethnicity = result.ethnicity.strip()
+                ethnicity_counts[ethnicity] = ethnicity_counts.get(ethnicity, 0) + 1
+
+        # Age statistics
+        ages = [result.age for result in all_results if result.age is not None]
+        age_stats = {}
+        if ages:
+            age_stats = {
+                'min': min(ages),
+                'max': max(ages),
+                'avg': round(sum(ages) / len(ages), 1)
+            }
+
         # Build results array (exclude base_image_url - it's for generation only)
         results_data = []
         for result in pagination.items:
@@ -849,6 +869,8 @@ def create_app():
                     'tiktok': result.bio_tiktok
                 },
                 'supplementary': {
+                    'ethnicity': result.ethnicity,
+                    'age': result.age,
                     'job_title': result.job_title,
                     'workplace': result.workplace,
                     'edu_establishment': result.edu_establishment,
@@ -874,7 +896,9 @@ def create_app():
                 'images_per_persona': task.images_per_persona,
                 'created_at': task.created_at.isoformat(),
                 'completed_at': task.completed_at.isoformat() if task.completed_at else None,
-                'error_log': task.error_log
+                'error_log': task.error_log,
+                'ethnicity_distribution': ethnicity_counts,
+                'age_stats': age_stats
             },
             'progress': {
                 'total_personas': total_personas,
@@ -954,6 +978,8 @@ def create_app():
                     'tiktok': result.bio_tiktok
                 },
                 'supplementary': {
+                    'ethnicity': result.ethnicity,
+                    'age': result.age,
                     'job_title': result.job_title,
                     'workplace': result.workplace,
                     'edu_establishment': result.edu_establishment,
@@ -1019,6 +1045,7 @@ def create_app():
         # Build CSV headers (exclude base_image_url - it's for generation only)
         headers = [
             'firstname', 'lastname', 'gender',
+            'ethnicity', 'age',
             'bio_facebook', 'bio_instagram', 'bio_x', 'bio_tiktok',
             'job_title', 'workplace',
             'edu_establishment', 'edu_study',
@@ -1039,6 +1066,8 @@ def create_app():
                 'firstname': result.firstname,
                 'lastname': result.lastname,
                 'gender': result.gender,
+                'ethnicity': result.ethnicity or '',
+                'age': result.age if result.age is not None else '',
                 'bio_facebook': result.bio_facebook or '',
                 'bio_instagram': result.bio_instagram or '',
                 'bio_x': result.bio_x or '',
@@ -1139,6 +1168,8 @@ def create_app():
                         'tiktok': result.bio_tiktok
                     },
                     'supplementary': {
+                        'ethnicity': result.ethnicity,
+                        'age': result.age,
                         'job_title': result.job_title,
                         'workplace': result.workplace,
                         'edu_establishment': result.edu_establishment,
@@ -1164,6 +1195,8 @@ def create_app():
                     writer.writerow({'field': 'firstname', 'value': result.firstname})
                     writer.writerow({'field': 'lastname', 'value': result.lastname})
                     writer.writerow({'field': 'gender', 'value': result.gender})
+                    writer.writerow({'field': 'ethnicity', 'value': result.ethnicity or ''})
+                    writer.writerow({'field': 'age', 'value': result.age if result.age is not None else ''})
                     writer.writerow({'field': 'bio_facebook', 'value': result.bio_facebook or ''})
                     writer.writerow({'field': 'bio_instagram', 'value': result.bio_instagram or ''})
                     writer.writerow({'field': 'bio_x', 'value': result.bio_x or ''})

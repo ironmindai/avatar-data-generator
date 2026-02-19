@@ -499,6 +499,8 @@ def parse_flowise_response(text_content: str, batch_number: int, task_id: str) -
                                 'firstname': persona_data['firstname'],
                                 'lastname': persona_data['lastname'],
                                 'gender': persona_data['gender'],
+                                'ethnicity': persona_data.get('ethnicity'),  # Root level field
+                                'age': bios_json.get('age'),  # Inside bios JSON
                                 'bio_facebook': bios_json.get('facebook_bio', ''),
                                 'bio_instagram': bios_json.get('instagram_bio', ''),
                                 'bio_x': bios_json.get('x_bio', ''),
@@ -553,6 +555,8 @@ def store_results(task_db_id: int, batch_number: int, personas: List[Dict]) -> i
                 firstname=persona['firstname'],
                 lastname=persona['lastname'],
                 gender=persona['gender'],
+                ethnicity=persona.get('ethnicity'),
+                age=persona.get('age'),
                 bio_facebook=persona['bio_facebook'],
                 bio_instagram=persona['bio_instagram'],
                 bio_x=persona['bio_x'],
@@ -795,7 +799,9 @@ async def process_persona_images(
                     bio_facebook=result.bio_facebook or '',
                     gender=result.gender,
                     randomize_face=randomize_face,
-                    randomize_face_gender_lock=randomize_face_gender_lock
+                    randomize_face_gender_lock=randomize_face_gender_lock,
+                    ethnicity=result.ethnicity,
+                    age=result.age
                 )
                 if not base_image_bytes:
                     raise Exception("OpenAI returned empty image")
@@ -840,7 +846,9 @@ async def process_persona_images(
                     bio_facebook=result.bio_facebook or '',
                     gender=result.gender,
                     randomize_face=randomize_face,
-                    randomize_face_gender_lock=randomize_face_gender_lock
+                    randomize_face_gender_lock=randomize_face_gender_lock,
+                    ethnicity=result.ethnicity,
+                    age=result.age
                 )
                 if not base_image_bytes:
                     raise Exception("OpenAI returned empty image")
@@ -872,7 +880,9 @@ async def process_persona_images(
             'bio_facebook': result.bio_facebook or '',
             'bio_instagram': result.bio_instagram or '',
             'bio_x': result.bio_x or '',
-            'bio_tiktok': result.bio_tiktok or ''
+            'bio_tiktok': result.bio_tiktok or '',
+            'ethnicity': result.ethnicity or '',
+            'age': result.age
         }
 
         # ===== PHASE 1: Sequential Flowise Prompt Collection =====

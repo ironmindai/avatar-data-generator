@@ -1441,4 +1441,68 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-05 (Persona Supplementary Fields Display)*
+### 2026-02-19 - Ethnicity and Age Fields Implementation
+
+**New Persona Fields Added:**
+- Added ethnicity and age fields to persona display in dataset detail page
+- Fields now appear in a new "Demographics" section at the top of supplementary info
+- Follows existing UI patterns with icon-based sections
+
+**Demographics Section (Per-Persona Display):**
+- Icon: users (14px, cyan)
+- Fields: Ethnicity, Age
+- Format: Label-value pairs with colon separator
+- Positioned before "About" section for visibility
+- Smart conditional rendering: Only shows when at least one field has data
+
+**Task Metadata Section (Aggregated Display):**
+- Added "Ethnicities" row showing distribution across all personas
+  - Format: "Ethnicity1 (count), Ethnicity2 (count), ..."
+  - Example: "White (3), Asian (2), Hispanic (1)"
+- Added "Age Range" row showing age statistics
+  - Format: "min-max (avg: average)"
+  - Example: "25-45 (avg: 32.5)"
+- Displayed in monospace font for technical appearance
+- Shows "N/A" when no data is available
+
+**Backend Updates:**
+- Updated `/datasets/<task_id>/data` API endpoint to include:
+  - `ethnicity_distribution`: Dictionary mapping ethnicity to count
+  - `age_stats`: Object with min, max, and avg age values
+- Updated JSON export to include ethnicity and age in supplementary object
+- Updated CSV export to include ethnicity and age columns (after gender, before bio fields)
+- Updated ZIP export to include ethnicity and age in both details.json and details.csv files
+- All export formats now include complete demographic data
+- Statistics calculated from all results, not just current page
+
+**Data Flow:**
+- Flowise workflow returns ethnicity and age in persona generation
+- Backend stores fields in GenerationResult model (ethnicity: String(100), age: Integer)
+- Frontend displays fields conditionally in Demographics section (per-persona)
+- Frontend displays aggregated statistics in task metadata section
+- Export routes include fields in all formats (JSON, CSV, ZIP)
+
+**Visual Design:**
+- Task metadata: Standard metadata-item format with label and value
+- Per-persona section: Icon-based section header with uppercase title
+- Tertiary color labels, primary color values
+- Smart display logic handles null/empty values gracefully
+- Age displays as numeric value, ethnicity as text value
+- Maintains consistency with existing task metadata display
+
+**Files Modified:**
+- `/static/js/datasets.js` - Added task metadata display for ethnicity/age statistics, Demographics section per-persona
+- `/app.py` - Updated dataset_detail_api to calculate and return ethnicity/age statistics, updated all export routes
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Task-level statistics provide quick overview of demographic distribution
+- Per-persona Demographics section provides detailed individual data
+- Positioned prominently for easy scanning
+- Maintains brandbook compliance: Sharp corners, neon cyan accents, proper spacing
+- Export consistency ensures data integrity across all download formats
+- Aggregated display helps users understand dataset composition at a glance
+
+---
+
+*Last Updated: 2026-02-19 (Ethnicity and Age Fields Implementation - Aggregated Display)*

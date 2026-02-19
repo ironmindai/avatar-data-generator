@@ -383,6 +383,8 @@ class GenerationResult(db.Model):
         firstname: Generated first name
         lastname: Generated last name
         gender: Gender (f/m)
+        ethnicity: Ethnicity (from root level of Flowise response)
+        age: Age (from bios JSON object)
         bio_facebook: Facebook bio text
         bio_instagram: Instagram bio text
         bio_x: X (Twitter) bio text
@@ -408,6 +410,8 @@ class GenerationResult(db.Model):
     firstname = db.Column(db.String(100), nullable=False)
     lastname = db.Column(db.String(100), nullable=False)
     gender = db.Column(db.String(10), nullable=False)
+    ethnicity = db.Column(db.String(100), nullable=True)
+    age = db.Column(db.Integer, nullable=True)
     bio_facebook = db.Column(db.Text, nullable=True)
     bio_instagram = db.Column(db.Text, nullable=True)
     bio_x = db.Column(db.Text, nullable=True)
@@ -429,6 +433,8 @@ class GenerationResult(db.Model):
     task = db.relationship('GenerationTask', backref=db.backref('results', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
+        age_info = f' age={self.age}' if self.age else ''
+        ethnicity_info = f' {self.ethnicity}' if self.ethnicity else ''
         job_info = f' ({self.job_title})' if self.job_title else ''
         location_info = f' in {self.current_city}, {self.current_state}' if self.current_city and self.current_state else ''
-        return f'<GenerationResult {self.firstname} {self.lastname}{job_info}{location_info} task_id={self.task_id} batch={self.batch_number}>'
+        return f'<GenerationResult {self.firstname} {self.lastname}{age_info}{ethnicity_info}{job_info}{location_info} task_id={self.task_id} batch={self.batch_number}>'

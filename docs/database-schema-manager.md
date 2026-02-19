@@ -169,6 +169,8 @@ Stores persona data and S3 image URLs for generated avatars. Each record represe
 - `firstname` (String(100), NOT NULL) - Generated first name
 - `lastname` (String(100), NOT NULL) - Generated last name
 - `gender` (String(10), NOT NULL) - Gender (f/m)
+- `ethnicity` (String(100), NULLABLE) - Generated ethnicity (from root level of Flowise response)
+- `age` (Integer, NULLABLE) - Generated age (from bios JSON object)
 - `bio_facebook` (Text, NULLABLE) - Generated Facebook bio text
 - `bio_instagram` (Text, NULLABLE) - Generated Instagram bio text
 - `bio_x` (Text, NULLABLE) - Generated X (Twitter) bio text
@@ -507,6 +509,38 @@ All new columns are nullable (Text or String) to maintain backward compatibility
 - Backward compatible - existing records will have NULL values for new fields
 - **Downgrade Warning**: Rolling back this migration will permanently delete all data stored in these 9 columns
 
+**Status**: APPLIED
+
+---
+
+### Migration: fbc78f685fa2 - add_ethnicity_and_age_to_generation_results
+**Date**: 2026-02-19 06:41:56
+**Parent**: 7e69fd85074a
+
+**Changes:**
+- Added `ethnicity` (String(100), NULLABLE) - Ethnicity from root level of Flowise response
+- Added `age` (Integer, NULLABLE) - Age from bios JSON object
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/fbc78f685fa2_add_ethnicity_and_age_to_generation_.py`
+
+**Purpose:**
+Extends the generation_results table to capture ethnicity and age fields from the updated Flowise workflow (71bf0c86-c802-4221-b6e7-0af16e350bb6). These fields provide additional demographic information for generated personas.
+
+**Schema Changes:**
+- `ethnicity`: String(100), nullable - Extracted from root level of Flowise response (e.g., "ethnicity": "White")
+- `age`: Integer, nullable - Extracted from inside the bios JSON object (e.g., "age": 23)
+
+**Data Source:**
+- Flowise workflow ID: 71bf0c86-c802-4221-b6e7-0af16e350bb6
+- Ethnicity comes from root-level response field
+- Age comes from nested bios JSON string
+
+**Safety Notes:**
+- Non-destructive operation (adding nullable columns only)
+- Fully reversible via downgrade function
+- Backward compatible - existing records will have NULL values for new fields
+- **Downgrade Warning**: Rolling back this migration will permanently delete all ethnicity and age data
+
 **Status**: APPLIED (Current)
 
 ---
@@ -553,12 +587,13 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 7e69fd85074a (add_supplementary_persona_fields_job_education_location_about) - APPLIED
+**Latest Migration**: fbc78f685fa2 (add_ethnicity_and_age_to_generation_results) - APPLIED
 **Total Tables**: 5
-**Total Migrations**: 11 (1 reverted)
+**Total Migrations**: 12 (1 reverted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
+- NEW `generation_results.ethnicity` (String(100)), `age` (Integer) - demographic fields from updated Flowise workflow (71bf0c86-c802-4221-b6e7-0af16e350bb6)
 - NEW `generation_results.job_title`, `workplace`, `edu_establishment`, `edu_study`, `current_city`, `current_state`, `prev_city`, `prev_state`, `about` - supplementary persona fields from updated Flowise workflow
 - `settings.max_concurrent_tasks` ('1') - controls maximum number of concurrent avatar generation tasks
 - `config.randomize_image_style` (FALSE) - enables randomized style processing for image diversity (color presets, contrast, sharpness, grain, vignette)

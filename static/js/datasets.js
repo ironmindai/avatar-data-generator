@@ -202,6 +202,21 @@
     // Update metadata
     const metadataContainer = document.getElementById('taskMetadata');
     if (metadataContainer) {
+      // Build ethnicity distribution string
+      let ethnicityDisplay = 'N/A';
+      if (task.ethnicity_distribution && Object.keys(task.ethnicity_distribution).length > 0) {
+        const ethnicityParts = Object.entries(task.ethnicity_distribution)
+          .map(([ethnicity, count]) => `${ethnicity} (${count})`)
+          .join(', ');
+        ethnicityDisplay = ethnicityParts;
+      }
+
+      // Build age stats string
+      let ageDisplay = 'N/A';
+      if (task.age_stats && task.age_stats.min !== undefined) {
+        ageDisplay = `${task.age_stats.min}-${task.age_stats.max} (avg: ${task.age_stats.avg})`;
+      }
+
       metadataContainer.innerHTML = `
         <div class="metadata-item">
           <span class="metadata-label">Persona Description:</span>
@@ -210,6 +225,14 @@
         <div class="metadata-item">
           <span class="metadata-label">Language:</span>
           <div class="metadata-value monospace">${escapeHtml(task.bio_language).toUpperCase()}</div>
+        </div>
+        <div class="metadata-item">
+          <span class="metadata-label">Ethnicities:</span>
+          <div class="metadata-value">${ethnicityDisplay}</div>
+        </div>
+        <div class="metadata-item">
+          <span class="metadata-label">Age Range:</span>
+          <div class="metadata-value monospace">${ageDisplay}</div>
         </div>
       `;
     }
@@ -368,6 +391,9 @@
     // Helper to check if value exists and is not empty
     const hasValue = (val) => val && val.trim() !== '';
 
+    // Helper to check if numeric value exists
+    const hasNumericValue = (val) => val !== null && val !== undefined && val !== '';
+
     // Build supplementary info sections
     const supp = result.supplementary || {};
     const hasJobInfo = hasValue(supp.job_title) || hasValue(supp.workplace);
@@ -376,8 +402,9 @@
     const hasPrevLocation = hasValue(supp.prev_city) || hasValue(supp.prev_state);
     const hasLocation = hasCurrentLocation || hasPrevLocation;
     const hasAbout = hasValue(supp.about);
+    const hasDemographics = hasValue(supp.ethnicity) || hasNumericValue(supp.age);
 
-    const showSupplementaryInfo = hasJobInfo || hasEducation || hasLocation || hasAbout;
+    const showSupplementaryInfo = hasJobInfo || hasEducation || hasLocation || hasAbout || hasDemographics;
 
     return `
       <div class="result-card" data-result-id="${result.id || ''}">
@@ -393,6 +420,19 @@
 
           ${showSupplementaryInfo ? `
           <div class="persona-supplementary">
+            ${hasDemographics ? `
+            <div class="persona-section">
+              <div class="persona-section-header">
+                <i data-feather="users"></i>
+                <span class="persona-section-title">Demographics</span>
+              </div>
+              <div class="persona-section-content">
+                ${hasValue(supp.ethnicity) ? `<div class="persona-info-item"><span class="info-label">Ethnicity:</span> <span class="info-value">${escapeHtml(supp.ethnicity)}</span></div>` : ''}
+                ${hasNumericValue(supp.age) ? `<div class="persona-info-item"><span class="info-label">Age:</span> <span class="info-value">${escapeHtml(String(supp.age))}</span></div>` : ''}
+              </div>
+            </div>
+            ` : ''}
+
             ${hasAbout ? `
             <div class="persona-section">
               <div class="persona-section-header">

@@ -95,7 +95,9 @@ async def generate_base_image(
     bio_facebook: str,
     gender: str,
     randomize_face: bool = False,
-    randomize_face_gender_lock: bool = False
+    randomize_face_gender_lock: bool = False,
+    ethnicity: Optional[str] = None,
+    age: Optional[int] = None
 ) -> Optional[bytes]:
     """
     Generate base avatar image from bio using text-to-image or image-to-image generation.
@@ -108,6 +110,8 @@ async def generate_base_image(
         gender: Gender of the person (for prompt) - 'm' or 'f'
         randomize_face: If True, use random face from S3 with img2img. If False, use txt2img.
         randomize_face_gender_lock: If True and randomize_face=True, select face matching gender
+        ethnicity: Optional ethnicity of the person (e.g., 'White', 'Black', 'Asian')
+        age: Optional age of the person (e.g., 23)
 
     Returns:
         bytes: Generated image as bytes, or None if generation fails
@@ -123,8 +127,16 @@ async def generate_base_image(
         base_prompt = (
             f"generate an image of how this person would look like in a selfie. "
             f"the image should be not well-produced, amateur digital camera aesthetic, "
-            f"low resolution. Person: {bio_facebook}. {gender_full}. Please consider ethnicity if it's an obvious one, for a better match"
+            f"low resolution. Person: {bio_facebook}. {gender_full}."
         )
+
+        # Add ethnicity if available
+        if ethnicity:
+            base_prompt += f" Ethnicity: {ethnicity}."
+
+        # Add age if available
+        if age:
+            base_prompt += f" Age: {age}."
 
         # Append custom text if configured
         if BASE_PROMPT_APPEND:
