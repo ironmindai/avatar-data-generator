@@ -202,13 +202,15 @@ async def generate_base_image(
                 try:
                     current_attempt += 1
 
+                    # STRONG ethnicity-first prompt to prevent reference face from dominating
+                    # Tests show this successfully overrides reference ethnicity while maintaining diversity
                     prompt = (
                         f"{base_prompt} "
-                        f"Reference image attached: Use it to create facial feature diversity. "
-                        f"Copy the reference's unique facial structure (eye shape, nose bridge/width, "
-                        f"face shape, lip shape, eyebrow shape, cheekbone structure, jaw line). "
-                        f"Adjust skin tone and hair to match the ethnicity in the text, but keep the "
-                        f"reference's distinctive facial geometry and proportions for variety."
+                        f"CRITICAL REQUIREMENT: Generate a {ethnicity} person with authentic {ethnicity} facial features, "
+                        f"{ethnicity} skin tone, and {ethnicity} appearance. "
+                        f"Reference image is attached ONLY for subtle facial proportion variation. "
+                        f"DO NOT copy the reference's skin tone, hair, facial features, or ethnic characteristics. "
+                        f"The result MUST clearly be a {ethnicity} person, NOT the reference's ethnicity."
                     )
 
                     logger.info(f"Generating base image for gender '{gender}' using img2img (attempt {current_attempt}/{MAX_RETRIES})")
