@@ -385,6 +385,9 @@ async def generate_images_from_base(
     flowise_prompt: str
 ) -> Optional[bytes]:
     """
+    DEPRECATED: This function is no longer used in the production workflow.
+    Replaced by SeeDream individual image generation (seedream_service.py).
+
     Generate 4-image grid from base image using image-to-image generation.
 
     Uses OpenAI's /v1/images/edits endpoint to create variations of the base
@@ -403,6 +406,10 @@ async def generate_images_from_base(
 
     Raises:
         Exception: If API call fails or returns invalid response
+
+    Deprecated:
+        Use seedream_service.generate_image_with_reference() instead for
+        individual image generation with better facial consistency.
     """
     try:
         # Append custom text if configured

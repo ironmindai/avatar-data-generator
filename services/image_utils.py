@@ -43,6 +43,9 @@ def split_and_trim_image(
     num_cols: int = 2
 ) -> List[bytes]:
     """
+    DEPRECATED: This function is no longer used in the production workflow.
+    Replaced by SeeDream individual image generation (no grid splitting needed).
+
     Split a grid image into individual images and trim whitespace from each.
 
     Takes a 4-image grid (2x2) and splits it into 4 separate images,
@@ -59,6 +62,10 @@ def split_and_trim_image(
 
     Raises:
         Exception: If image splitting or trimming fails
+
+    Deprecated:
+        Images are now generated individually via SeeDream, eliminating the need
+        for grid splitting. This function remains for backwards compatibility.
     """
     temp_dir = None
     try:
@@ -293,6 +300,83 @@ def upload_images_batch(
     except Exception as e:
         logger.error(f"Error in batch upload: {str(e)}", exc_info=True)
         raise Exception(f"Batch upload failed after {len(results)} successful uploads: {str(e)}")
+
+
+def generate_presigned_url(
+    object_key: str,
+    bucket_name: str = None,
+    expiration: int = 3600
+) -> str:
+    """
+    Generate a presigned URL for an S3 object using the PUBLIC endpoint.
+
+    This allows temporary public access to a private S3 object without
+    making the bucket public. Useful for passing image URLs to external APIs
+    like SeeDream that need to download the image.
+
+    IMPORTANT: Uses S3_PUBLIC_URL_BASE instead of S3_ENDPOINT to ensure
+    the URL is accessible from external services (not localhost).
+
+    Args:
+        object_key: S3 object key (path/filename in bucket)
+        bucket_name: S3 bucket name (defaults to S3_BUCKET_NAME from .env)
+        expiration: URL expiration time in seconds (default: 3600 = 1 hour)
+
+    Returns:
+        str: Presigned URL that provides temporary access to the object
+
+    Raises:
+        Exception: If S3 credentials are missing or URL generation fails
+    """
+    try:
+        # Use provided bucket name or default from environment
+        bucket = bucket_name or S3_BUCKET_NAME
+
+        # Validate configuration
+        if not all([S3_PUBLIC_URL_BASE, S3_ACCESS_KEY, S3_SECRET_KEY, bucket]):
+            logger.error("S3 configuration incomplete")
+            raise Exception(
+                "S3 configuration missing. Check S3_PUBLIC_URL_BASE, S3_ACCESS_KEY, "
+                "S3_SECRET_KEY, and S3_BUCKET_NAME in .env"
+            )
+
+        logger.debug(f"Generating presigned URL for {bucket}/{object_key} (expiry: {expiration}s)")
+
+        # Initialize S3 client with PUBLIC endpoint (not localhost)
+        # This ensures the presigned URL uses the public domain that external services can access
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=S3_PUBLIC_URL_BASE,  # Use public URL, not localhost
+            aws_access_key_id=S3_ACCESS_KEY,
+            aws_secret_access_key=S3_SECRET_KEY,
+            config=Config(signature_version='s3v4'),
+            region_name=S3_REGION
+        )
+
+        # Generate presigned URL
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': bucket,
+                'Key': object_key
+            },
+            ExpiresIn=expiration
+        )
+
+        logger.debug(f"Presigned URL generated: {presigned_url[:100]}...")
+        logger.info(f"Presigned URL uses public endpoint: {S3_PUBLIC_URL_BASE}")
+        return presigned_url
+
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        error_message = e.response.get('Error', {}).get('Message', str(e))
+
+        logger.error(f"S3 presigned URL generation failed - {error_code}: {error_message}")
+        raise Exception(f"S3 presigned URL error ({error_code}): {error_message}")
+
+    except Exception as e:
+        logger.error(f"Error generating presigned URL: {str(e)}", exc_info=True)
+        raise Exception(f"Presigned URL generation failed: {str(e)}")
 
 
 # Utility function for testing/debugging
