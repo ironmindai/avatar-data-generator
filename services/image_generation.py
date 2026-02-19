@@ -137,12 +137,20 @@ async def generate_base_image(
 
         quality_prefix = random.choice(BASE_QUALITY_STYLES)
 
+        # Randomize image aspect ratio for variety
+        ASPECT_RATIOS = ['1024x1024', '1024x1536', '1536x1024']  # square, portrait, landscape
+        selected_size = random.choice(ASPECT_RATIOS)
+        logger.info(f"Selected aspect ratio: {selected_size}")
+
         # Construct the base prompt with randomized quality
+        # CRITICAL: Exclude phone/camera visibility to avoid meta-selfie artifacts
         base_prompt = (
             f"{quality_prefix} "
             f"generate an image of how this person would look like in a selfie. "
             f"not well-produced, amateur aesthetic, low resolution. "
-            f"Person: {bio_facebook}. {gender_full}."
+            f"Person: {bio_facebook}. {gender_full}. "
+            f"IMPORTANT: Do not show the phone or camera in the image. "
+            f"Show only the person's face and upper body."
         )
 
         # Add ethnicity if available
@@ -230,7 +238,7 @@ async def generate_base_image(
                         'prompt': prompt,
                         'model': IMAGE_MODEL,
                         'n': 1,
-                        'size': 'auto'
+                        'size': selected_size  # Use randomized aspect ratio
                     }
 
                     headers = {
@@ -346,7 +354,7 @@ async def generate_base_image(
             payload = {
                 "model": IMAGE_MODEL,
                 "prompt": prompt,
-                "size": "auto",
+                "size": selected_size,  # Use randomized aspect ratio
                 "n": 1
             }
 
