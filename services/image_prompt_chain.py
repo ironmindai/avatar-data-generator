@@ -107,7 +107,8 @@ class ImagePromptChain:
                 structured_prompt = await self._compose_structured_prompt(
                     person_data=person_data,
                     image_idea=idea,
-                    image_number=i + 1
+                    image_number=i + 1,
+                    is_selfie=is_selfie
                 )
 
                 logger.debug(f"Structured prompt: {structured_prompt}")
@@ -202,7 +203,8 @@ class ImagePromptChain:
         self,
         person_data: Dict[str, any],
         image_idea: str,
-        image_number: int
+        image_number: int,
+        is_selfie: bool = True
     ) -> str:
         """
         Step 2: Compose a structured prompt from the idea.
@@ -214,18 +216,26 @@ class ImagePromptChain:
             age_str = str(person_data.get('age', 'unknown age'))
 
             # System prompt with example (NEUTRAL - no quality descriptors)
+            # Add POV selfie instruction for selfie images
+            selfie_instruction = ""
+            if is_selfie:
+                selfie_instruction = (
+                    "\n\nIMPORTANT: Since this is a selfie, you MUST start the description with 'POV selfie' "
+                    "to establish the camera perspective. This naturally excludes the phone/camera from the frame."
+                )
+
             system_prompt = (
                 "You are to generate a NEUTRAL scene description for image generation. "
                 "Do NOT add any quality descriptors, lighting details, or camera type - those will be added later.\n\n"
                 "Here is an example for the structure:\n\n"
                 "<EXAMPLE>\n"
-                f"{age_str} year old {gender}. mirror selfie trying on clothes in a dressing room\n"
+                f"POV selfie. {age_str} year old {gender}. mirror selfie trying on clothes in a dressing room\n"
                 "</EXAMPLE>\n\n"
                 "GUARDRAILS:\n"
-                "- Don't mention mobile device in their hands on selfies unless involving a mirror\n"
                 "- Describe the scene, pose, and activity ONLY\n"
                 "- Do NOT add quality descriptors like 'casual', 'amateur', 'low quality', etc.\n"
-                "- Do NOT add lighting or camera details\n\n"
+                "- Do NOT add lighting or camera details\n"
+                f"{selfie_instruction}\n\n"
                 "Keep it simple and neutral. Quality/aesthetic will be added in next step.\n\n"
                 "Output ONLY the neutral scene description, nothing else."
             )

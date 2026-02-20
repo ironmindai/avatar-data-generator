@@ -143,14 +143,13 @@ async def generate_base_image(
         logger.info(f"Selected aspect ratio: {selected_size}")
 
         # Construct the base prompt with randomized quality
-        # CRITICAL: Exclude phone/camera visibility to avoid meta-selfie artifacts
+        # Use "POV selfie" to naturally exclude phone/camera from frame
         base_prompt = (
             f"{quality_prefix} "
-            f"generate an image of how this person would look like in a selfie. "
+            f"POV selfie. "
             f"not well-produced, amateur aesthetic, low resolution. "
             f"Person: {bio_facebook}. {gender_full}. "
-            f"IMPORTANT: Do not show the phone or camera in the image. "
-            f"Show only the person's face and upper body."
+            f"Close-up portrait showing face and upper body."
         )
 
         # Add ethnicity if available
@@ -210,15 +209,12 @@ async def generate_base_image(
                 try:
                     current_attempt += 1
 
-                    # STRONG ethnicity-first prompt to prevent reference face from dominating
-                    # Tests show this successfully overrides reference ethnicity while maintaining diversity
+                    # Use reference face for structural diversity while prompt controls ethnicity
+                    # Low fidelity allows prompt to override reference's ethnicity/skin tone
                     prompt = (
                         f"{base_prompt} "
-                        f"CRITICAL REQUIREMENT: Generate a {ethnicity} person with authentic {ethnicity} facial features, "
-                        f"{ethnicity} skin tone, and {ethnicity} appearance. "
-                        f"Reference image is attached ONLY for subtle facial proportion variation. "
-                        f"DO NOT copy the reference's skin tone, hair, facial features, or ethnic characteristics. "
-                        f"The result MUST clearly be a {ethnicity} person, NOT the reference's ethnicity."
+                        f"Generate a {ethnicity} person with authentic {ethnicity} facial features and skin tone. "
+                        f"Use the reference image for facial structure and proportions variation only."
                     )
 
                     logger.info(f"Generating base image for gender '{gender}' using img2img (attempt {current_attempt}/{MAX_RETRIES})")
@@ -238,7 +234,8 @@ async def generate_base_image(
                         'prompt': prompt,
                         'model': IMAGE_MODEL,
                         'n': 1,
-                        'size': selected_size  # Use randomized aspect ratio
+                        'size': selected_size,  # Use randomized aspect ratio
+                        'fidelity': 'low'  # Low fidelity = reference provides structure, prompt controls ethnicity
                     }
 
                     headers = {
