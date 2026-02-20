@@ -125,6 +125,20 @@ async def generate_base_image(
         # Convert gender shorthand to full word
         gender_full = 'male' if gender.lower() == 'm' else 'female'
 
+        # Add gender-specific diversity hints to combat model bias
+        # Males need extra diversity prompts as training data has less variety
+        diversity_hint = ""
+        if gender.lower() == 'm':
+            import random
+            male_diversity = [
+                "unique facial features",
+                "distinct face shape",
+                "individual facial characteristics",
+                "varied facial structure",
+                "distinctive appearance"
+            ]
+            diversity_hint = f" {random.choice(male_diversity)}."
+
         # Randomize base image quality (same styles as additional images)
         BASE_QUALITY_STYLES = [
             "Low quality phone camera photo. Shot on old smartphone camera, bad lighting, not professional.",
@@ -148,7 +162,7 @@ async def generate_base_image(
             f"{quality_prefix} "
             f"POV selfie. "
             f"not well-produced, amateur aesthetic, low resolution. "
-            f"Person: {bio_facebook}. {gender_full}. "
+            f"Person: {bio_facebook}. {gender_full}.{diversity_hint} "
             f"Close-up portrait showing face and upper body."
         )
 
@@ -235,7 +249,7 @@ async def generate_base_image(
                         'model': IMAGE_MODEL,
                         'n': 1,
                         'size': selected_size,  # Use randomized aspect ratio
-                        'fidelity': 'low'  # Low fidelity = reference provides structure, prompt controls ethnicity
+                        'input_fidelity': 'low'  # Low fidelity = creative freedom to reinterpret ethnicity from prompt
                     }
 
                     headers = {
