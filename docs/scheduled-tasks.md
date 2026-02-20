@@ -17,14 +17,22 @@ This document provides comprehensive information about all scheduled tasks, work
 
 ## Overview
 
-The Avatar Data Generator uses background worker processes to handle time-consuming avatar generation tasks asynchronously. This allows the web application to remain responsive while processing large batches of avatar data.
+The Avatar Data Generator uses **APScheduler** integrated into the Flask application to handle background avatar generation tasks asynchronously. This allows the web application to remain responsive while processing large batches of avatar data.
+
+### Architecture
+
+**APScheduler Integration:**
+- Background scheduler runs within the Flask process
+- Two scheduled jobs run at `WORKER_INTERVAL` (default: 30 seconds)
+- Database row-level locking prevents conflicts between multiple workers
+- Single-service architecture (no separate worker service needed)
 
 ### Processing Pipeline
 
-The avatar generation process is split into two distinct steps:
+The avatar generation process is split into two steps:
 
-1. **Data Generation (IMPLEMENTED)**: Generate persona data (names, bios) via Flowise API
-2. **Image Generation (FUTURE)**: Generate avatar images (to be implemented)
+1. **Data Generation**: Generate persona data (names, bios) via Flowise API
+2. **Image Generation**: Generate avatar images via OpenAI
 
 ### Status Flow
 
@@ -37,7 +45,17 @@ pending -> generating-data -> data-generated -> generating-images -> completed
                                   failed
 ```
 
-**Current Implementation**: Tasks go from `pending` -> `generating-data` -> `data-generated`
+### Scheduler Jobs
+
+1. **Data Generation Job** (`task_processor_job`):
+   - Processes tasks with status='pending'
+   - Calls `process_single_task()`
+   - Updates to 'data-generated'
+
+2. **Image Generation Job** (`image_processor_job`):
+   - Processes tasks with status='data-generated'
+   - Calls `process_image_generation()`
+   - Updates to 'completed'
 
 ---
 
@@ -370,6 +388,78 @@ requests==2.31.0
 - `settings`: Stores bio prompt configurations
 
 ---
+
+## Configuration
+
+### APScheduler Settings
+
+Environment variables in `.env`:
+
+```bash
+# Worker interval (seconds between checks)
+WORKER_INTERVAL=30  # Check every 30 seconds
+
+# Flowise parallel threads
+MULTITHREAD_FLOWISE=5  # Number of parallel Flowise API requests
+```
+
+### Recommended Settings by Volume
+
+**Low volume (< 10 tasks/hour):**
+```bash
+WORKER_INTERVAL=60  # Check every minute
+MULTITHREAD_FLOWISE=3
+```
+
+**Medium volume (10-50 tasks/hour):**
+```bash
+WORKER_INTERVAL=30  # Check every 30 seconds
+MULTITHREAD_FLOWISE=5
+```
+
+**High volume (> 50 tasks/hour):**
+```bash
+WORKER_INTERVAL=10  # Check every 10 seconds
+MULTITHREAD_FLOWISE=10
+```
+
+### Deployment Steps
+
+1. **Install Dependencies:**
+```bash
+cd /home/niro/galacticos/avatar-data-generator
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+2. **Restart Service:**
+```bash
+sudo systemctl restart avatar-data-generator
+```
+
+3. **Verify Scheduler Started:**
+```bash
+sudo journalctl -u avatar-data-generator -n 50 | grep SCHEDULER
+```
+
+Expected output:
+```
+[SCHEDULER] Background scheduler started - checking for tasks every 30 seconds
+```
+
+### Database Locking
+
+The system uses PostgreSQL row-level locking to prevent race conditions:
+
+```sql
+SELECT id FROM generation_tasks
+WHERE status = 'pending'
+ORDER BY created_at ASC
+LIMIT 1
+FOR UPDATE SKIP LOCKED
+```
+
+**Benefit:** Multiple workers (e.g., Gunicorn with multiple processes) can safely run without processing the same task twice.
 
 ## Future Enhancements
 

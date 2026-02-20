@@ -398,6 +398,57 @@ Potential improvements:
 
 ---
 
+## Flexible Image Count (1-20 Images)
+
+**Updated:** 2026-02-19
+
+The system supports generating 1-20 images per persona (previously constrained to multiples of 4). Images are generated individually and the system tracks image ideas to prevent duplicates across multiple generation runs.
+
+### Image Ideas History Tracking
+
+Each persona has an `image_ideas_history` field (JSONB array in database) that stores all previously generated image concepts. When generating new images, the system:
+
+1. Loads existing history
+2. Passes history to the prompt generator
+3. LLM creates new ideas that avoid duplicates
+4. Updates history with newly generated ideas
+
+**Example workflow:**
+```
+First run (4 images):
+  History: [] → ["Mirror selfie", "Coffee shop", "Gym workout", "Beach sunset"]
+
+Second run (3 more images):
+  History loaded: 4 previous ideas
+  New ideas: ["Park bench", "Library study", "Rooftop view"]
+  Updated history: 7 total ideas
+```
+
+### Database Schema
+
+Migration added `image_ideas_history` column:
+```sql
+ALTER TABLE generation_results
+ADD COLUMN image_ideas_history JSONB;
+```
+
+**Example data:**
+```json
+[
+  "Mirror selfie in bedroom",
+  "Coffee shop laptop work",
+  "Gym workout selfie",
+  "Beach sunset photo"
+]
+```
+
+### Implementation Notes
+
+- Migration: `312faec904ca_add_image_ideas_history_to_generation_`
+- Task processor loads history before generating prompts
+- History grows indefinitely (performance impact minimal with JSONB)
+- Can manually reset history by setting to NULL
+
 ## Support
 
 For issues or questions:

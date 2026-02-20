@@ -1505,4 +1505,60 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-19 (Ethnicity and Age Fields Implementation - Aggregated Display)*
+### 2026-02-19 - Image Preview Modal Navigation Enhancement
+
+**New UI Features for Dataset Detail Page:**
+- Added previous/next navigation buttons to the image preview modal
+- Limited image display size for better UX
+- Implemented keyboard navigation with arrow keys
+
+**Navigation Controls:**
+- Previous/Next buttons: 48x48px square buttons with chevron icons
+- Positioned on left/right sides of modal content (desktop)
+- Positioned below image on mobile for accessibility
+- Sharp corners, neon cyan border/glow on hover
+- Disabled state (30% opacity) when at first/last image
+- Buttons track current persona's images only (scoped navigation)
+
+**Keyboard Navigation:**
+- Left arrow key: Navigate to previous image
+- Right arrow key: Navigate to next image
+- Escape key: Close modal (existing functionality)
+- Works seamlessly with existing modal controls
+
+**Image Size Constraints:**
+- Max width: 800px (or 90vw on small screens)
+- Max height: 600px (or 90vh - 80px for UI elements)
+- Images maintain aspect ratio with auto width/height
+- Prevents excessively large images from overwhelming the viewport
+
+**Technical Implementation:**
+- Modal state tracking: `currentPersonaImages` array and `currentImageIndex`
+- Smart image collection: Gathers all images from clicked persona's card
+- Navigation updates image src, caption, and button states
+- Disabled buttons at boundaries (first/last image)
+- Caption updates with image index (e.g., "John Doe - Image 3")
+
+**Responsive Behavior:**
+- Desktop (>640px): Navigation buttons on left/right sides (-60px offset)
+- Mobile (≤640px): Navigation buttons below image (bottom: -60px)
+- Close button remains top-right on all screen sizes
+- All buttons maintain sharp corners and neon glow effects
+
+**Files Modified:**
+- `/templates/dataset_detail.html` - Added prev/next buttons to modal structure
+- `/static/css/datasets.css` - Added navigation button styles and image size constraints
+- `/static/js/datasets.js` - Implemented navigation logic, keyboard controls, state management
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Navigation buttons enable easy image comparison within a persona
+- Size constraints prevent UI overwhelm and maintain comfortable viewing
+- Keyboard navigation improves accessibility and power-user experience
+- Scoped navigation (per-persona) prevents confusing cross-persona navigation
+- Maintains brandbook compliance: Sharp corners, neon cyan accents, proper spacing
+- Disabled state provides clear visual feedback at navigation boundaries
+
+---
+
+*Last Updated: 2026-02-19 (Image Preview Modal Navigation Enhancement)*

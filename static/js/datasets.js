@@ -675,6 +675,10 @@
   // IMAGE PREVIEW MODAL
   // ========================================
 
+  // Modal state
+  let currentPersonaImages = [];
+  let currentImageIndex = 0;
+
   function initializeImageModal() {
     const modal = document.getElementById('imageModal');
     if (!modal) return;
@@ -683,6 +687,8 @@
     const imageCaption = document.getElementById('imageCaption');
     const closeBtn = modal.querySelector('.btn-image-close');
     const backdrop = modal.querySelector('.image-modal-backdrop');
+    const prevBtn = modal.querySelector('.btn-image-prev');
+    const nextBtn = modal.querySelector('.btn-image-next');
 
     // Close button
     if (closeBtn) {
@@ -694,10 +700,25 @@
       backdrop.addEventListener('click', () => closeImageModal(modal));
     }
 
-    // Escape key
+    // Navigation buttons
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => navigateImage(-1));
+    }
+
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => navigateImage(1));
+    }
+
+    // Keyboard navigation
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && modal.classList.contains('is-open')) {
-        closeImageModal(modal);
+      if (modal.classList.contains('is-open')) {
+        if (e.key === 'Escape') {
+          closeImageModal(modal);
+        } else if (e.key === 'ArrowLeft') {
+          navigateImage(-1);
+        } else if (e.key === 'ArrowRight') {
+          navigateImage(1);
+        }
       }
     });
   }
@@ -709,7 +730,10 @@
       container.addEventListener('click', function() {
         const imageUrl = this.getAttribute('data-image-url');
         const name = this.getAttribute('data-name');
-        showImageModal(imageUrl, name);
+        const card = this.closest('.result-card');
+        const images = getPersonaImages(card);
+        const index = images.indexOf(imageUrl);
+        showImageModal(imageUrl, name, images, index >= 0 ? index : 0);
       });
     });
 
@@ -719,22 +743,57 @@
       thumbnail.addEventListener('click', function() {
         const imageUrl = this.getAttribute('data-image-url');
         const name = this.getAttribute('data-name');
-        showImageModal(imageUrl, name);
+        const card = this.closest('.result-card');
+        const images = getPersonaImages(card);
+        const index = images.indexOf(imageUrl);
+        showImageModal(imageUrl, name, images, index >= 0 ? index : 0);
       });
     });
   }
 
-  function showImageModal(imageUrl, caption) {
+  function getPersonaImages(card) {
+    const images = [];
+
+    // Get main image
+    const mainImageContainer = card.querySelector('.result-image-container');
+    if (mainImageContainer) {
+      const mainImageUrl = mainImageContainer.getAttribute('data-image-url');
+      if (mainImageUrl && mainImageUrl !== IMAGE_PLACEHOLDER) {
+        images.push(mainImageUrl);
+      }
+    }
+
+    // Get gallery images
+    const thumbnails = card.querySelectorAll('.gallery-thumbnail');
+    thumbnails.forEach(thumbnail => {
+      const imageUrl = thumbnail.getAttribute('data-image-url');
+      if (imageUrl && imageUrl !== IMAGE_PLACEHOLDER && !images.includes(imageUrl)) {
+        images.push(imageUrl);
+      }
+    });
+
+    return images;
+  }
+
+  function showImageModal(imageUrl, caption, images, index) {
     const modal = document.getElementById('imageModal');
     const modalImage = document.getElementById('modalImage');
     const imageCaption = document.getElementById('imageCaption');
 
     if (modal && modalImage) {
+      // Store current persona's images and index
+      currentPersonaImages = images || [imageUrl];
+      currentImageIndex = index >= 0 ? index : 0;
+
+      // Update image and caption
       modalImage.src = imageUrl;
       modalImage.alt = caption;
       if (imageCaption) {
         imageCaption.textContent = caption;
       }
+
+      // Update navigation buttons state
+      updateNavigationButtons();
 
       modal.classList.add('is-open');
       modal.setAttribute('aria-hidden', 'false');
@@ -745,10 +804,59 @@
     }
   }
 
+  function navigateImage(direction) {
+    if (currentPersonaImages.length === 0) return;
+
+    const newIndex = currentImageIndex + direction;
+
+    // Check bounds
+    if (newIndex < 0 || newIndex >= currentPersonaImages.length) return;
+
+    currentImageIndex = newIndex;
+    const imageUrl = currentPersonaImages[currentImageIndex];
+
+    // Update modal image
+    const modalImage = document.getElementById('modalImage');
+    const imageCaption = document.getElementById('imageCaption');
+
+    if (modalImage) {
+      modalImage.src = imageUrl;
+
+      // Update caption with image index
+      if (imageCaption) {
+        const baseName = imageCaption.textContent.split(' - Image')[0];
+        imageCaption.textContent = `${baseName} - Image ${currentImageIndex + 1}`;
+      }
+    }
+
+    // Update navigation buttons
+    updateNavigationButtons();
+
+    // Re-initialize Feather icons
+    feather.replace();
+  }
+
+  function updateNavigationButtons() {
+    const prevBtn = document.querySelector('.btn-image-prev');
+    const nextBtn = document.querySelector('.btn-image-next');
+
+    if (prevBtn) {
+      prevBtn.disabled = currentImageIndex === 0;
+    }
+
+    if (nextBtn) {
+      nextBtn.disabled = currentImageIndex === currentPersonaImages.length - 1;
+    }
+  }
+
   function closeImageModal(modal) {
     modal.classList.remove('is-open');
     modal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+
+    // Reset modal state
+    currentPersonaImages = [];
+    currentImageIndex = 0;
   }
 
   // ========================================
