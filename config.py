@@ -58,6 +58,20 @@ class Config:
     SCHEDULER_API_ENABLED = False  # Disable scheduler API
     WORKER_INTERVAL = int(os.getenv('WORKER_INTERVAL', '30'))  # Task processing interval in seconds
 
+    # Two-Stage Avatar Generation Pipeline
+    USE_TWO_STAGE_PIPELINE = os.getenv('USE_TWO_STAGE_PIPELINE', 'True').lower() in ('true', '1', 'yes')
+    SAVE_INTERMEDIATE_IMAGES = os.getenv('SAVE_INTERMEDIATE_IMAGES', 'False').lower() in ('true', '1', 'yes')
+
+    # RunPod Configuration (for Stage 1 of two-stage pipeline)
+    RUNPOD_API_KEY = os.getenv('RUNPOD_API_KEY', '')
+    RUNPOD_ENDPOINT_ID = os.getenv('RUNPOD_ENDPOINT_ID', '')
+    RUNPOD_TIMEOUT = int(os.getenv('RUNPOD_TIMEOUT', '2400'))
+    RUNPOD_POLL_INTERVAL = int(os.getenv('RUNPOD_POLL_INTERVAL', '10'))
+    RUNPOD_DENOISE = float(os.getenv('RUNPOD_DENOISE', '0.47'))
+    RUNPOD_IP_WEIGHT = float(os.getenv('RUNPOD_IP_WEIGHT', '0.75'))
+    RUNPOD_GUIDANCE_SCALE = float(os.getenv('RUNPOD_GUIDANCE_SCALE', '7.5'))
+    RUNPOD_STEPS = int(os.getenv('RUNPOD_STEPS', '30'))
+
 
 class DevelopmentConfig(Config):
     """Development-specific configuration."""

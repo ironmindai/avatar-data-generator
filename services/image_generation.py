@@ -34,6 +34,10 @@ IMAGE_GENERATION_TIMEOUT = 600  # 10 minutes timeout
 # Image generation prompt configuration
 BASE_PROMPT_APPEND = os.getenv('BASE_PROMPT_APPEND', '').strip()
 
+# Two-stage pipeline configuration
+USE_TWO_STAGE_PIPELINE = os.getenv('USE_TWO_STAGE_PIPELINE', 'True').lower() in ('true', '1', 'yes')
+SAVE_INTERMEDIATE_IMAGES = os.getenv('SAVE_INTERMEDIATE_IMAGES', 'False').lower() in ('true', '1', 'yes')
+
 
 def log_flagged_image(image_url: str, reason: str, request_id: Optional[str] = None):
     """
@@ -104,6 +108,13 @@ async def generate_base_image(
 
     Creates a selfie-style image with amateur aesthetic based on the person's
     Facebook bio and gender. Optionally uses a random face from S3 as reference.
+
+    **Two-Stage Pipeline** (if USE_TWO_STAGE_PIPELINE=True and randomize_face=True):
+        Stage 1: S3 Face → RunPod/Flux (simple visual prompt) → Intermediate Face
+        Stage 2: Intermediate Face → OpenAI (bio/persona/ethnicity) → Final Avatar
+
+    **Single-Stage** (legacy, if USE_TWO_STAGE_PIPELINE=False):
+        S3 Face → OpenAI (bio/persona/ethnicity) → Final Avatar
 
     Args:
         bio_facebook: Facebook bio text describing the person
@@ -212,7 +223,60 @@ async def generate_base_image(
 
         # Generate image based on mode
         if randomize_face and face_image_bytes:
-            # MODE: Image-to-Image (img2img) with random face reference
+            # Check if two-stage pipeline is enabled
+            if USE_TWO_STAGE_PIPELINE:
+                logger.info("=" * 80)
+                logger.info("TWO-STAGE PIPELINE ENABLED")
+                logger.info("Stage 1: RunPod/Flux → Stage 2: OpenAI/DALL-E")
+                logger.info("=" * 80)
+
+                # Import RunPod service
+                from services.runpod_service import generate_runpod_base_face
+
+                try:
+                    # STAGE 1: RunPod/Flux - Generate intermediate base face
+                    intermediate_face_bytes = await generate_runpod_base_face(
+                        reference_face_url=public_url,
+                        gender=gender,
+                        ethnicity=ethnicity,
+                        age=age,
+                        save_debug=SAVE_INTERMEDIATE_IMAGES
+                    )
+
+                    if not intermediate_face_bytes:
+                        logger.warning("Stage 1 (RunPod) failed, falling back to single-stage OpenAI")
+                        # Fall through to single-stage pipeline below
+                    else:
+                        # STAGE 2: OpenAI - Use intermediate face for final avatar
+                        logger.info("=" * 80)
+                        logger.info("STAGE 2: OpenAI/DALL-E Final Avatar Generation")
+                        logger.info("=" * 80)
+
+                        # Use intermediate face as input for OpenAI
+                        final_image_bytes = await _generate_openai_from_base(
+                            base_image_bytes=intermediate_face_bytes,
+                            bio_facebook=bio_facebook,
+                            gender=gender,
+                            ethnicity=ethnicity,
+                            age=age,
+                            quality_prefix=quality_prefix,
+                            diversity_hint=diversity_hint,
+                            selected_size=selected_size
+                        )
+
+                        if final_image_bytes:
+                            logger.info("Two-stage pipeline completed successfully!")
+                            return final_image_bytes
+                        else:
+                            logger.warning("Stage 2 (OpenAI) failed, falling back to single-stage")
+                            # Fall through to single-stage pipeline below
+
+                except Exception as e:
+                    logger.error(f"Two-stage pipeline error: {e}")
+                    logger.warning("Falling back to single-stage OpenAI pipeline")
+                    # Fall through to single-stage pipeline below
+
+            # MODE: Image-to-Image (img2img) with random face reference (single-stage)
             # Implement retry logic for moderation blocks
             MAX_RETRIES = 3
             current_attempt = 0
@@ -538,6 +602,126 @@ async def generate_images_from_base(
     except Exception as e:
         logger.error(f"Error generating images from base: {str(e)}", exc_info=True)
         raise Exception(f"Image-to-image generation failed: {str(e)}")
+
+
+async def _generate_openai_from_base(
+    base_image_bytes: bytes,
+    bio_facebook: str,
+    gender: str,
+    ethnicity: Optional[str],
+    age: Optional[int],
+    quality_prefix: str,
+    diversity_hint: str,
+    selected_size: str
+) -> Optional[bytes]:
+    """
+    Helper function for Stage 2: OpenAI/DALL-E generation with detailed prompts.
+
+    Uses the intermediate face from RunPod Stage 1 and applies detailed bio,
+    ethnicity control, and amateur aesthetic.
+
+    Args:
+        base_image_bytes: Intermediate face from RunPod Stage 1
+        bio_facebook: Facebook bio text
+        gender: 'm' or 'f'
+        ethnicity: Ethnicity string
+        age: Age integer
+        quality_prefix: Pre-selected quality style prefix
+        diversity_hint: Pre-generated diversity hint
+        selected_size: Image size (e.g., '1024x1024')
+
+    Returns:
+        Final avatar image bytes or None
+    """
+    try:
+        # Convert gender shorthand to full word
+        gender_full = 'male' if gender.lower() == 'm' else 'female'
+
+        # Build detailed prompt for OpenAI (Stage 2)
+        # OpenAI excels at detailed instruction-following and ethnicity control
+        prompt = (
+            f"{quality_prefix} "
+            f"POV selfie. "
+            f"not well-produced, amateur aesthetic, low resolution. "
+            f"Person: {bio_facebook}. {gender_full}.{diversity_hint} "
+            f"Close-up portrait showing face and upper body."
+        )
+
+        # Add STRONG ethnicity control (OpenAI's strength)
+        if ethnicity:
+            prompt += f" STRONG ETHNIC ADHERENCE REQUIRED: {ethnicity} person with authentic {ethnicity} facial features and skin tone."
+
+        # Add age if available
+        if age:
+            prompt += f" Age: {age}."
+
+        # Append custom text if configured
+        if BASE_PROMPT_APPEND:
+            prompt = f"{prompt} {BASE_PROMPT_APPEND}"
+
+        logger.info("OpenAI Stage 2 prompt (with full bio + ethnicity control):")
+        logger.info(f"{prompt}")
+
+        # Prepare multipart form data for /images/edits endpoint
+        image_file = BytesIO(base_image_bytes)
+        files = [
+            ('image[]', ('runpod_intermediate.png', image_file, 'image/png'))
+        ]
+
+        data = {
+            'prompt': prompt,
+            'model': IMAGE_MODEL,
+            'n': 1,
+            'size': selected_size,
+            'input_fidelity': 'low'  # Low fidelity = creative freedom to apply ethnicity from prompt
+        }
+
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}'
+        }
+
+        # Make async HTTP request to OpenAI img2img endpoint
+        async with httpx.AsyncClient(timeout=IMAGE_GENERATION_TIMEOUT) as client:
+            response = await client.post(
+                f"{OPENAI_API_BASE}/images/edits",
+                files=files,
+                data=data,
+                headers=headers
+            )
+
+            # Check for errors
+            response.raise_for_status()
+            result = response.json()
+
+            # Extract base64 image data
+            if 'data' in result and len(result['data']) > 0:
+                if 'b64_json' in result['data'][0]:
+                    base64_image = result['data'][0]['b64_json']
+                    image_bytes = base64.b64decode(base64_image)
+
+                    logger.info(f"OpenAI Stage 2 successful ({len(image_bytes)} bytes)")
+                    logger.info("=" * 80)
+                    return image_bytes
+                else:
+                    logger.error("OpenAI response missing 'b64_json' field")
+                    return None
+            else:
+                logger.error("OpenAI response missing 'data' field or data is empty")
+                return None
+
+    except httpx.HTTPStatusError as e:
+        error_detail = {}
+        try:
+            error_detail = e.response.json()
+        except Exception:
+            error_detail = {'text': e.response.text}
+
+        logger.error(f"OpenAI Stage 2 HTTP error: {e.response.status_code} - {error_detail}")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error in OpenAI Stage 2 generation: {str(e)}", exc_info=True)
+        return None
 
 
 # Utility function for testing/debugging
