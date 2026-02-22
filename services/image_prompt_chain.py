@@ -33,7 +33,7 @@ class ImagePromptChain:
     This replaces the 3-step Flowise workflow:
     1. Generate idea for single image
     2. Compose structured prompt
-    3. Add natural quality refinements
+    3. Add dual-reference suffix for SeeDream (Format 1 approach)
     """
 
     def __init__(self):
@@ -113,9 +113,10 @@ class ImagePromptChain:
 
                 logger.debug(f"Structured prompt: {structured_prompt}")
 
-                # Step 3: Add natural quality refinements
-                final_prompt = await self._add_natural_refinements(
-                    structured_prompt=structured_prompt
+                # Step 3: Add dual-reference suffix
+                final_prompt = await self._add_dual_reference_suffix(
+                    structured_prompt=structured_prompt,
+                    is_selfie=is_selfie
                 )
 
                 logger.info(f"Final prompt {i+1}: {final_prompt[:100]}...")
@@ -216,26 +217,19 @@ class ImagePromptChain:
             age_str = str(person_data.get('age', 'unknown age'))
 
             # System prompt with example (NEUTRAL - no quality descriptors)
-            # Add POV selfie instruction for selfie images
-            selfie_instruction = ""
-            if is_selfie:
-                selfie_instruction = (
-                    "\n\nIMPORTANT: Since this is a selfie, you MUST start the description with 'POV selfie' "
-                    "to establish the camera perspective. This naturally excludes the phone/camera from the frame."
-                )
-
+            # Note: POV selfie prefix will be added in step 3 (_add_dual_reference_suffix)
             system_prompt = (
                 "You are to generate a NEUTRAL scene description for image generation. "
                 "Do NOT add any quality descriptors, lighting details, or camera type - those will be added later.\n\n"
                 "Here is an example for the structure:\n\n"
                 "<EXAMPLE>\n"
-                f"POV selfie. {age_str} year old {gender}. mirror selfie trying on clothes in a dressing room\n"
+                f"{age_str} year old {gender}. mirror selfie trying on clothes in a dressing room\n"
                 "</EXAMPLE>\n\n"
                 "GUARDRAILS:\n"
                 "- Describe the scene, pose, and activity ONLY\n"
                 "- Do NOT add quality descriptors like 'casual', 'amateur', 'low quality', etc.\n"
                 "- Do NOT add lighting or camera details\n"
-                f"{selfie_instruction}\n\n"
+                "- Do NOT add 'POV selfie' prefix - that will be added automatically\n\n"
                 "Keep it simple and neutral. Quality/aesthetic will be added in next step.\n\n"
                 "Output ONLY the neutral scene description, nothing else."
             )
@@ -265,67 +259,33 @@ class ImagePromptChain:
             logger.error(f"Error composing structured prompt: {str(e)}")
             raise
 
-    async def _add_natural_refinements(
+    async def _add_dual_reference_suffix(
         self,
-        structured_prompt: str
+        structured_prompt: str,
+        is_selfie: bool = True
     ) -> str:
         """
-        Step 3: Add natural quality refinements to the prompt.
+        Step 3: Add dual-reference suffix for SeeDream.
 
-        Randomly selects one of 4 tested quality styles (E, D, B, A) and applies
-        it to the structured prompt. These are quality modifiers that work
-        regardless of the scene content.
+        Format 1 (winner from matrix tests):
+        "{description}. The subject is in image 1 and the quality and lighting is based on image 2."
+
+        For selfie images, also adds "POV selfie" prefix to establish camera perspective.
         """
         try:
-            import random
+            # Add POV selfie prefix if it's a selfie and not already present
+            if is_selfie and not structured_prompt.lower().startswith('pov selfie'):
+                structured_prompt = f"POV selfie. {structured_prompt}"
 
-            # 6 winning quality styles from experimentation (playground/test_quality_styles.py)
-            QUALITY_STYLES = {
-                "style_a_ultra_amateur": {
-                    "prefix": "Low quality phone camera photo. Shot on old smartphone camera, bad lighting, not professional.",
-                    "suffix": "Realistic imperfections: motion blur from shaky hands, grainy sensor noise, awkward framing, bad angle, natural unflattering light"
-                },
-                "style_b_candid_unpolished": {
-                    "prefix": "Candid unposed moment captured on phone camera.",
-                    "suffix": "Not paying attention to camera. Natural everyday lighting, random background clutter visible, not photogenic angle, caught mid-motion, real authentic moment, imperfect composition"
-                },
-                "style_c_social_2014": {
-                    "prefix": "Authentic unfiltered social media photo from 2014-2016.",
-                    "suffix": "Shot on iPhone 6, compressed JPEG artifacts, slightly overexposed from phone flash, casual pose, not posed professionally, everyday person energy, relatable and mundane"
-                },
-                "style_d_chaos_natural": {
-                    "prefix": "Deliberately bad photo quality, opposite of Instagram aesthetic.",
-                    "suffix": "No filters, no editing, straight from camera, unflattering fluorescent lights, weird shadows, awkward crop, finger partially visible in corner, background is messy, very relatable and human"
-                },
-                "style_e_low_effort": {
-                    "prefix": "Quick snapshot taken without care or composition.",
-                    "suffix": "Poor framing, subject not centered, amateur lighting from whatever source available, slightly blurry from movement, casual everyday moment captured hastily, very natural and unpolished"
-                },
-                "style_f_compressed_real": {
-                    "prefix": "Real person, real moment, heavily compressed phone photo.",
-                    "suffix": "JPEG compression artifacts visible, colors slightly washed out, image quality degraded from multiple uploads/downloads, authentic social media energy, no professional touches, raw and genuine"
-                }
-            }
+            # Add dual-reference suffix
+            final_prompt = f"{structured_prompt}. The subject is in image 1 and the quality and lighting is based on image 2."
 
-            # Randomly select one quality style
-            selected_style_id = random.choice(list(QUALITY_STYLES.keys()))
-            selected_style = QUALITY_STYLES[selected_style_id]
-
-            logger.info(f"Selected quality style: {selected_style_id}")
-
-            # Build final prompt: PREFIX + structured_prompt + SUFFIX
-            final_prompt = (
-                f"{selected_style['prefix']} "
-                f"{structured_prompt} "
-                f"{selected_style['suffix']}"
-            )
-
-            logger.debug(f"Final prompt with quality modifiers: {final_prompt[:200]}...")
+            logger.debug(f"Final prompt with dual-reference suffix: {final_prompt[:200]}...")
 
             return final_prompt
 
         except Exception as e:
-            logger.error(f"Error adding natural refinements: {str(e)}")
+            logger.error(f"Error adding dual-reference suffix: {str(e)}")
             raise
 
 

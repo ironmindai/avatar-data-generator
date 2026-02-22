@@ -46,6 +46,7 @@ from services.image_generation import generate_base_image  # Still used for base
 from services.image_prompt_chain import get_prompt_chain  # NEW: Local LLM chain for prompts
 from services.seedream_service import generate_image_with_reference  # NEW: SeeDream for images
 from services.image_utils import upload_to_s3, generate_presigned_url
+from services.s3_styles import get_random_style_image  # NEW: Random style image for dual-reference
 from utils.image_cropper import remove_white_borders
 from utils.image_style_randomizer import randomize_image_style
 
@@ -939,10 +940,26 @@ async def process_persona_images(
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
 
+        # Fetch random style reference image for quality/aesthetic (dual-reference mode)
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Fetching random style reference image...")
+        style_image_url = None
+        try:
+            style_image_url = get_random_style_image()
+
+            if not style_image_url:
+                logger.warning(f"[Task {task_id_str}] [{persona_name}] No style images available, using single-reference mode")
+            else:
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Using style reference: {style_image_url[:80]}...")
+
+        except Exception as e:
+            logger.warning(f"[Task {task_id_str}] [{persona_name}] Failed to fetch style image: {str(e)}")
+            logger.warning(f"[Task {task_id_str}] [{persona_name}] Continuing with single-reference mode")
+            style_image_url = None
+
         # Generate each image individually with SeeDream
         async def generate_single_image(image_index: int, prompt: str) -> str:
             """
-            Generate a single image using SeeDream with base image reference.
+            Generate a single image using SeeDream with dual-reference (base + style).
 
             Args:
                 image_index: Image index (0-indexed)
@@ -951,13 +968,15 @@ async def process_persona_images(
             Returns:
                 S3 image URL
             """
-            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Generating with SeeDream...")
+            mode_str = "dual-reference" if style_image_url else "single-reference"
+            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Generating with SeeDream ({mode_str})...")
 
             try:
-                # Generate image with SeeDream
+                # Generate image with SeeDream using dual-reference if style image available
                 image_bytes = await generate_image_with_reference(
                     prompt=prompt,
-                    base_image_url=base_image_presigned_url
+                    base_image_url=base_image_presigned_url,
+                    style_image_url=style_image_url  # NEW: Pass style image for dual-reference
                 )
                 if not image_bytes:
                     raise Exception("SeeDream returned empty image")

@@ -30,18 +30,22 @@ SEEDREAM_TIMEOUT = 600  # 10 minutes timeout
 
 async def generate_image_with_reference(
     prompt: str,
-    base_image_url: str
+    base_image_url: str,
+    style_image_url: Optional[str] = None
 ) -> Optional[bytes]:
     """
-    Generate an image using SeeDream 4.5 with base image as reference.
+    Generate an image using SeeDream 4.5 with single or dual image references.
 
-    This function calls SeeDream's txt2img endpoint with a character reference
-    image to maintain facial consistency across all generated images.
+    This function calls SeeDream's txt2img endpoint with image references:
+    - Single-reference mode: Uses only base_image_url for facial consistency
+    - Dual-reference mode: Uses base_image_url (person/identity) + style_image_url (quality/aesthetic)
 
     Args:
         prompt: Text prompt describing the desired image
-        base_image_url: Publicly accessible URL of the base image to use as reference
+        base_image_url: Publicly accessible URL of the base image (Image 1 - person/identity)
                        (must be accessible by SeeDream API - use S3 presigned URL)
+        style_image_url: Optional URL of style reference image (Image 2 - quality/aesthetic).
+                        If provided, uses dual-reference mode. If None, uses single reference.
 
     Returns:
         bytes: Generated image as bytes, or None if generation fails
@@ -57,7 +61,20 @@ async def generate_image_with_reference(
         logger.info(f"Generating image with SeeDream 4.5")
         logger.info("=" * 80)
         logger.info(f"PROMPT: {prompt}")
-        logger.info(f"REFERENCE IMAGE: {base_image_url}")
+
+        # Prepare image reference (single or dual)
+        if style_image_url:
+            # Dual-reference mode: [Image 1 = person, Image 2 = style]
+            image_param = [base_image_url, style_image_url]
+            logger.info(f"Using DUAL-REFERENCE mode")
+            logger.info(f"  Image 1 (person): {base_image_url}")
+            logger.info(f"  Image 2 (style): {style_image_url}")
+        else:
+            # Single-reference mode (legacy)
+            image_param = base_image_url
+            logger.info(f"Using SINGLE-REFERENCE mode")
+            logger.info(f"  Reference image: {base_image_url}")
+
         logger.info("=" * 80)
 
         # Prepare request payload
@@ -69,7 +86,7 @@ async def generate_image_with_reference(
             'watermark': SEEDREAM_WATERMARK,
             'sequential_image_generation': 'disabled',
             'response_format': 'url',
-            'image': base_image_url  # Single reference image
+            'image': image_param  # Can be string or array
         }
 
         # Prepare headers
@@ -140,14 +157,16 @@ async def generate_image_with_reference(
 
 async def generate_images_batch(
     prompts: list[str],
-    base_image_url: str
+    base_image_url: str,
+    style_image_url: Optional[str] = None
 ) -> list[bytes]:
     """
-    Generate multiple images sequentially using SeeDream with the same base image reference.
+    Generate multiple images sequentially using SeeDream with single or dual image references.
 
     Args:
         prompts: List of text prompts for each image
-        base_image_url: Publicly accessible URL of the base image to use as reference
+        base_image_url: Publicly accessible URL of the base image (Image 1 - person/identity)
+        style_image_url: Optional URL of style reference image (Image 2 - quality/aesthetic)
 
     Returns:
         List of generated images as bytes
@@ -164,7 +183,8 @@ async def generate_images_batch(
 
             image_bytes = await generate_image_with_reference(
                 prompt=prompt,
-                base_image_url=base_image_url
+                base_image_url=base_image_url,
+                style_image_url=style_image_url
             )
 
             images.append(image_bytes)
