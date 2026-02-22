@@ -1561,4 +1561,54 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-19 (Image Preview Modal Navigation Enhancement)*
+### 2026-02-21 - Base Image Preview in Dataset Detail
+
+**New UI Component for Dataset Detail Page:**
+- Added base reference image preview for each persona in result cards
+- Displays the base image generated from the two-stage pipeline before SeeDream processing
+- Helps debug whether SeeDream is correctly receiving and using the base image
+
+**Base Image Section:**
+- Icon: aperture (14px, warning amber)
+- Label: "BASE REFERENCE IMAGE" (uppercase, warning color)
+- Image container: 200px max-width, 1:1 aspect ratio, 2px warning border
+- Distinguished styling: Warning color (#ffaa00) instead of cyan to differentiate from generated images
+- Glow effect: `0 0 15px rgba(255, 170, 0, 0.2)` default, `0 0 25px rgba(255, 170, 0, 0.4)` on hover
+- Positioned before "Generated Images" section for logical flow
+- Click to preview in full-screen modal (same modal as generated images)
+- Hover effect: Slight scale (1.02) and enhanced glow
+
+**Visual Hierarchy:**
+- Base image appears between supplementary info and generated images gallery
+- Smaller size (200px max-width) vs full-width gallery thumbnails
+- Distinct amber/warning color scheme separates it from generated content
+- Clear labeling prevents confusion with final outputs
+
+**Smart Display Logic:**
+- Only shows when `base_image_url` field exists in persona data
+- Conditionally rendered in JavaScript to avoid empty sections
+- Gracefully handles missing base images
+
+**Technical Implementation:**
+- Added base image section in `createResultCardHTML()` function
+- Updated `initializeImagePreviews()` to handle base image clicks
+- Base image opens in modal with just itself (no navigation to other images)
+- CSS uses warning color variables for consistent theming
+- Sharp corners and neon glow maintain brandbook compliance
+
+**Files Modified:**
+- `/static/js/datasets.js` - Added base image HTML generation and click handler
+- `/static/css/datasets.css` - Added base image section styling with warning color theme
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Base image preview enables debugging of two-stage pipeline (SDXL → SeeDream)
+- Warning color (amber) clearly distinguishes source image from final outputs
+- Smaller size prevents it from competing visually with generated images
+- Positioned logically: Shows what went IN before showing what came OUT
+- Maintains brandbook compliance: Sharp corners, neon accents, proper spacing
+- Click-to-preview maintains consistency with existing image interaction patterns
+
+---
+
+*Last Updated: 2026-02-21 (Base Image Preview in Dataset Detail)*

@@ -433,6 +433,30 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - No errors in error log after restart
 **Note**: Gunicorn caches templates in memory; service restart required after template/static file changes
 
+### .env File Inline Comments Parsing Error (2026-02-21)
+**Issue**: Service failing to start after adding RunPod configuration with inline comments
+**Error Messages**:
+- `ValueError: invalid literal for int() with base 10: '2400  # 40 minutes'`
+- `ValueError: could not convert string to float: '0.47  # Balanced img2img strength'`
+**Root Cause**: Python's `int()` and `float()` functions cannot parse values with inline comments
+**Affected Variables**:
+- `RUNPOD_TIMEOUT=2400  # 40 minutes`
+- `RUNPOD_POLL_INTERVAL=10  # Poll every 10 seconds`
+- `RUNPOD_DENOISE=0.47  # Balanced img2img strength`
+- `RUNPOD_IP_WEIGHT=0.75  # Face reference influence`
+**Solution**: Removed all inline comments from `.env` file
+**Changes Made**:
+1. Edited `/home/niro/galacticos/avatar-data-generator/.env` to remove inline comments
+2. Reset systemd failure counter: `sudo systemctl reset-failed avatar-data-generator.service`
+3. Restarted service: `sudo systemctl start avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 3661532 (master), 3661535 (worker)
+- Port 8085: Listening and accepting connections
+- Two-stage pipeline confirmed enabled: Log message `TWO-STAGE PIPELINE ENABLED` present
+- HTTPS access: Working (HTTP 302 redirect to /login)
+- Scheduler active: Background scheduler started and checking for tasks
+**Prevention**: NEVER use inline comments in `.env` files. Always put comments on separate lines starting with `#`
+
 ### CSRF Token Validation Errors - Reduced Workers (2026-01-30 12:15 UTC)
 **Issue**: Users experiencing CSRF token validation errors during form submissions
 **Root Cause**: Multiple gunicorn workers (4) each maintaining separate Flask sessions. When a form was rendered by one worker and submitted to a different worker, the CSRF token validation would fail because the session data didn't match
@@ -486,3 +510,4 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - For database schema changes (tables, migrations, etc.), consult the database-schema-manager agent
 - Static files served directly by nginx for better performance
 - Single worker configuration prevents CSRF token validation errors by ensuring session consistency
+- **IMPORTANT**: `.env` file CANNOT contain inline comments (e.g., `VALUE=123  # comment`). Python's `int()` and `float()` parsers will fail. Comments must be on separate lines starting with `#`

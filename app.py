@@ -854,7 +854,7 @@ def create_app():
                 'avg': round(sum(ages) / len(ages), 1)
             }
 
-        # Build results array (exclude base_image_url - it's for generation only)
+        # Build results array
         results_data = []
         for result in pagination.items:
             results_data.append({
@@ -862,6 +862,7 @@ def create_app():
                 'firstname': result.firstname,
                 'lastname': result.lastname,
                 'gender': result.gender,
+                'base_image_url': result.base_image_url,
                 'bios': {
                     'facebook': result.bio_facebook,
                     'instagram': result.bio_instagram,

@@ -501,8 +501,20 @@
           </div>
           ` : ''}
 
+          ${result.base_image_url ? `
+          <div class="base-image-section">
+            <div class="base-image-label">
+              <i data-feather="aperture"></i>
+              Base Reference Image
+            </div>
+            <div class="base-image-container" data-image-url="${result.base_image_url}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)} - Base Image">
+              <img src="${result.base_image_url}" alt="Base Reference" loading="lazy" onerror="handleImageError(this)">
+            </div>
+          </div>
+          ` : ''}
+
           <div class="result-gallery">
-            <div class="gallery-label">Images ${result.images && result.images.length > 0 ? `(${result.images.length})` : ''}</div>
+            <div class="gallery-label">Generated Images ${result.images && result.images.length > 0 ? `(${result.images.length})` : ''}</div>
             <div class="gallery-grid">
               ${result.images && result.images.length > 0 ? result.images.map((img, idx) => `
                 <div class="gallery-thumbnail" data-image-url="${img}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)} - Image ${idx + 1}">
@@ -734,6 +746,16 @@
         const images = getPersonaImages(card);
         const index = images.indexOf(imageUrl);
         showImageModal(imageUrl, name, images, index >= 0 ? index : 0);
+      });
+    });
+
+    // Base image containers
+    const baseImageContainers = document.querySelectorAll('.base-image-container');
+    baseImageContainers.forEach(container => {
+      container.addEventListener('click', function() {
+        const imageUrl = this.getAttribute('data-image-url');
+        const name = this.getAttribute('data-name');
+        showImageModal(imageUrl, name, [imageUrl], 0);
       });
     });
 

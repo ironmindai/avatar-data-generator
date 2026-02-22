@@ -243,6 +243,13 @@ async def generate_runpod_base_face(
             return None
 
         logger.info(f"RunPod generation successful!")
+        logger.info(f"Image URL returned: {image_url}")
+
+        # Validate and fix URL if needed
+        if not image_url.startswith(('http://', 'https://')):
+            logger.warning(f"URL missing protocol, adding https://: {image_url}")
+            image_url = f"https://{image_url}"
+
         if save_debug:
             logger.info(f"Intermediate image URL (for debugging): {image_url}")
 
@@ -318,6 +325,14 @@ async def _poll_runpod_job(
                 if status == "COMPLETED":
                     output = data.get("output")
 
+                    # Handle string output (direct URL)
+                    if isinstance(output, str):
+                        image_url = output
+                        elapsed = (datetime.now() - start_time).total_seconds()
+                        logger.info(f"RunPod job completed in {elapsed:.1f}s")
+                        logger.info(f"Image URL: {image_url}")
+                        return image_url
+
                     # Handle list output (face_generator returns a list of URLs)
                     if isinstance(output, list) and len(output) > 0:
                         image_url = output[0]  # Take first URL
@@ -339,7 +354,7 @@ async def _poll_runpod_job(
                             logger.info(f"Image URL: {image_url}")
                             return image_url
 
-                    logger.error(f"Unexpected output format: {type(output)}")
+                    logger.error(f"Unexpected output format: {type(output)} - {output}")
                     return None
 
                 elif status in ["FAILED", "CANCELLED"]:
