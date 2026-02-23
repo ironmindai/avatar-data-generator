@@ -150,14 +150,14 @@ async def generate_base_image(
             ]
             diversity_hint = f" {random.choice(male_diversity)}."
 
-        # Randomize base image quality (same styles as additional images)
+        # Randomize base image quality (NO camera/phone mentions to avoid showing devices in frame)
         BASE_QUALITY_STYLES = [
-            "Low quality phone camera photo. Shot on old smartphone camera, bad lighting, not professional.",
-            "Candid unposed selfie captured on phone camera.",
-            "Authentic unfiltered social media photo from 2014-2016. Shot on iPhone 6, compressed JPEG artifacts.",
-            "Deliberately bad photo quality, opposite of Instagram aesthetic. No filters, no editing, straight from camera.",
+            "Low quality amateur photo. Bad lighting, not professional.",
+            "Candid unposed selfie.",
+            "Authentic unfiltered social media photo from 2014-2016. Compressed JPEG artifacts.",
+            "Deliberately bad photo quality, opposite of Instagram aesthetic. No filters, no editing.",
             "Quick snapshot taken without care or composition. Poor framing, amateur lighting.",
-            "Real person, real moment, heavily compressed phone photo. JPEG compression artifacts visible."
+            "Real person, real moment, heavily compressed image. JPEG compression artifacts visible."
         ]
 
         quality_prefix = random.choice(BASE_QUALITY_STYLES)

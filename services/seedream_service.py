@@ -97,6 +97,10 @@ async def generate_image_with_reference(
 
         logger.debug(f"Calling SeeDream API: {SEEDREAM_API_URL}")
 
+        # DEBUG: Log the actual payload being sent
+        import json
+        logger.info(f"SeeDream Payload: {json.dumps(payload, indent=2)}")
+
         # Make async HTTP request to SeeDream
         async with httpx.AsyncClient(timeout=SEEDREAM_TIMEOUT) as client:
             response = await client.post(

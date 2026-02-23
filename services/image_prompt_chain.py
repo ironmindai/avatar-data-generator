@@ -83,21 +83,50 @@ class ImagePromptChain:
             generated_ideas = prompts_history or []
             final_prompts = []
 
-            # Determine selfie/group split (3 selfies + 1 group photo)
-            selfie_count = num_images - 1
-            group_count = 1
+            # Realistic social media mix (dynamic based on num_images)
+            # Selfies: ~25% (1-2 max), Candid/friend photos: ~50%, Group photos: ~25%
+            import random
+
+            image_types = []
+            if num_images <= 4:
+                # For 4 images: 1 selfie, 2 candid, 1 group
+                image_types = ['selfie', 'candid', 'candid', 'group']
+            elif num_images <= 6:
+                # For 5-6 images: 1 selfie, 3-4 candid, 1 group
+                image_types = ['selfie'] + ['candid'] * (num_images - 2) + ['group']
+            else:
+                # For 7+ images: 2 selfies, rest split between candid and group
+                num_selfies = 2
+                num_groups = max(1, num_images // 4)  # ~25% groups
+                num_candid = num_images - num_selfies - num_groups
+                image_types = ['selfie'] * num_selfies + ['candid'] * num_candid + ['group'] * num_groups
+
+            # Shuffle to randomize order (except keep first image as selfie for consistency)
+            first = image_types[0]
+            rest = image_types[1:]
+            random.shuffle(rest)
+            image_types = [first] + rest
+
+            logger.info(f"Image type distribution: {image_types}")
 
             # Generate each prompt sequentially
             for i in range(num_images):
-                is_selfie = i < selfie_count
-                image_type = "selfie" if is_selfie else "photo with other people"
+                image_type = image_types[i]
+
+                # Map to description for LLM
+                if image_type == 'selfie':
+                    image_desc = "selfie taken by the person"
+                elif image_type == 'candid':
+                    image_desc = "casual photo taken by a friend during an activity"
+                else:  # group
+                    image_desc = "photo with other people (friends, family, or colleagues)"
 
                 logger.info(f"Generating prompt {i+1}/{num_images} ({image_type})...")
 
                 # Step 1: Generate image idea
                 idea = await self._generate_idea(
                     person_data=person_data,
-                    image_type=image_type,
+                    image_type=image_desc,
                     previous_ideas=generated_ideas
                 )
 
@@ -108,7 +137,7 @@ class ImagePromptChain:
                     person_data=person_data,
                     image_idea=idea,
                     image_number=i + 1,
-                    is_selfie=is_selfie
+                    is_selfie=(image_type == 'selfie')
                 )
 
                 logger.debug(f"Structured prompt: {structured_prompt}")
@@ -116,7 +145,7 @@ class ImagePromptChain:
                 # Step 3: Add dual-reference suffix
                 final_prompt = await self._add_dual_reference_suffix(
                     structured_prompt=structured_prompt,
-                    is_selfie=is_selfie
+                    image_type=image_type
                 )
 
                 logger.info(f"Final prompt {i+1}: {final_prompt[:100]}...")
@@ -208,37 +237,40 @@ class ImagePromptChain:
         is_selfie: bool = True
     ) -> str:
         """
-        Step 2: Compose a structured prompt from the idea.
+        Step 2: Compose a SHORT, SIMPLE prompt from the idea.
 
         Equivalent to Flowise "Final Prompt" node (llmAgentflow_1).
+        Generates concise, natural descriptions that work better with SeeDream.
         """
         try:
-            gender = 'male' if person_data['gender'].lower() == 'm' else 'female'
-            age_str = str(person_data.get('age', 'unknown age'))
-
-            # System prompt with example (NEUTRAL - no quality descriptors)
-            # Note: POV selfie prefix will be added in step 3 (_add_dual_reference_suffix)
+            # System prompt with SHORT examples
             system_prompt = (
-                "You are to generate a NEUTRAL scene description for image generation. "
-                "Do NOT add any quality descriptors, lighting details, or camera type - those will be added later.\n\n"
-                "Here is an example for the structure:\n\n"
-                "<EXAMPLE>\n"
-                f"{age_str} year old {gender}. mirror selfie trying on clothes in a dressing room\n"
-                "</EXAMPLE>\n\n"
-                "GUARDRAILS:\n"
-                "- Describe the scene, pose, and activity ONLY\n"
-                "- Do NOT add quality descriptors like 'casual', 'amateur', 'low quality', etc.\n"
-                "- Do NOT add lighting or camera details\n"
-                "- Do NOT add 'POV selfie' prefix - that will be added automatically\n\n"
-                "Keep it simple and neutral. Quality/aesthetic will be added in next step.\n\n"
-                "Output ONLY the neutral scene description, nothing else."
+                "You are to generate a SHORT, SIMPLE scene description for image generation. "
+                "Keep it to ONE sentence describing the activity/setting. Be concise and natural.\n\n"
+                "Here are examples:\n\n"
+                "<EXAMPLES>\n"
+                "taking a mirror selfie in a bathroom\n"
+                "sitting at a coffee shop with a laptop\n"
+                "at the gym after a workout\n"
+                "walking on a beach trail\n"
+                "at home on the couch\n"
+                "at a park on a sunny day\n"
+                "</EXAMPLES>\n\n"
+                "CRITICAL GUARDRAILS:\n"
+                "- ONE simple sentence only\n"
+                "- Describe activity and location ONLY\n"
+                "- NO clothing details, NO hair descriptions, NO background details\n"
+                "- NO quality descriptors\n"
+                "- Keep it under 15 words\n"
+                "- ABSOLUTELY NO mentions of: camera, phone, mobile, lens, photograph, taking photo, smartphone, device, screen\n"
+                "- For selfies, NEVER mention the camera/phone - it's implied by 'selfie'\n\n"
+                "Output ONLY the simple scene description, nothing else."
             )
 
             # User prompt
             user_prompt = (
-                f"Person: {age_str} year old {gender}\n"
                 f"Image idea: {image_idea}\n\n"
-                "Compose a neutral scene description (no quality descriptors)."
+                "Generate a short, simple scene description."
             )
 
             # Call LLM
@@ -249,7 +281,7 @@ class ImagePromptChain:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=LLM_TEMPERATURE,
-                max_tokens=300
+                max_tokens=100
             )
 
             structured_prompt = response.choices[0].message.content.strip()
@@ -262,25 +294,42 @@ class ImagePromptChain:
     async def _add_dual_reference_suffix(
         self,
         structured_prompt: str,
-        is_selfie: bool = True
+        image_type: str = 'selfie'
     ) -> str:
         """
-        Step 3: Add dual-reference suffix for SeeDream.
+        Step 3: Add dual-reference suffix using Format 2 from matrix tests.
 
-        Format 1 (winner from matrix tests):
-        "{description}. The subject is in image 1 and the quality and lighting is based on image 2."
+        Format 2 (winner): "The person in image 1 is {activity}. This is an amateur social media photo based on the quality and style of image 2."
 
-        For selfie images, also adds "POV selfie" prefix to establish camera perspective.
+        Args:
+            structured_prompt: The simple scene description
+            image_type: 'selfie', 'candid', or 'group'
+
+        This format produced the best results in playground testing with natural, concise prompts.
+        Uses POSITIVE quality descriptors (amateur, casual, poor lighting) rather than negatives.
         """
         try:
-            # Add POV selfie prefix if it's a selfie and not already present
-            if is_selfie and not structured_prompt.lower().startswith('pov selfie'):
-                structured_prompt = f"POV selfie. {structured_prompt}"
+            # Build natural prompt with Format 2 structure + positive amateur quality descriptors
+            if image_type == 'selfie':
+                final_prompt = (
+                    f"The person in image 1 is taking a selfie - {structured_prompt}. "
+                    f"This is an amateur social media photo based on the quality and style of image 2. "
+                    f"Poor lighting, casual amateur quality, unpolished, grainy, low resolution."
+                )
+            elif image_type == 'candid':
+                final_prompt = (
+                    f"The person in image 1 is {structured_prompt}. "
+                    f"This is a casual photo taken by a friend, based on the quality and style of image 2. "
+                    f"Amateur quality, bad lighting, spontaneous moment, unposed, grainy."
+                )
+            else:  # group
+                final_prompt = (
+                    f"The person in image 1 is {structured_prompt}. "
+                    f"This is an amateur social media photo with friends based on the quality and style of image 2. "
+                    f"Casual group shot, poor lighting, amateur quality, candid moment, unpolished."
+                )
 
-            # Add dual-reference suffix
-            final_prompt = f"{structured_prompt}. The subject is in image 1 and the quality and lighting is based on image 2."
-
-            logger.debug(f"Final prompt with dual-reference suffix: {final_prompt[:200]}...")
+            logger.debug(f"Final prompt with dual-reference ({image_type}): {final_prompt}")
 
             return final_prompt
 
