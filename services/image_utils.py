@@ -16,7 +16,7 @@ from typing import List, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, PngImagePlugin
 from split_image import split_image
 import boto3
 from botocore.client import Config
@@ -172,6 +172,47 @@ def _trim_whitespace_from_file(image_path: str) -> bytes:
         raise Exception(f"Whitespace trimming failed: {str(e)}")
 
 
+def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
+    """
+    Embed metadata into PNG image file as text chunks.
+
+    This allows metadata to survive downloads - it's embedded in the image file itself,
+    not just stored in S3 object metadata.
+
+    Args:
+        image_bytes: Original image bytes (PNG or JPEG)
+        metadata: Dictionary of metadata key-value pairs to embed
+
+    Returns:
+        bytes: New PNG image with embedded metadata
+    """
+    try:
+        # Load image from bytes
+        img = Image.open(io.BytesIO(image_bytes))
+
+        # Convert to RGB if necessary (remove alpha channel for JPEG compatibility)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+
+        # Create PNG info object to store metadata as text chunks
+        png_info = PngImagePlugin.PngInfo()
+
+        for key, value in metadata.items():
+            # Add each metadata pair as a PNG text chunk
+            png_info.add_text(key, str(value))
+            logger.debug(f"Embedded metadata: {key} = {value[:100]}...")
+
+        # Save to bytes with metadata
+        output_buffer = io.BytesIO()
+        img.save(output_buffer, format='PNG', pnginfo=png_info)
+        return output_buffer.getvalue()
+
+    except Exception as e:
+        logger.warning(f"Failed to embed metadata in PNG: {e}")
+        # Return original bytes if embedding fails
+        return image_bytes
+
+
 def upload_to_s3(
     image_bytes: bytes,
     object_key: str,
@@ -213,7 +254,13 @@ def upload_to_s3(
                 "S3_SECRET_KEY, and S3_BUCKET_NAME in .env"
             )
 
-        logger.info(f"Uploading image to S3: {bucket}/{object_key} ({len(image_bytes)} bytes)")
+        # Embed metadata into image file if provided
+        image_to_upload = image_bytes
+        if metadata:
+            logger.debug(f"Embedding metadata into image file: {list(metadata.keys())}")
+            image_to_upload = embed_metadata_in_png(image_bytes, metadata)
+
+        logger.info(f"Uploading image to S3: {bucket}/{object_key} ({len(image_to_upload)} bytes)")
 
         # Initialize S3 client
         s3_client = boto3.client(
@@ -229,7 +276,7 @@ def upload_to_s3(
         put_params = {
             'Bucket': bucket,
             'Key': object_key,
-            'Body': image_bytes,
+            'Body': image_to_upload,
             'ContentType': content_type
         }
 

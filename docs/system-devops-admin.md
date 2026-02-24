@@ -571,6 +571,52 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Memory usage: 99.5M (peak: 100.2M)
 **Note**: Since the task processor (APScheduler) runs within the main Flask application service (integrated on 2026-01-30), restarting the main service applies all code changes to both the web app and background task processing.
 
+### Service Restart for Prompt Metadata Storage and Sensor Noise Fix (2026-02-24 15:35 UTC)
+**Reason**: Applied critical updates for prompt metadata storage and natural sensor noise implementation
+**Affected Components**:
+1. **Prompt Metadata Storage**: Store complete prompt information (Node 1, Node 2, SD prompts) in generation_results table
+   - Updated `services/image_prompt_chain.py` - Save full prompt data to database
+   - Updated `workers/task_processor.py` - Store prompt metadata after generation
+2. **Natural Sensor Noise Fix**: Implement realistic camera sensor noise instead of Gaussian noise
+   - Updated `services/degradation_pipeline.py` - Replaced artificial Gaussian noise with authentic Poisson-Gaussian sensor noise
+   - Natural noise characteristics: read noise, shot noise, ISO-dependent intensity
+**Action**: Restarted avatar-data-generator.service to apply code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 147588 (master), 147593 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Completed successfully with no stuck tasks
+- Memory usage: 122.4M (peak: 122.7M)
+- Startup logs: Application initialized successfully at 15:35:24 UTC
+**Impact**:
+- All future generation tasks will store complete prompt metadata for analysis and debugging
+- Images will now have authentic camera sensor noise instead of unrealistic Gaussian blur
+- Improved overall image quality with natural, realistic photo characteristics
+
+### Service Restart for Cleaned Up Degradation Prompt (2026-02-24 17:26 UTC)
+**Reason**: Applied cleaned up degradation prompt removing problematic elements
+**Affected Files**:
+- `services/style_degradation_prompts.py` - Removed 'blocky compression' from compression/artifacts section, removed 'PLUS:' prefix from color science section
+**Changes**:
+- Removed potentially conflicting 'blocky compression' guidance that could interfere with realistic JPEG compression
+- Removed unnecessary 'PLUS:' label from color science section for cleaner prompt structure
+- Maintained all other degradation elements (chromatic aberration, sensor noise, etc.)
+**Action**: Restarted avatar-data-generator.service to apply prompt changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 162182 (master), 162198 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Recovered 1 task(s) (Task 964bf088 reset from incomplete 'completed' state)
+- Memory usage: 99.4M (peak: 99.6M)
+- Startup logs: Application initialized successfully at 17:26:21 UTC
+**Impact**:
+- Degradation prompts now have cleaner structure without redundant/conflicting guidance
+- Future image generation will use refined degradation instructions for more consistent results
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)
