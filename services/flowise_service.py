@@ -21,7 +21,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # Flowise Configuration
-FLOWISE_PROMPT_WORKFLOW_URL = "https://flowise.electric-marinade.com/api/v1/prediction/5171a0ec-8235-4db6-bc08-b23e4e22e641"
+FLOWISE_PROMPT_WORKFLOW_URL = "https://flowise.omrisystems.com/api/v1/prediction/5171a0ec-8235-4db6-bc08-b23e4e22e641"
 FLOWISE_AUTH_TOKEN = "JJXI5CYV55QYkal9-uce7dyJfyKj3EeRkROOpBgxeO4"
 FLOWISE_PROMPT_TIMEOUT = 120  # 2 minutes timeout (workflow takes ~20 seconds)
 

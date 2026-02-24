@@ -46,7 +46,6 @@ from services.image_generation import generate_base_image  # Still used for base
 from services.image_prompt_chain import get_prompt_chain  # NEW: Local LLM chain for prompts
 from services.seedream_service import generate_image_with_reference  # NEW: SeeDream for images
 from services.image_utils import upload_to_s3, generate_presigned_url
-from services.s3_styles import get_random_style_image  # NEW: Random style image for dual-reference
 from utils.image_cropper import remove_white_borders
 from utils.image_style_randomizer import randomize_image_style
 
@@ -62,7 +61,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Flowise Configuration
-FLOWISE_URL = "https://flowise.electric-marinade.com/api/v1/prediction/71bf0c86-c802-4221-b6e7-0af16e350bb6"
+FLOWISE_URL = "https://flowise.omrisystems.com/api/v1/prediction/71bf0c86-c802-4221-b6e7-0af16e350bb6"
 FLOWISE_AUTH_TOKEN = "JJXI5CYV55QYkal9-uce7dyJfyKj3EeRkROOpBgxeO4"
 FLOWISE_HEADERS = {
     "Authorization": f"Bearer {FLOWISE_AUTH_TOKEN}",
@@ -860,10 +859,13 @@ async def process_persona_images(
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
                 return False, error_msg
 
-        # Step 3: Parallel Individual Image Generation
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/3: Starting parallel image generation ({images_per_persona} images)...")
+        # Step 3: Parallel Individual Image Generation (TWO-STAGE WORKFLOW)
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/3: Starting two-stage parallel image generation ({images_per_persona} images)...")
         logger.info("=" * 80)
-        logger.info(f"BASE IMAGE S3 URL (will be used as reference for ALL images):")
+        logger.info(f"TWO-STAGE WORKFLOW:")
+        logger.info(f"  Stage 1: Clean image from base-face (no style degradation)")
+        logger.info(f"  Stage 2: Apply random degradation to clean image")
+        logger.info(f"BASE IMAGE S3 URL (used as reference for Stage 1):")
         logger.info(f"{result.base_image_url}")
         logger.info("=" * 80)
 
@@ -887,8 +889,8 @@ async def process_persona_images(
             'age': result.age
         }
 
-        # ===== PHASE 1: Generate ALL Prompts Using Local LLM Chain =====
-        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1: Generating {images_per_persona} prompts using local LLM chain...")
+        # ===== PHASE 1: Generate ALL Clean Prompts Using Local LLM Chain =====
+        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1: Generating {images_per_persona} CLEAN prompts (no style descriptors)...")
 
         try:
             # Get the prompt chain instance
@@ -900,8 +902,9 @@ async def process_persona_images(
                 logger.info(f"[Task {task_id_str}] [{persona_name}] Found {len(existing_history)} previous image ideas to avoid")
                 logger.debug(f"[Task {task_id_str}] [{persona_name}] Previous ideas: {existing_history}")
 
-            # Generate all prompts at once (chain handles history internally)
-            # Returns: (final_prompts, image_ideas)
+            # Generate all clean prompts at once (chain handles history internally)
+            # Returns: (clean_prompts, image_ideas)
+            # NOTE: These are clean prompts - style degradation happens in Stage 2
             prompts, new_ideas = await prompt_chain.generate_image_prompts(
                 person_data=person_data,
                 num_images=images_per_persona,
@@ -913,7 +916,7 @@ async def process_persona_images(
             if not prompts or len(prompts) != images_per_persona:
                 raise Exception(f"Expected {images_per_persona} prompts, got {len(prompts) if prompts else 0}")
 
-            logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1 COMPLETE: Generated {len(prompts)} prompts with {len(new_ideas)} new ideas")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1 COMPLETE: Generated {len(prompts)} clean prompts with {len(new_ideas)} new ideas")
             logger.debug(f"[Task {task_id_str}] [{persona_name}] New ideas: {new_ideas}")
 
         except Exception as e:
@@ -921,8 +924,9 @@ async def process_persona_images(
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
 
-        # ===== PHASE 2: Generate Individual Images with SeeDream =====
-        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2: Generating {images_per_persona} individual images with SeeDream...")
+        # ===== PHASE 2: Generate Individual Images with SeeDream (Two-Stage Per Image) =====
+        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2: Two-stage generation of {images_per_persona} images...")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Each image: Stage 1 (clean) → Stage 2 (degradation)")
 
         # Generate presigned URL for base image (SeeDream needs to download it)
         logger.info(f"[Task {task_id_str}] [{persona_name}] Generating presigned URL for base image...")
@@ -942,50 +946,74 @@ async def process_persona_images(
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
 
-        # Generate each image individually with SeeDream
+        # Generate each image individually with SeeDream (TWO-STAGE WORKFLOW)
         async def generate_single_image(image_index: int, prompt: str) -> str:
             """
-            Generate a single image using SeeDream with dual-reference (base + style).
+            Generate a single image using SeeDream with two-stage degradation workflow.
+
+            NEW WORKFLOW:
+            Stage 1: Generate clean image from base-face using clean prompt
+            Stage 2: Apply degradation to clean image using random degradation prompt
 
             Args:
                 image_index: Image index (0-indexed)
-                prompt: Image generation prompt
+                prompt: Clean image generation prompt (no style descriptors)
 
             Returns:
                 S3 image URL
             """
-            # Fetch random style reference image for THIS specific image
-            style_image_url = None
-            try:
-                style_image_url = get_random_style_image()
-                if style_image_url:
-                    logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Using style: {style_image_url[:80]}...")
-            except Exception as e:
-                logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Failed to fetch style: {e}")
-
-            mode_str = "dual-reference" if style_image_url else "single-reference"
-            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Generating with SeeDream ({mode_str})...")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Starting two-stage generation...")
 
             try:
-                # Generate image with SeeDream using dual-reference if style image available
-                image_bytes = await generate_image_with_reference(
+                # STAGE 1: Generate clean image from base-face (no style degradation)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 1: Generating clean image...")
+
+                clean_image_bytes = await generate_image_with_reference(
                     prompt=prompt,
                     base_image_url=base_image_presigned_url,
-                    style_image_url=style_image_url  # NEW: Pass style image for dual-reference
+                    style_image_url=None  # NO style image - single reference only
                 )
-                if not image_bytes:
-                    raise Exception("SeeDream returned empty image")
+                if not clean_image_bytes:
+                    raise Exception("SeeDream Stage 1 returned empty image")
 
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Generated ({len(image_bytes)} bytes)")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 1 COMPLETE: Clean image generated ({len(clean_image_bytes)} bytes)")
+
+                # Upload clean image to S3 and generate presigned URL for Stage 2
+                clean_object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}_clean.png"
+                _, clean_image_url = upload_to_s3(clean_image_bytes, clean_object_key)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Clean image uploaded: {clean_image_url}")
+
+                # Generate presigned URL for clean image (for Stage 2 input)
+                clean_image_parts = clean_image_url.split('/')
+                bucket_index = clean_image_parts.index(os.getenv('S3_BUCKET_NAME'))
+                clean_image_key = '/'.join(clean_image_parts[bucket_index + 1:])
+                clean_image_presigned_url = generate_presigned_url(clean_image_key, expiration=3600)
+
+                # STAGE 2: Apply degradation to clean image
+                from services.style_degradation_prompts import get_random_degradation_prompt
+
+                degradation_prompt = get_random_degradation_prompt()
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 2: Applying degradation...")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Degradation: {degradation_prompt[:80]}...")
+
+                degraded_image_bytes = await generate_image_with_reference(
+                    prompt=degradation_prompt,
+                    base_image_url=clean_image_presigned_url,
+                    style_image_url=None  # Single reference only
+                )
+                if not degraded_image_bytes:
+                    raise Exception("SeeDream Stage 2 returned empty image")
+
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 2 COMPLETE: Degraded image generated ({len(degraded_image_bytes)} bytes)")
 
                 # Apply post-processing if enabled
-                processed_bytes = image_bytes
+                processed_bytes = degraded_image_bytes
 
                 # Conditionally crop white borders
                 if crop_white_borders_enabled:
                     try:
                         processed_bytes = remove_white_borders(processed_bytes, threshold=220, min_border_width=1)
-                        logger.debug(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Cropped borders: {len(image_bytes)} -> {len(processed_bytes)} bytes")
+                        logger.debug(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Cropped borders: {len(degraded_image_bytes)} -> {len(processed_bytes)} bytes")
                     except Exception as e:
                         logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Border cropping failed: {str(e)}")
 
@@ -997,15 +1025,15 @@ async def process_persona_images(
                     except Exception as e:
                         logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Style randomization failed: {str(e)}")
 
-                # Upload to S3
+                # Upload final degraded image to S3
                 object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}.png"
                 _, image_url = upload_to_s3(processed_bytes, object_key)
 
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Uploaded: {image_url}")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] TWO-STAGE COMPLETE: Uploaded final image: {image_url}")
                 return image_url
 
             except Exception as e:
-                error_msg = f"Image generation failed for image {image_index + 1}: {str(e)}"
+                error_msg = f"Two-stage image generation failed for image {image_index + 1}: {str(e)}"
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
                 raise Exception(error_msg)
 

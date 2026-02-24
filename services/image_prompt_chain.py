@@ -36,7 +36,9 @@ class ImagePromptChain:
     This replaces the 3-step Flowise workflow:
     1. Generate idea for single image
     2. Compose structured prompt
-    3. Add dual-reference suffix for SeeDream (Format 1 approach)
+    3. Create clean prompt for two-stage SeeDream workflow
+       - Stage 1: Clean image generation (base-face only)
+       - Stage 2: Degradation applied via style_degradation_prompts.py
     """
 
     def __init__(self):
@@ -175,7 +177,7 @@ class ImagePromptChain:
                         node_order=i * 3 + 2
                     )
 
-                    logger.info(f"Final prompt {i+1}: {final_prompt[:100]}...")
+                    logger.info(f"Clean prompt {i+1}: {final_prompt[:100]}...")
 
                     # Add to history and results
                     generated_ideas.append(idea)
@@ -246,12 +248,16 @@ class ImagePromptChain:
             # System prompt
             system_prompt = (
                 "You are to come up with an idea for 1 image of this social media person. "
-                "The image should be a day-to-day life photo of the person. "
-                "They are NOT an influencer, so pretty boring stuff just to reflect an average person "
-                "and their interests, occupation, or activities that relate to their info.\n\n"
-                "The image MUST have different clothes and never repeat same pose and/or facial expression - "
-                "so that should implicitly be described. Avoid smiling in all images, be creative!\n\n"
-                "Output ONLY the image idea description, nothing else."
+                "The image should be a MESSY, CANDID, UNFLATTERING day-to-day life photo. "
+                "They are NOT an influencer - this is an AUTHENTICALLY AMATEUR social media photo.\n\n"
+                "UNFLATTERING/MESSY MOMENT EXAMPLES:\n"
+                "- Awkward timing: mid-chew, yawning, scratching, adjusting clothes, mid-sentence\n"
+                "- Unflattering poses: slouched posture, messy hair, just woke up, lying down awkwardly\n"
+                "- Chaotic environments: unmade bed, messy room, cluttered desk, dirty mirror, laundry visible\n"
+                "- Caught off-guard: distracted look, looking away from camera, mouth open, eyes half-closed\n\n"
+                "The image MUST have different clothes and never repeat same pose and/or facial expression. "
+                "Avoid smiling in all images, be creative with REAL human moments (bored, tired, distracted).\n\n"
+                "Output ONLY the image idea description with messy/unflattering elements, nothing else."
             )
 
             # User prompt
@@ -328,34 +334,45 @@ class ImagePromptChain:
         ) if wf_logger else None
 
         try:
-            # System prompt with SHORT examples
+            # System prompt with examples that include attire and pose
             system_prompt = (
-                "You are to generate a SHORT, SIMPLE scene description for image generation. "
-                "Keep it to ONE sentence describing the activity/setting. Be concise and natural.\n\n"
-                "Here are examples:\n\n"
+                "You are to generate a MESSY, AMATEUR, CANDID scene description for social media photo generation. "
+                "Include the activity, location, clothing/attire, pose, expression, AND amateur photo flaws. "
+                "This should look like a REAL social media photo, not a professional shot.\n\n"
+                "Here are examples of GOOD amateur photos:\n\n"
                 "<EXAMPLES>\n"
-                "taking a mirror selfie in a bathroom\n"
-                "sitting at a coffee shop with a laptop\n"
-                "at the gym after a workout\n"
-                "walking on a beach trail\n"
-                "at home on the couch\n"
-                "at a park on a sunny day\n"
+                "slouched on couch eating pizza, messy hair, wearing old t-shirt and sweatpants, mouth open mid-chew, blurry, clothes on floor in background\n"
+                "taking bathroom mirror selfie, finger partially in shot, messy sink visible, wearing pajamas, hair unbrushed, awkward angle\n"
+                "sitting at desk with laptop, off-center in frame, messy papers everywhere, wearing hoodie, looking away from camera, distracted\n"
+                "lying on unmade bed scrolling phone, wearing wrinkled t-shirt, awkward angle from above, yawning, messy room visible\n"
+                "at gym locker room mirror, towel around neck, sweaty and exhausted, bad overhead lighting, other people's stuff in background\n"
+                "in car taking selfie, one hand on steering wheel, squinting from sun, fast food bag on passenger seat, slightly blurry\n"
+                "standing in messy kitchen, wearing tank top and shorts, mid-sentence with mouth open, dirty dishes in sink behind, awkward pose\n"
                 "</EXAMPLES>\n\n"
-                "CRITICAL GUARDRAILS:\n"
-                "- ONE simple sentence only\n"
-                "- Describe activity and location ONLY\n"
-                "- NO clothing details, NO hair descriptions, NO background details\n"
-                "- NO quality descriptors\n"
-                "- Keep it under 15 words\n"
+                "AMATEUR PHOTO REQUIREMENTS (MUST INCLUDE 2-3 OF THESE):\n"
+                "- Technical flaws: blurry, finger in shot, awkward angle, bad framing, poorly centered, off-center, bad lighting\n"
+                "- Environmental mess: messy background, cluttered room, unmade bed, dirty mirror, stuff on floor, messy desk, visible clutter\n"
+                "- Poor composition: awkward angle, bad framing, off-center, too close, weird perspective\n"
+                "- Human mess: slouched posture, messy hair, unbrushed hair, wrinkled clothes, mid-action, unflattering pose\n"
+                "- Caught moments: mid-chew, yawning, looking away, distracted, mouth open, eyes half-closed, awkward expression\n\n"
+                "CRITICAL REQUIREMENTS:\n"
+                "- Include: activity, location, clothing/attire, pose, expression, AND 2-3 amateur photo flaws\n"
+                "- MUST include environmental mess OR technical flaws in EVERY description\n"
+                "- Clothing should be casual/worn/wrinkled (old t-shirts, sweatpants, pajamas, hoodies)\n"
+                "- Pose should be natural/slouched/awkward (not posed or flattering)\n"
+                "- Expression should be authentic (bored, tired, distracted, mid-action, NOT smiling)\n"
+                "- EXCLUDE: quality descriptors like 'professional', 'well-lit', 'high-quality'\n"
+                "- Keep it under 30 words (extra 5 words for amateur details)\n"
                 "- ABSOLUTELY NO mentions of: camera, phone, mobile, lens, photograph, taking photo, smartphone, device, screen\n"
                 "- For selfies, NEVER mention the camera/phone - it's implied by 'selfie'\n\n"
-                "Output ONLY the simple scene description, nothing else."
+                "Output ONLY the scene description with attire/pose/expression/amateur flaws, nothing else."
             )
 
             # User prompt
             user_prompt = (
                 f"Image idea: {image_idea}\n\n"
-                "Generate a short, simple scene description."
+                "Generate a scene description that includes activity, location, clothing, pose, and expression. "
+                "Remove any atmospheric or background environment details."
             )
 
             # Call LLM
@@ -407,20 +424,24 @@ class ImagePromptChain:
         node_order: int = 2
     ) -> str:
         """
-        Step 3: Add dual-reference suffix using Format 2 from matrix tests.
+        Step 3: Create clean single-reference prompt for two-stage degradation workflow.
 
-        Format 2 (winner): "The person in image 1 is {activity}. This is an amateur social media photo based on the quality and style of image 2."
+        NEW WORKFLOW:
+        Stage 1: Generate clean image from base-face using THIS prompt (no style degradation)
+        Stage 2: Apply degradation to clean image using style_degradation_prompts.py
+
+        This function now generates a clean, simple prompt that focuses on:
+        1. The person from the base image
+        2. The scene/activity/clothing/pose
+        3. NO quality/style descriptors (those come from Stage 2 degradation)
 
         Args:
-            structured_prompt: The simple scene description
+            structured_prompt: The scene description with attire/pose/expression
             image_type: 'selfie', 'candid', or 'group'
-
-        This format produced the best results in playground testing with natural, concise prompts.
-        Uses POSITIVE quality descriptors (amateur, casual, poor lighting) rather than negatives.
         """
         # Start node logging
         node_logger = wf_logger.start_node(
-            node_name='add_dual_reference_suffix',
+            node_name='add_clean_prompt_prefix',
             order=node_order,
             input_data={
                 'structured_prompt': structured_prompt,
@@ -429,27 +450,25 @@ class ImagePromptChain:
         ) if wf_logger else None
 
         try:
-            # Build natural prompt with Format 2 structure + positive amateur quality descriptors
+            # Build clean prompt WITHOUT any quality/style descriptors
+            # Quality will be applied in Stage 2 via degradation prompts
             if image_type == 'selfie':
                 final_prompt = (
-                    f"The person in image 1 is taking a selfie - {structured_prompt}. "
-                    f"This is an amateur social media photo based on the quality and style of image 2. "
-                    f"Poor lighting, casual amateur quality, unpolished, grainy, low resolution."
+                    f"The person from the base image is taking a selfie - {structured_prompt}. "
+                    f"Use the person's face and identity from the base image."
                 )
             elif image_type == 'candid':
                 final_prompt = (
-                    f"The person in image 1 is {structured_prompt}. "
-                    f"This is a casual photo taken by a friend, based on the quality and style of image 2. "
-                    f"Amateur quality, bad lighting, spontaneous moment, unposed, grainy."
+                    f"The person from the base image is {structured_prompt}. "
+                    f"Use the person's face and identity from the base image."
                 )
             else:  # group
                 final_prompt = (
-                    f"The person in image 1 is {structured_prompt}. "
-                    f"This is an amateur social media photo with friends based on the quality and style of image 2. "
-                    f"Casual group shot, poor lighting, amateur quality, candid moment, unpolished."
+                    f"The person from the base image is {structured_prompt}. "
+                    f"Use the person's face and identity from the base image."
                 )
 
-            logger.debug(f"Final prompt with dual-reference ({image_type}): {final_prompt}")
+            logger.debug(f"Final clean prompt ({image_type}): {final_prompt}")
 
             # Log node completion (no LLM call, just string formatting)
             if node_logger:
@@ -461,7 +480,7 @@ class ImagePromptChain:
             return final_prompt
 
         except Exception as e:
-            logger.error(f"Error adding dual-reference suffix: {str(e)}")
+            logger.error(f"Error creating clean prompt: {str(e)}")
             if node_logger:
                 node_logger.complete(status='failed', error_message=str(e))
             raise

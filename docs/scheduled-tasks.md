@@ -105,7 +105,7 @@ pending -> generating-data -> data-generated -> generating-images -> completed
 10. Update task status to `data-generated` (or `failed` if all batches fail)
 
 **Flowise API Details**:
-- URL: `https://flowise.electric-marinade.com/api/v1/prediction/71bf0c86-c802-4221-b6e7-0af16e350bb6`
+- URL: `https://flowise.omrisystems.com/api/v1/prediction/71bf0c86-c802-4221-b6e7-0af16e350bb6`
 - Authentication: Bearer token (stored in script)
 - Timeout: 600 seconds per request
 - Response Format: Multiple JSON objects separated by newlines
@@ -364,7 +364,7 @@ with app.app_context():
 ### System Requirements
 - Python 3.12 or higher
 - PostgreSQL 12 or higher
-- Network access to Flowise API (https://flowise.electric-marinade.com)
+- Network access to Flowise API (https://flowise.omrisystems.com)
 - Virtual environment at `/home/niro/galacticos/avatar-data-generator/venv`
 
 ### Python Packages
