@@ -503,7 +503,7 @@ def parse_flowise_response(text_content: str, batch_number: int, task_id: str) -
                                 'lastname': persona_data['lastname'],
                                 'gender': persona_data['gender'],
                                 'ethnicity': persona_data.get('ethnicity'),  # Root level field
-                                'age': bios_json.get('age'),  # Inside bios JSON
+                                'age': persona_data.get('age'),  # Root level field (changed from bios_json)
                                 'bio_facebook': bios_json.get('facebook_bio', ''),
                                 'bio_instagram': bios_json.get('instagram_bio', ''),
                                 'bio_x': bios_json.get('x_bio', ''),
