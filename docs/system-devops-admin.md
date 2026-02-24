@@ -520,6 +520,42 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Application initialized successfully with debug logging enabled
 **Impact**: These changes ensure cookies are properly forwarded through the nginx reverse proxy, which is critical for Flask session management and CSRF token validation. The issue was that cookies set by Flask were not being correctly passed back to the client or forwarded from the client to Flask, causing session mismatch.
 
+### Service Restart for Two-Stage Degradation Workflow (2026-02-24 12:19 UTC)
+**Reason**: Applied code changes for new two-stage degradation workflow and style reference prompts
+**Affected Files**:
+- `services/image_prompt_chain.py` - Updated degradation workflow logic
+- `workers/task_processor.py` - Task processing updates
+- `services/style_degradation_prompts.py` - New style degradation prompt templates
+**Action**: Restarted avatar-data-generator.service to pick up code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 99796 (master), 99800 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Completed successfully with no stuck tasks
+- Memory usage: 99.0M (peak: 99.3M)
+**Note**: Since the task processor (APScheduler) runs within the main Flask application service (integrated on 2026-01-30), restarting the main service applies all code changes to both the web app and background task processing.
+
+### Service Restart for LLM Prompt Updates (2026-02-24 14:13 UTC)
+**Reason**: Applied updated LLM prompts for authentic amateur-quality social media image generation
+**Affected Files**:
+- `services/image_prompt_chain.py` - Rewrote Node 1 and Node 2 LLM prompts to generate messy, candid, amateur-quality social media photos with realistic flaws and authentic messiness
+**Changes**:
+- Node 1: Updated to teach authentic photo composition, natural flaws, environmental mess, and real-life lighting imperfections
+- Node 2: Updated to emphasize amateur camera quality, unpolished image quality, authentic digital artifacts, and candid social media aesthetic
+- System prompts and examples revised to focus on real photo flaws instead of perfect staged shots
+**Action**: Restarted avatar-data-generator.service to apply prompt changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 125131 (master), 125134 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Completed successfully with no stuck tasks
+- Memory usage: 98.8M (peak: 99.2M)
+**Note**: Since the task processor (APScheduler) runs within the main Flask application service (integrated on 2026-01-30), restarting the main service applies all code changes to both the web app and background task processing. The new prompts will be used for all subsequent image generation tasks.
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)
