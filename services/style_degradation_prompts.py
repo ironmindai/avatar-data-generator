@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 # Establishes foundational 2014-2016 social media photo quality
 BASE_COMPRESSION_PREFIX = (
     "2014-2016 old social media photo quality: heavy JPEG compression artifacts, "
-    "blocky compression in flat areas, typical pre-Instagram-filter era phone camera, "
-    "slightly muddy colors, reduced dynamic range. PLUS: "
+    "typical pre-Instagram-filter era phone camera, "
+    "slightly muddy colors, reduced dynamic range. "
 )
 
 
