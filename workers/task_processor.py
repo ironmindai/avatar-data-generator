@@ -1028,7 +1028,7 @@ async def process_persona_images(
                 # Upload final degraded image to S3 with prompts as metadata
                 object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}.png"
                 metadata = {
-                    'scene-prompt': flowise_prompt[:1024],  # S3 metadata has 2KB limit per value
+                    'scene-prompt': prompt[:1024],  # S3 metadata has 2KB limit per value
                     'degradation-prompt': degradation_prompt[:1024]
                 }
                 _, image_url = upload_to_s3(processed_bytes, object_key, metadata=metadata)
