@@ -1025,9 +1025,13 @@ async def process_persona_images(
                     except Exception as e:
                         logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Style randomization failed: {str(e)}")
 
-                # Upload final degraded image to S3
+                # Upload final degraded image to S3 with prompts as metadata
                 object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}.png"
-                _, image_url = upload_to_s3(processed_bytes, object_key)
+                metadata = {
+                    'scene-prompt': flowise_prompt[:1024],  # S3 metadata has 2KB limit per value
+                    'degradation-prompt': degradation_prompt[:1024]
+                }
+                _, image_url = upload_to_s3(processed_bytes, object_key, metadata=metadata)
 
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] TWO-STAGE COMPLETE: Uploaded final image: {image_url}")
                 return image_url

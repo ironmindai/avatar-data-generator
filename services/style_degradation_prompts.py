@@ -47,7 +47,7 @@ SPECIFIC_DEGRADATION_PROMPTS = [
     "Apply bright overhead office lighting, flat top-down shadows, pale washed out skin, sterile fluorescent color cast",
 
     # Old/cheap camera quality (3 variations)
-    "Apply old smartphone camera quality: heavy compression artifacts, noise in shadows, poor white balance, soft focus, muddy colors, digital grain",
+    "Apply old smartphone camera quality: heavy compression artifacts, noise in shadows, poor white balance, soft focus, muddy colors, natural sensor noise",
     "Apply poorly timed snapshot: caught mid-blink or mid-expression, awkward unflattering angle, accidental bad timing, candid caught-off-guard look",
     "Apply dirty lens or fingerprint smudge: slight blur in parts, reduced contrast, hazy softness from smudged camera lens, uneven sharpness, casual neglected phone camera",
 

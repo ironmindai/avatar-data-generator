@@ -556,6 +556,21 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Memory usage: 98.8M (peak: 99.2M)
 **Note**: Since the task processor (APScheduler) runs within the main Flask application service (integrated on 2026-01-30), restarting the main service applies all code changes to both the web app and background task processing. The new prompts will be used for all subsequent image generation tasks.
 
+### Service Restart for Image Prompt Chain Updates (2026-02-24 15:17 UTC)
+**Reason**: Applied updated image_prompt_chain.py changes for improved image generation workflow
+**Affected Files**:
+- `services/image_prompt_chain.py` - Updated image generation prompt logic and workflow
+**Action**: Restarted avatar-data-generator.service to apply code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 141176 (master), 141179 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Completed successfully with no stuck tasks
+- Memory usage: 99.5M (peak: 100.2M)
+**Note**: Since the task processor (APScheduler) runs within the main Flask application service (integrated on 2026-01-30), restarting the main service applies all code changes to both the web app and background task processing.
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)

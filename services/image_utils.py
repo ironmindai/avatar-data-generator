@@ -176,10 +176,11 @@ def upload_to_s3(
     image_bytes: bytes,
     object_key: str,
     bucket_name: str = None,
-    content_type: str = 'image/png'
+    content_type: str = 'image/png',
+    metadata: dict = None
 ) -> Tuple[str, str]:
     """
-    Upload an image to S3-compatible storage (MinIO).
+    Upload an image to S3-compatible storage (MinIO) with optional metadata.
 
     Uploads image bytes to the configured S3 bucket and returns the
     object key and a public URL for accessing the image.
@@ -189,6 +190,8 @@ def upload_to_s3(
         object_key: S3 object key (path/filename in bucket), e.g., 'avatars/123/image_0.png'
         bucket_name: S3 bucket name (defaults to S3_BUCKET_NAME from .env)
         content_type: MIME type of the image (default: 'image/png')
+        metadata: Optional dict of metadata key-value pairs to attach to the S3 object
+                  (e.g., {'prompt': 'scene description', 'degradation': 'quality style'})
 
     Returns:
         Tuple[str, str]: (object_key, public_url)
@@ -222,13 +225,21 @@ def upload_to_s3(
             region_name=S3_REGION
         )
 
+        # Prepare put_object parameters
+        put_params = {
+            'Bucket': bucket,
+            'Key': object_key,
+            'Body': image_bytes,
+            'ContentType': content_type
+        }
+
+        # Add metadata if provided
+        if metadata:
+            put_params['Metadata'] = metadata
+            logger.debug(f"Attaching metadata: {list(metadata.keys())}")
+
         # Upload the image
-        s3_client.put_object(
-            Bucket=bucket,
-            Key=object_key,
-            Body=image_bytes,
-            ContentType=content_type
-        )
+        s3_client.put_object(**put_params)
 
         # Construct public URL
         # Format: {S3_PUBLIC_URL_BASE}/bucket/object_key
