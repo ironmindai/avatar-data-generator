@@ -617,6 +617,56 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Degradation prompts now have cleaner structure without redundant/conflicting guidance
 - Future image generation will use refined degradation instructions for more consistent results
 
+### Service Restart for PNG Metadata Embedding Feature (2026-02-24 17:56 UTC)
+**Reason**: Applied PNG metadata embedding feature to store image generation metadata in PNG files
+**Affected Files**:
+- `workers/task_processor.py` - Added PNG metadata embedding after image degradation
+**Changes**:
+- Implemented PNG metadata storage for all generated images
+- Metadata includes: persona details, LLM prompts, generation parameters, degradation settings, timestamps
+- Uses standard PNG tEXt chunks for compatibility with image viewers
+**Action**: Restarted avatar-data-generator.service to apply code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 167834 (master), 167836 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Recovered 1 task(s) (Task 964bf088 still marked incomplete)
+- Memory usage: 121.7M (peak: 122.1M)
+- Startup logs: Application initialized successfully at 17:56:17 UTC
+**Impact**:
+- All newly generated images will now embed comprehensive metadata in PNG format
+- Metadata is queryable using standard tools like `exiftool` or Python PIL
+- Enables tracing generation parameters, LLM prompts, and persona details from the image file itself
+
+### Service Restart for S3 Metadata ASCII Fix - PNG Embedding Only (2026-02-24 18:01 UTC)
+**Reason**: Fixed S3 metadata ASCII encoding errors by using PNG-embedded metadata only
+**Root Cause**: S3 metadata (UserMetadata) has strict ASCII-only requirements. Previous implementation attempted to store JSON metadata in S3 object metadata, which failed with non-ASCII characters (Unicode persona names, LLM prompts with special characters)
+**Solution**: Removed S3 metadata storage, using only PNG tEXt chunk embedding for metadata
+**Affected Files**:
+- `workers/task_processor.py` - Removed S3 UserMetadata parameter from upload calls
+**Changes**:
+- Removed `Metadata=metadata` parameter from all S3 `upload_fileobj()` calls
+- Metadata now stored exclusively in PNG tEXt chunks (already implemented in 17:56 restart)
+- S3 objects now have no custom metadata headers, avoiding ASCII encoding issues
+**Action**: Restarted avatar-data-generator.service to apply fix
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 169470 (master), 169473 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Recovered 2 task(s) (Task 964bf088 incomplete, Task 29f3f7bb stuck in generating-images)
+- Memory usage: 126.2M (peak: 644.4M)
+- Startup logs: Application initialized successfully at 18:01:20 UTC
+- Active processing: Task 964bf088 resuming image generation for persona "Sanjay Patel"
+**Impact**:
+- S3 upload errors eliminated - no more ASCII encoding issues
+- Metadata still preserved in PNG files via tEXt chunks
+- Simpler S3 object structure without custom metadata headers
+- All metadata accessible via PNG file extraction (download image, read PNG metadata)
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)

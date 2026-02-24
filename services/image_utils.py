@@ -174,7 +174,7 @@ def _trim_whitespace_from_file(image_path: str) -> bytes:
 
 def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
     """
-    Embed metadata into PNG image file as text chunks.
+    Embed metadata into image file (PNG text chunks or JPEG comment).
 
     This allows metadata to survive downloads - it's embedded in the image file itself,
     not just stored in S3 object metadata.
@@ -184,31 +184,45 @@ def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
         metadata: Dictionary of metadata key-value pairs to embed
 
     Returns:
-        bytes: New PNG image with embedded metadata
+        bytes: Image with embedded metadata (same format as input)
     """
     try:
         # Load image from bytes
         img = Image.open(io.BytesIO(image_bytes))
+        original_format = img.format
 
         # Convert to RGB if necessary (remove alpha channel for JPEG compatibility)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
 
-        # Create PNG info object to store metadata as text chunks
-        png_info = PngImagePlugin.PngInfo()
+        # Determine output format based on input
+        if original_format == 'JPEG':
+            # For JPEG: Store metadata as a JSON comment
+            import json
+            metadata_json = json.dumps(metadata, ensure_ascii=False)
 
-        for key, value in metadata.items():
-            # Add each metadata pair as a PNG text chunk
-            png_info.add_text(key, str(value))
-            logger.debug(f"Embedded metadata: {key} = {value[:100]}...")
+            # Save as JPEG with comment
+            output_buffer = io.BytesIO()
+            img.save(output_buffer, format='JPEG', quality=95, optimize=True, comment=metadata_json)
+            logger.debug(f"Embedded metadata in JPEG comment: {len(metadata)} fields")
+            return output_buffer.getvalue()
 
-        # Save to bytes with metadata
-        output_buffer = io.BytesIO()
-        img.save(output_buffer, format='PNG', pnginfo=png_info)
-        return output_buffer.getvalue()
+        else:
+            # For PNG: Use text chunks (standard approach)
+            png_info = PngImagePlugin.PngInfo()
+
+            for key, value in metadata.items():
+                # Add each metadata pair as a PNG text chunk
+                png_info.add_text(key, str(value))
+                logger.debug(f"Embedded metadata: {key} = {value[:100]}...")
+
+            # Save to bytes with metadata
+            output_buffer = io.BytesIO()
+            img.save(output_buffer, format='PNG', pnginfo=png_info)
+            return output_buffer.getvalue()
 
     except Exception as e:
-        logger.warning(f"Failed to embed metadata in PNG: {e}")
+        logger.warning(f"Failed to embed metadata: {e}")
         # Return original bytes if embedding fails
         return image_bytes
 
