@@ -280,10 +280,10 @@ def upload_to_s3(
             'ContentType': content_type
         }
 
-        # Add metadata if provided
-        if metadata:
-            put_params['Metadata'] = metadata
-            logger.debug(f"Attaching metadata: {list(metadata.keys())}")
+        # Note: We no longer attach metadata to S3 headers because:
+        # 1. S3 metadata has ASCII-only limitation (fails on accented characters)
+        # 2. Metadata is already embedded in the PNG file itself (survives downloads)
+        # 3. PNG text chunks support full UTF-8 and are more portable
 
         # Upload the image
         s3_client.put_object(**put_params)
