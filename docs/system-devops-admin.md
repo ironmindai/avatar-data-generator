@@ -667,6 +667,31 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Simpler S3 object structure without custom metadata headers
 - All metadata accessible via PNG file extraction (download image, read PNG metadata)
 
+### Service Restart for JPEG Metadata Embedding Support (2026-02-24 18:09 UTC)
+**Reason**: Applied JPEG metadata embedding support to store metadata in JPEG files (in addition to PNG)
+**Affected Files**:
+- `workers/task_processor.py` - Added JPEG metadata embedding using piexif library for EXIF data
+**Changes**:
+- Implemented JPEG metadata embedding for all generated JPEG images
+- Metadata stored in EXIF UserComment field as JSON string
+- PNG metadata embedding remains unchanged (uses PNG tEXt chunks)
+- Metadata includes: persona details, LLM prompts, generation parameters, degradation settings, timestamps
+**Action**: Restarted avatar-data-generator.service to apply code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 171770 (master), 171772 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: No tasks need recovery (clean startup)
+- Memory usage: 121.6M (peak: 122.1M)
+- Startup logs: Application initialized successfully at 18:09:03 UTC
+**Impact**:
+- All newly generated JPEG images will now embed comprehensive metadata in EXIF UserComment field
+- PNG images continue to use PNG tEXt chunks for metadata
+- Metadata is queryable using standard tools like `exiftool` or Python piexif/PIL
+- Enables tracing generation parameters, LLM prompts, and persona details from both PNG and JPEG files
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)
