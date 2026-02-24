@@ -5,6 +5,10 @@ Collection of diverse "bad quality" prompts for Stage 2 image-to-image generatio
 These prompts are used to apply realistic amateur/candid photo characteristics
 to clean generated images, creating variety in lighting, camera quality, and
 technical issues that make photos look authentically casual/unpolished.
+
+Architecture: BASE_COMPRESSION_PREFIX + random(SPECIFIC_DEGRADATION)
+Every image gets the foundational old social media compression quality,
+plus a specific lighting/camera issue for variety.
 """
 
 import random
@@ -13,9 +17,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# Diverse collection of style degradation prompts
-# Each creates a different type of amateur photo "issue"
-STYLE_DEGRADATION_PROMPTS = [
+# Base compression layer applied to ALL images
+# Establishes foundational 2014-2016 social media photo quality
+BASE_COMPRESSION_PREFIX = (
+    "2014-2016 old social media photo quality: heavy JPEG compression artifacts, "
+    "blocky compression in flat areas, typical pre-Instagram-filter era phone camera, "
+    "slightly muddy colors, reduced dynamic range. PLUS: "
+)
+
+
+# Diverse collection of specific degradation issues
+# ONE of these is randomly selected and added to the base compression
+SPECIFIC_DEGRADATION_PROMPTS = [
     # Backlighting issues (2 variations)
     "Apply strong backlight causing underexposed subject, blown out background, hazy lens flare, auto-exposure failure, silhouette effect partially corrected",
     "Apply harsh window backlight with subject too dark, completely blown out white windows, muddy shadowed face, failed auto-exposure, amateur mistake",
@@ -55,33 +68,36 @@ def get_random_degradation_prompt() -> str:
     """
     Get a random style degradation prompt for Stage 2 image-to-image generation.
 
+    Combines BASE_COMPRESSION_PREFIX (always applied) with a random specific
+    degradation issue for variety.
+
     Returns:
-        str: A randomly selected degradation prompt that describes technical
-             photo quality issues to apply to the image
+        str: Complete degradation prompt with base compression + specific issue
     """
-    prompt = random.choice(STYLE_DEGRADATION_PROMPTS)
-    logger.debug(f"Selected degradation prompt: {prompt[:80]}...")
-    return prompt
+    specific_issue = random.choice(SPECIFIC_DEGRADATION_PROMPTS)
+    full_prompt = BASE_COMPRESSION_PREFIX + specific_issue
+    logger.debug(f"Selected degradation: base compression + {specific_issue[:60]}...")
+    return full_prompt
 
 
 def get_degradation_prompt_count() -> int:
     """
-    Get the total number of available degradation prompts.
+    Get the total number of available specific degradation prompts.
 
     Returns:
-        int: Total count of prompts in the collection
+        int: Total count of specific degradation prompts (excludes base prefix)
     """
-    return len(STYLE_DEGRADATION_PROMPTS)
+    return len(SPECIFIC_DEGRADATION_PROMPTS)
 
 
 def get_all_degradation_prompts() -> list[str]:
     """
-    Get all degradation prompts (useful for testing/preview).
+    Get all FULL degradation prompts (base + each specific issue).
 
     Returns:
-        list[str]: Complete list of all degradation prompts
+        list[str]: Complete list of all full degradation prompts (base + specific)
     """
-    return STYLE_DEGRADATION_PROMPTS.copy()
+    return [BASE_COMPRESSION_PREFIX + specific for specific in SPECIFIC_DEGRADATION_PROMPTS]
 
 
 # For testing
