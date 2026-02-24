@@ -1,0 +1,766 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'workflow-logs' %}
+
+{% block meta_description %}Workflow Log Detail - {{ workflow_log.workflow_run_id }}{% endblock %}
+
+{% block title %}Workflow Log Detail - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Workflow Log Detail Page Styles */
+.content-wrapper {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-6);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-6);
+  font-size: var(--font-size-small);
+}
+
+.breadcrumb-link {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color var(--transition-base);
+}
+
+.breadcrumb-link:hover {
+  color: var(--color-accent-cyan);
+}
+
+.breadcrumb-separator {
+  color: var(--color-text-muted);
+}
+
+.breadcrumb-current {
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+}
+
+/* Page Header */
+.page-header {
+  margin-bottom: var(--spacing-8);
+}
+
+.page-title {
+  font-size: var(--font-size-h1);
+  margin-bottom: var(--spacing-4);
+  color: var(--color-text-primary);
+}
+
+.workflow-id-display {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+}
+
+.workflow-id-label {
+  font-size: var(--font-size-small);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--font-weight-semibold);
+}
+
+.workflow-id-value {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-body);
+  color: var(--color-accent-cyan);
+  background: var(--color-bg-secondary);
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+/* Info Cards */
+.info-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-8);
+}
+
+.info-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-6);
+}
+
+.info-card-title {
+  font-size: var(--font-size-small);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-4);
+}
+
+.info-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.info-label {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+}
+
+.info-value {
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.info-value-mono {
+  font-family: var(--font-mono);
+}
+
+.info-value-cost {
+  color: var(--color-accent-green);
+  font-family: var(--font-mono);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-1) var(--spacing-3);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.status-completed {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.status-failed {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.status-running {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+}
+
+/* Section Header */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+  margin-top: var(--spacing-8);
+}
+
+.section-title {
+  font-size: var(--font-size-h2);
+  color: var(--color-text-primary);
+}
+
+.section-count {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+/* Node Logs Table */
+.nodes-table-wrapper {
+  overflow-x: auto;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  margin-bottom: var(--spacing-8);
+}
+
+.nodes-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-small);
+}
+
+.nodes-table thead {
+  background: var(--color-bg-primary);
+  border-bottom: 2px solid var(--color-border);
+}
+
+.nodes-table th {
+  padding: var(--spacing-3);
+  text-align: left;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.nodes-table tbody tr {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.nodes-table td {
+  padding: var(--spacing-3);
+  color: var(--color-text-primary);
+  vertical-align: top;
+}
+
+.numeric-value {
+  font-family: var(--font-mono);
+}
+
+.cost-value {
+  font-family: var(--font-mono);
+  color: var(--color-accent-green);
+}
+
+/* Expandable Details */
+.expandable-section {
+  margin-top: var(--spacing-4);
+}
+
+.btn-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-bg-primary);
+  color: var(--color-accent-cyan);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.btn-expand:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-accent-cyan);
+}
+
+.btn-expand svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--transition-base);
+}
+
+.btn-expand.expanded svg {
+  transform: rotate(180deg);
+}
+
+.expandable-content {
+  display: block;
+  margin-top: var(--spacing-3);
+  padding: var(--spacing-4);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+}
+
+.prompt-section {
+  margin-bottom: var(--spacing-4);
+}
+
+.prompt-label {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-2);
+}
+
+.prompt-text {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.5;
+  background: var(--color-bg-secondary);
+  padding: var(--spacing-3);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--color-border);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.json-output {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.5;
+  background: var(--color-bg-secondary);
+  padding: var(--spacing-3);
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--color-border);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Error Message Display */
+.error-message {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-4);
+  margin-top: var(--spacing-4);
+}
+
+.error-message-label {
+  font-size: var(--font-size-xs);
+  color: #ef4444;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--spacing-2);
+}
+
+.error-message-text {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: #ef4444;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .info-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .nodes-table {
+    font-size: var(--font-size-xs);
+  }
+
+  .nodes-table th,
+  .nodes-table td {
+    padding: var(--spacing-2);
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Breadcrumb -->
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/workflow-logs" class="breadcrumb-link">Workflow Logs</a>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-current">{{ workflow_log.workflow_run_id[:8] }}</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1 class="page-title">{{ workflow_log.workflow_name }}</h1>
+
+        <div class="workflow-id-display">
+            <span class="workflow-id-label">Workflow Run ID:</span>
+            <code class="workflow-id-value">{{ workflow_log.workflow_run_id }}</code>
+        </div>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="info-cards">
+        <!-- Status & Timing Card -->
+        <div class="info-card">
+            <h3 class="info-card-title">Status & Timing</h3>
+            <div class="info-card-content">
+                <div class="info-row">
+                    <span class="info-label">Status:</span>
+                    {% if workflow_log.status == 'completed' %}
+                    <span class="status-badge status-completed">
+                        <i data-feather="check-circle"></i>
+                        Completed
+                    </span>
+                    {% elif workflow_log.status == 'failed' %}
+                    <span class="status-badge status-failed">
+                        <i data-feather="x-circle"></i>
+                        Failed
+                    </span>
+                    {% elif workflow_log.status == 'running' %}
+                    <span class="status-badge status-running">
+                        <i data-feather="loader"></i>
+                        Running
+                    </span>
+                    {% else %}
+                    <span class="status-badge">{{ workflow_log.status }}</span>
+                    {% endif %}
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Execution Time:</span>
+                    <span class="info-value info-value-mono">
+                        {% if workflow_log.execution_time_ms %}
+                        {{ "{:,}".format(workflow_log.execution_time_ms) }} ms
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Started At:</span>
+                    <span class="info-value">{{ workflow_log.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Completed At:</span>
+                    <span class="info-value">
+                        {% if workflow_log.completed_at %}
+                        {{ workflow_log.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Context Card -->
+        <div class="info-card">
+            <h3 class="info-card-title">Context</h3>
+            <div class="info-card-content">
+                <div class="info-row">
+                    <span class="info-label">Task ID:</span>
+                    <span class="info-value">
+                        {% if workflow_log.task_id %}
+                        <a href="/datasets/{{ workflow_log.task.task_id }}" style="color: var(--color-accent-cyan); text-decoration: none;">
+                            {{ workflow_log.task.task_id }}
+                        </a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Persona ID:</span>
+                    <span class="info-value info-value-mono">
+                        {% if workflow_log.persona_id %}
+                        {{ workflow_log.persona_id }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Token Usage & Cost Card -->
+        <div class="info-card">
+            <h3 class="info-card-title">Token Usage & Cost</h3>
+            <div class="info-card-content">
+                <div class="info-row">
+                    <span class="info-label">Total Tokens:</span>
+                    <span class="info-value info-value-mono">
+                        {% if workflow_log.total_tokens %}
+                        {{ "{:,}".format(workflow_log.total_tokens) }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Total Cost:</span>
+                    <span class="info-value info-value-cost">
+                        {% if workflow_log.total_cost %}
+                        ${{ "%.6f"|format(workflow_log.total_cost) }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Message (if failed) -->
+    {% if workflow_log.error_message %}
+    <div class="error-message">
+        <div class="error-message-label">Error Message</div>
+        <div class="error-message-text">{{ workflow_log.error_message }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Node Execution Logs -->
+    <div class="section-header">
+        <h2 class="section-title">Node Execution Logs</h2>
+        <span class="section-count">({{ node_logs|length }} nodes)</span>
+    </div>
+
+    {% if node_logs and node_logs|length > 0 %}
+    <div class="nodes-table-wrapper">
+        <table class="nodes-table">
+            <thead>
+                <tr>
+                    <th>Order</th>
+                    <th>Node Name</th>
+                    <th>Model</th>
+                    <th>Temp</th>
+                    <th>Max Tokens</th>
+                    <th>Prompt Tokens</th>
+                    <th>Completion Tokens</th>
+                    <th>Total Tokens</th>
+                    <th>Cost</th>
+                    <th>Exec Time (ms)</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for node in node_logs %}
+                <tr>
+                    <!-- Node Order -->
+                    <td>
+                        <span class="numeric-value">{{ node.node_order }}</span>
+                    </td>
+
+                    <!-- Node Name -->
+                    <td>{{ node.node_name }}</td>
+
+                    <!-- Model Name -->
+                    <td>
+                        {% if node.model_name %}
+                        <span class="numeric-value">{{ node.model_name }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Temperature -->
+                    <td>
+                        {% if node.temperature is not none %}
+                        <span class="numeric-value">{{ "%.2f"|format(node.temperature) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Max Tokens -->
+                    <td>
+                        {% if node.max_tokens %}
+                        <span class="numeric-value">{{ "{:,}".format(node.max_tokens) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Prompt Tokens -->
+                    <td>
+                        {% if node.prompt_tokens %}
+                        <span class="numeric-value">{{ "{:,}".format(node.prompt_tokens) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Completion Tokens -->
+                    <td>
+                        {% if node.completion_tokens %}
+                        <span class="numeric-value">{{ "{:,}".format(node.completion_tokens) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Total Tokens -->
+                    <td>
+                        {% if node.total_tokens %}
+                        <span class="numeric-value">{{ "{:,}".format(node.total_tokens) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Cost -->
+                    <td>
+                        {% if node.cost %}
+                        <span class="cost-value">${{ "%.6f"|format(node.cost) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Execution Time -->
+                    <td>
+                        {% if node.execution_time_ms %}
+                        <span class="numeric-value">{{ "{:,}".format(node.execution_time_ms) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Status -->
+                    <td>
+                        {% if node.status == 'completed' %}
+                        <span class="status-badge status-completed">
+                            <i data-feather="check-circle"></i>
+                            OK
+                        </span>
+                        {% elif node.status == 'failed' %}
+                        <span class="status-badge status-failed">
+                            <i data-feather="x-circle"></i>
+                            Failed
+                        </span>
+                        {% elif node.status == 'running' %}
+                        <span class="status-badge status-running">
+                            <i data-feather="loader"></i>
+                            Running
+                        </span>
+                        {% else %}
+                        <span class="status-badge">{{ node.status }}</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Actions -->
+                    <td>
+                        <div style="display: flex; flex-direction: column; gap: var(--spacing-2);">
+                            <button class="btn-expand" onclick="togglePrompts({{ node.id }})">
+                                <i data-feather="chevron-down"></i>
+                                View Prompts
+                            </button>
+                            <button class="btn-expand" onclick="toggleOutput({{ node.id }})">
+                                <i data-feather="chevron-down"></i>
+                                View Output
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                <!-- Expandable Prompts Section (Always rendered) -->
+                <tr id="prompts-{{ node.id }}" style="display: none;">
+                    <td colspan="12">
+                        <div class="expandable-content">
+                            <div class="prompt-section">
+                                <div class="prompt-label">System Prompt</div>
+                                {% if node.system_prompt %}
+                                <pre class="prompt-text">{{ node.system_prompt }}</pre>
+                                {% else %}
+                                <pre class="prompt-text" style="color: var(--color-text-muted); font-style: italic;">No system prompt available for this node.</pre>
+                                {% endif %}
+                            </div>
+                            <div class="prompt-section">
+                                <div class="prompt-label">User Prompt</div>
+                                {% if node.user_prompt %}
+                                <pre class="prompt-text">{{ node.user_prompt }}</pre>
+                                {% else %}
+                                <pre class="prompt-text" style="color: var(--color-text-muted); font-style: italic;">No user prompt available for this node.</pre>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                <!-- Expandable Output Section (Always rendered) -->
+                <tr id="output-{{ node.id }}" style="display: none;">
+                    <td colspan="12">
+                        <div class="expandable-content">
+                            <div class="prompt-label">Output Data (JSON)</div>
+                            {% if node.output_data %}
+                            <pre class="json-output">{{ node.output_data|tojson(indent=2)|safe }}</pre>
+                            {% else %}
+                            <pre class="json-output" style="color: var(--color-text-muted); font-style: italic;">No output data available for this node.</pre>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No node execution logs available for this workflow.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Toggle prompts visibility
+function togglePrompts(nodeId) {
+    console.log('togglePrompts called for nodeId:', nodeId);
+    const row = document.getElementById('prompts-' + nodeId);
+    const button = event.currentTarget;
+
+    console.log('Row element:', row);
+    console.log('Current display:', row ? row.style.display : 'row not found');
+
+    if (!row) {
+        console.error('Prompts row not found for nodeId:', nodeId);
+        return;
+    }
+
+    if (row.style.display === 'none' || row.style.display === '') {
+        row.style.display = 'table-row';
+        button.classList.add('expanded');
+        console.log('Showing prompts row');
+    } else {
+        row.style.display = 'none';
+        button.classList.remove('expanded');
+        console.log('Hiding prompts row');
+    }
+
+    // Re-initialize Feather icons for the button
+    feather.replace();
+}
+
+// Toggle output visibility
+function toggleOutput(nodeId) {
+    console.log('toggleOutput called for nodeId:', nodeId);
+    const row = document.getElementById('output-' + nodeId);
+    const button = event.currentTarget;
+
+    console.log('Row element:', row);
+    console.log('Current display:', row ? row.style.display : 'row not found');
+
+    if (!row) {
+        console.error('Output row not found for nodeId:', nodeId);
+        return;
+    }
+
+    if (row.style.display === 'none' || row.style.display === '') {
+        row.style.display = 'table-row';
+        button.classList.add('expanded');
+        console.log('Showing output row');
+    } else {
+        row.style.display = 'none';
+        button.classList.remove('expanded');
+        console.log('Hiding output row');
+    }
+
+    // Re-initialize Feather icons for the button
+    feather.replace();
+}
+
+// Initialize Feather Icons
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing workflow log detail page');
+    feather.replace();
+
+    // Debug: log all expandable rows
+    const promptRows = document.querySelectorAll('[id^="prompts-"]');
+    const outputRows = document.querySelectorAll('[id^="output-"]');
+    console.log('Found', promptRows.length, 'prompt rows');
+    console.log('Found', outputRows.length, 'output rows');
+});
+</script>
+{% endblock %}

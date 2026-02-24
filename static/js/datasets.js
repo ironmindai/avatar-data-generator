@@ -25,6 +25,7 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     initializeCopyButtons();
+    initializeDeleteButtons();
     initializeFeatherIcons();
 
     // Check if we're on the detail page
@@ -121,6 +122,159 @@
         feather.replace();
       }
     }, 2000);
+  }
+
+  // ========================================
+  // DATASETS LIST PAGE - DELETE FUNCTIONALITY
+  // ========================================
+
+  function initializeDeleteButtons() {
+    const deleteButtons = document.querySelectorAll('.btn-delete, .btn-delete-mobile');
+
+    deleteButtons.forEach(button => {
+      button.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const taskId = this.getAttribute('data-task-id');
+        handleDeleteDataset(taskId, this);
+      });
+    });
+  }
+
+  /**
+   * Handle dataset deletion with confirmation
+   */
+  function handleDeleteDataset(taskId, button) {
+    // Show confirmation dialog
+    const confirmed = confirm(
+      'Are you sure you want to delete this dataset?\n\n' +
+      'This action cannot be undone. All generated personas, images, and data will be permanently deleted.\n\n' +
+      'Task ID: ' + taskId
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    // Disable button and show loading state
+    button.disabled = true;
+    button.classList.add('deleting');
+
+    const originalIcon = button.querySelector('i[data-feather]');
+    const originalIconName = originalIcon ? originalIcon.getAttribute('data-feather') : 'trash-2';
+    const originalText = button.textContent.trim();
+
+    if (originalIcon) {
+      originalIcon.setAttribute('data-feather', 'loader');
+      feather.replace();
+    }
+
+    // Update button text
+    const textNodes = Array.from(button.childNodes).filter(node => node.nodeType === Node.TEXT_NODE);
+    if (textNodes.length > 0) {
+      textNodes[0].textContent = ' Deleting...';
+    }
+
+    // Get CSRF token
+    const csrfTokenElement = document.querySelector('input[name="csrf_token"]');
+    if (!csrfTokenElement) {
+      console.error('CSRF token not found in page');
+      showToast('Error: CSRF token missing. Please refresh the page.', 'error');
+
+      // Restore button state
+      button.disabled = false;
+      button.classList.remove('deleting');
+      if (originalIcon) {
+        originalIcon.setAttribute('data-feather', originalIconName);
+        feather.replace();
+      }
+      if (textNodes.length > 0) {
+        textNodes[0].textContent = originalText;
+      }
+      return;
+    }
+
+    const csrfToken = csrfTokenElement.value;
+
+    // Make DELETE request
+    fetch('/datasets/' + taskId + '/delete', {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      }
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(data => {
+          throw new Error(data.message || 'Failed to delete dataset');
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      // Show success message
+      showToast(data.message || 'Dataset deleted successfully', 'success');
+
+      // Remove the row/card from the DOM with animation
+      const row = button.closest('.task-row');
+      const card = button.closest('.task-card');
+
+      if (row) {
+        row.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(-20px)';
+
+        setTimeout(() => {
+          row.remove();
+          checkIfEmpty();
+        }, 300);
+      }
+
+      if (card) {
+        card.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(-20px)';
+
+        setTimeout(() => {
+          card.remove();
+          checkIfEmpty();
+        }, 300);
+      }
+    })
+    .catch(error => {
+      console.error('Error deleting dataset:', error);
+      showToast(error.message || 'Failed to delete dataset. Please try again.', 'error');
+
+      // Re-enable button and restore original state
+      button.disabled = false;
+      button.classList.remove('deleting');
+
+      if (originalIcon) {
+        originalIcon.setAttribute('data-feather', originalIconName);
+        feather.replace();
+      }
+
+      // Restore button text
+      const textNodes = Array.from(button.childNodes).filter(node => node.nodeType === Node.TEXT_NODE);
+      if (textNodes.length > 0) {
+        textNodes[0].textContent = ' ' + originalText.replace('Deleting...', 'Delete');
+      }
+    });
+  }
+
+  /**
+   * Check if datasets list is empty and show empty state
+   */
+  function checkIfEmpty() {
+    const tableRows = document.querySelectorAll('.task-row');
+    const cards = document.querySelectorAll('.task-card');
+
+    if (tableRows.length === 0 && cards.length === 0) {
+      // Reload page to show empty state
+      window.location.reload();
+    }
   }
 
   // ========================================

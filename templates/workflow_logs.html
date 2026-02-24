@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'workflow-logs' %}
+
+{% block meta_description %}Workflow Logs - LLM workflow execution observability{% endblock %}
+
+{% block title %}Workflow Logs - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Workflow Logs Page Styles */
+.content-wrapper {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-6);
+}
+
+.page-header {
+  margin-bottom: var(--spacing-8);
+}
+
+.page-title {
+  font-size: var(--font-size-h1);
+  margin-bottom: var(--spacing-2);
+  color: var(--color-text-primary);
+}
+
+.page-description {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+}
+
+/* Filter Section */
+.filters-section {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-6);
+  margin-bottom: var(--spacing-6);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-4);
+  margin-bottom: var(--spacing-4);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.filter-label {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-select {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  padding: var(--spacing-3);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  font-family: var(--font-sans);
+  transition: border-color var(--transition-base);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--color-accent-cyan);
+}
+
+.filter-actions {
+  display: flex;
+  gap: var(--spacing-3);
+  align-items: center;
+}
+
+.btn-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-5);
+  background: var(--color-accent-cyan);
+  color: var(--color-bg-primary);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.btn-filter:hover {
+  background: var(--color-accent-cyan-dark);
+}
+
+.btn-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-5);
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-body);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.btn-clear:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-text-secondary);
+}
+
+/* Table Styles */
+.logs-table-wrapper {
+  overflow-x: auto;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+}
+
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-small);
+}
+
+.logs-table thead {
+  background: var(--color-bg-primary);
+  border-bottom: 2px solid var(--color-border);
+}
+
+.logs-table th {
+  padding: var(--spacing-4);
+  text-align: left;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--font-size-xs);
+}
+
+.logs-table tbody tr {
+  border-bottom: 1px solid var(--color-border);
+  transition: background var(--transition-base);
+}
+
+.logs-table tbody tr:hover {
+  background: var(--color-bg-primary);
+}
+
+.logs-table td {
+  padding: var(--spacing-4);
+  color: var(--color-text-primary);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-1) var(--spacing-3);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-completed {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.status-failed {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.status-running {
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+}
+
+/* Truncated Text */
+.workflow-id {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  color: var(--color-accent-cyan);
+}
+
+.task-link {
+  color: var(--color-accent-cyan);
+  text-decoration: none;
+  transition: color var(--transition-base);
+}
+
+.task-link:hover {
+  color: var(--color-accent-cyan-dark);
+  text-decoration: underline;
+}
+
+/* Numeric Values */
+.numeric-value {
+  font-family: var(--font-mono);
+  color: var(--color-text-primary);
+}
+
+.cost-value {
+  font-family: var(--font-mono);
+  color: var(--color-accent-green);
+}
+
+/* Action Button */
+.btn-view-details {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-accent-cyan);
+  color: var(--color-bg-primary);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.btn-view-details:hover {
+  background: var(--color-accent-cyan-dark);
+}
+
+.btn-view-details svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-6);
+  padding: var(--spacing-4);
+}
+
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all var(--transition-base);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: var(--color-bg-primary);
+  border-color: var(--color-accent-cyan);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-btn.active {
+  background: var(--color-accent-cyan);
+  color: var(--color-bg-primary);
+  border-color: var(--color-accent-cyan);
+}
+
+.pagination-info {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-12) var(--spacing-6);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+}
+
+.empty-state-icon {
+  width: 64px;
+  height: 64px;
+  color: var(--color-text-muted);
+  margin: 0 auto var(--spacing-6);
+}
+
+.empty-state-title {
+  font-size: var(--font-size-h2);
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-3);
+}
+
+.empty-state-description {
+  font-size: var(--font-size-body);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-6);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .logs-table {
+    font-size: var(--font-size-xs);
+  }
+
+  .logs-table th,
+  .logs-table td {
+    padding: var(--spacing-2);
+  }
+
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Page Header -->
+    <div class="page-header">
+        <h1 class="page-title">WORKFLOW LOGS</h1>
+        <p class="page-description">
+            LLM workflow execution observability - track token usage, costs, and performance
+        </p>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="filters-section">
+        <form method="GET" action="/workflow-logs">
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label for="workflow_name" class="filter-label">Workflow Name</label>
+                    <select name="workflow_name" id="workflow_name" class="filter-select">
+                        <option value="">All Workflows</option>
+                        {% for name in workflow_names %}
+                        <option value="{{ name }}" {% if current_workflow_filter == name %}selected{% endif %}>
+                            {{ name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="status" class="filter-label">Status</label>
+                    <select name="status" id="status" class="filter-select">
+                        <option value="">All Statuses</option>
+                        <option value="completed" {% if current_status_filter == 'completed' %}selected{% endif %}>Completed</option>
+                        <option value="failed" {% if current_status_filter == 'failed' %}selected{% endif %}>Failed</option>
+                        <option value="running" {% if current_status_filter == 'running' %}selected{% endif %}>Running</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="btn-filter">
+                    <i data-feather="filter"></i>
+                    Apply Filters
+                </button>
+                <a href="/workflow-logs" class="btn-clear">
+                    <i data-feather="x"></i>
+                    Clear
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Logs Table -->
+    {% if logs and logs|length > 0 %}
+    <div class="logs-table-wrapper">
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th>Workflow Run ID</th>
+                    <th>Workflow Name</th>
+                    <th>Task ID</th>
+                    <th>Persona ID</th>
+                    <th>Status</th>
+                    <th>Total Tokens</th>
+                    <th>Total Cost</th>
+                    <th>Execution Time</th>
+                    <th>Started At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <!-- Workflow Run ID (truncated) -->
+                    <td>
+                        <span class="workflow-id">{{ log.workflow_run_id[:8] }}</span>
+                    </td>
+
+                    <!-- Workflow Name -->
+                    <td>{{ log.workflow_name }}</td>
+
+                    <!-- Task ID (link if available) -->
+                    <td>
+                        {% if log.task_id %}
+                        <a href="/datasets/{{ log.task.task_id }}" class="task-link">
+                            {{ log.task.task_id[:8] }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Persona ID -->
+                    <td>
+                        {% if log.persona_id %}
+                        <span class="numeric-value">{{ log.persona_id }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Status -->
+                    <td>
+                        {% if log.status == 'completed' %}
+                        <span class="status-badge status-completed">
+                            <i data-feather="check-circle"></i>
+                            Completed
+                        </span>
+                        {% elif log.status == 'failed' %}
+                        <span class="status-badge status-failed">
+                            <i data-feather="x-circle"></i>
+                            Failed
+                        </span>
+                        {% elif log.status == 'running' %}
+                        <span class="status-badge status-running">
+                            <i data-feather="loader"></i>
+                            Running
+                        </span>
+                        {% else %}
+                        <span class="status-badge">{{ log.status }}</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Total Tokens -->
+                    <td>
+                        {% if log.total_tokens %}
+                        <span class="numeric-value">{{ "{:,}".format(log.total_tokens) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Total Cost -->
+                    <td>
+                        {% if log.total_cost %}
+                        <span class="cost-value">${{ "%.6f"|format(log.total_cost) }}</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Execution Time -->
+                    <td>
+                        {% if log.execution_time_ms %}
+                        <span class="numeric-value">{{ "{:,}".format(log.execution_time_ms) }} ms</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Started At -->
+                    <td>
+                        <time datetime="{{ log.started_at.isoformat() }}">
+                            {{ log.started_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                        </time>
+                    </td>
+
+                    <!-- Actions -->
+                    <td>
+                        <a href="/workflow-logs/{{ log.workflow_run_id }}" class="btn-view-details">
+                            <i data-feather="eye"></i>
+                            View Details
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination">
+        {% if pagination.has_prev %}
+        <a href="?page={{ pagination.prev_num }}{% if current_workflow_filter %}&workflow_name={{ current_workflow_filter }}{% endif %}{% if current_status_filter %}&status={{ current_status_filter }}{% endif %}"
+           class="pagination-btn">
+            <i data-feather="chevron-left"></i>
+            Previous
+        </a>
+        {% else %}
+        <button class="pagination-btn" disabled>
+            <i data-feather="chevron-left"></i>
+            Previous
+        </button>
+        {% endif %}
+
+        <span class="pagination-info">
+            Page {{ pagination.page }} of {{ pagination.pages }}
+        </span>
+
+        {% if pagination.has_next %}
+        <a href="?page={{ pagination.next_num }}{% if current_workflow_filter %}&workflow_name={{ current_workflow_filter }}{% endif %}{% if current_status_filter %}&status={{ current_status_filter }}{% endif %}"
+           class="pagination-btn">
+            Next
+            <i data-feather="chevron-right"></i>
+        </a>
+        {% else %}
+        <button class="pagination-btn" disabled>
+            Next
+            <i data-feather="chevron-right"></i>
+        </button>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="empty-state">
+        <i data-feather="activity" class="empty-state-icon"></i>
+        <h2 class="empty-state-title">No Workflow Logs Yet</h2>
+        <p class="empty-state-description">
+            Workflow execution logs will appear here once LLM workflows start running.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Initialize Feather Icons after page load
+document.addEventListener('DOMContentLoaded', function() {
+    feather.replace();
+});
+</script>
+{% endblock %}

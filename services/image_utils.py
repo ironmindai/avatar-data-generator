@@ -379,6 +379,127 @@ def generate_presigned_url(
         raise Exception(f"Presigned URL generation failed: {str(e)}")
 
 
+def delete_from_s3(
+    object_key: str,
+    bucket_name: str = None
+) -> bool:
+    """
+    Delete an object from S3-compatible storage (MinIO).
+
+    Args:
+        object_key: S3 object key (path/filename in bucket) to delete
+        bucket_name: S3 bucket name (defaults to S3_BUCKET_NAME from .env)
+
+    Returns:
+        bool: True if deletion was successful
+
+    Raises:
+        Exception: If S3 deletion fails or credentials are missing
+    """
+    try:
+        # Use provided bucket name or default from environment
+        bucket = bucket_name or S3_BUCKET_NAME
+
+        # Validate configuration
+        if not all([S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_KEY, bucket]):
+            logger.error("S3 configuration incomplete")
+            raise Exception(
+                "S3 configuration missing. Check S3_ENDPOINT, S3_ACCESS_KEY, "
+                "S3_SECRET_KEY, and S3_BUCKET_NAME in .env"
+            )
+
+        logger.info(f"Deleting object from S3: {bucket}/{object_key}")
+
+        # Initialize S3 client
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=S3_ENDPOINT,
+            aws_access_key_id=S3_ACCESS_KEY,
+            aws_secret_access_key=S3_SECRET_KEY,
+            config=Config(signature_version='s3v4'),
+            region_name=S3_REGION
+        )
+
+        # Delete the object
+        s3_client.delete_object(
+            Bucket=bucket,
+            Key=object_key
+        )
+
+        logger.info(f"Successfully deleted from S3: {bucket}/{object_key}")
+        return True
+
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        error_message = e.response.get('Error', {}).get('Message', str(e))
+
+        logger.error(f"S3 deletion failed - {error_code}: {error_message}")
+
+        # NoSuchKey is not an error - object already doesn't exist
+        if error_code == 'NoSuchKey':
+            logger.warning(f"Object {object_key} does not exist, treating as successful deletion")
+            return True
+
+        if error_code == 'NoSuchBucket':
+            raise Exception(f"S3 bucket '{bucket}' does not exist")
+        elif error_code == 'AccessDenied':
+            raise Exception(f"S3 access denied. Check credentials and bucket permissions")
+        else:
+            raise Exception(f"S3 deletion error ({error_code}): {error_message}")
+
+    except Exception as e:
+        logger.error(f"Error deleting from S3: {str(e)}", exc_info=True)
+        raise Exception(f"S3 deletion failed: {str(e)}")
+
+
+def delete_s3_url(
+    s3_url: str
+) -> bool:
+    """
+    Delete an S3 object given its public URL.
+
+    Extracts the bucket name and object key from the public S3 URL
+    and deletes the object.
+
+    Args:
+        s3_url: Full S3 public URL (e.g., 'https://s3-api.dev.iron-mind.ai/avatars/image.png')
+
+    Returns:
+        bool: True if deletion was successful
+
+    Raises:
+        Exception: If URL parsing fails or S3 deletion fails
+    """
+    try:
+        # Extract bucket and object key from URL
+        # URL format: {S3_PUBLIC_URL_BASE}/{bucket}/{object_key}
+        # Example: https://s3-api.dev.iron-mind.ai/avatars/task_123/image_0.png
+
+        # Remove the base URL
+        if not s3_url.startswith(S3_PUBLIC_URL_BASE):
+            raise Exception(f"URL does not start with expected base: {S3_PUBLIC_URL_BASE}")
+
+        # Get the path after the base URL
+        path = s3_url[len(S3_PUBLIC_URL_BASE):].lstrip('/')
+
+        # Split into bucket and object key
+        parts = path.split('/', 1)
+        if len(parts) != 2:
+            raise Exception(f"Could not parse bucket and object key from URL: {s3_url}")
+
+        bucket_name = parts[0]
+        object_key = parts[1]
+
+        logger.debug(f"Parsed S3 URL - bucket: {bucket_name}, key: {object_key}")
+
+        # Delete the object
+        return delete_from_s3(object_key, bucket_name)
+
+    except Exception as e:
+        logger.error(f"Error deleting S3 URL {s3_url}: {str(e)}", exc_info=True)
+        raise Exception(f"S3 URL deletion failed: {str(e)}")
+
+
 # Utility function for testing/debugging
 async def test_image_processing():
     """

@@ -1611,4 +1611,95 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-21 (Base Image Preview in Dataset Detail)*
+### 2026-02-23 - Dataset Delete Functionality
+
+**New Feature Added:**
+- Added delete button to datasets list page for removing datasets
+- Confirmation dialog prevents accidental deletions
+- Loading state during deletion with visual feedback
+- Smooth row/card removal animation after successful deletion
+- Comprehensive error handling with user-friendly messages
+
+**Delete Button (Desktop Table View):**
+- Icon: trash-2 (14px, secondary color)
+- Text: "DELETE" (uppercase, small font, semibold)
+- Position: Actions column, next to "Details" button
+- Default state: Transparent background, border outline, secondary text
+- Hover state: Error red background (rgba), red border, red text, error glow `0 0 15px rgba(255, 68, 102, 0.2)`
+- Disabled state: 50% opacity, not-allowed cursor, no pointer events
+- Deleting state: Red background, loader icon, "Deleting..." text
+
+**Delete Button (Mobile Card View):**
+- Full-width button below "View Details" button
+- Same styling as desktop with full-width layout
+- Stacked vertically in `.task-actions-mobile` container
+- Hover: Enhanced error glow `0 0 20px rgba(255, 68, 102, 0.3)`
+
+**Confirmation Dialog:**
+- Native JavaScript `confirm()` dialog
+- Clear warning message about permanent deletion
+- Shows Task ID for verification
+- User can cancel or confirm deletion
+- No action taken if user cancels
+
+**Deletion Flow:**
+1. User clicks delete button
+2. Confirmation dialog appears with warning message
+3. If confirmed:
+   - Button disabled, shows loading spinner and "Deleting..." text
+   - DELETE request sent to `/datasets/<task_id>`
+   - On success: Toast notification, row/card fades out with animation (300ms), removed from DOM
+   - On error: Toast error message, button re-enabled with original state
+4. If all datasets deleted: Page reloads to show empty state
+
+**Visual Feedback:**
+- Loading state: Loader icon spins, button shows "Deleting..."
+- Success: Green success toast, smooth fade-out animation (opacity + translateX)
+- Error: Red error toast, button returns to original state
+- Empty state: Page reloads to show "No Datasets Yet" message with CTA
+
+**API Integration:**
+- Endpoint: `DELETE /datasets/<task_id>`
+- Request: JSON content-type header
+- Response format (success):
+  ```json
+  {
+    "success": true,
+    "message": "Dataset deleted successfully"
+  }
+  ```
+- Response format (error):
+  ```json
+  {
+    "success": false,
+    "message": "Error message here"
+  }
+  ```
+
+**Technical Implementation:**
+- Added `initializeDeleteButtons()` function in initialization
+- Event delegation on all `.btn-delete` and `.btn-delete-mobile` buttons
+- `handleDeleteDataset()` manages entire deletion flow
+- `checkIfEmpty()` reloads page when no datasets remain
+- Smooth CSS transitions for row/card removal (0.3s ease-out)
+- Error handling with try-catch and response validation
+
+**Files Modified:**
+- `/templates/datasets.html` - Added delete buttons to table rows and mobile cards
+- `/static/css/datasets.css` - Added delete button styles and actions cell flexbox layout
+- `/static/js/datasets.js` - Added delete functionality with confirmation, loading, and animations
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Delete button uses error/danger color scheme (red) to signal destructive action
+- Confirmation dialog prevents accidental deletions
+- Loading state provides clear feedback during async operation
+- Smooth animations create polished user experience
+- Toast notifications confirm success or explain errors
+- Maintains brandbook compliance: Sharp corners, neon accents, proper spacing
+- Error handling ensures users understand what went wrong
+- Empty state reload provides clean transition when all datasets deleted
+
+---
+
+*Last Updated: 2026-02-23 (Dataset Delete Functionality)*

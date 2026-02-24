@@ -24,6 +24,20 @@ Database created successfully using setup-database.sql script. All privileges gr
   - Migration ID: 25698f3f906f
   - Password hashing: bcrypt
 
+- **workflow_logs** table: LLM workflow execution logs for observability and cost analysis
+  - Created: 2026-02-24
+  - Migration: `/home/niro/galacticos/avatar-data-generator/migrations/add_workflow_logging_tables.sql`
+  - Tracks workflow runs (workflow_run_id, workflow_name, status, tokens, cost, execution time)
+  - Foreign keys: task_id -> generation_tasks.id, persona_id -> generation_results.id
+  - Indexes: workflow_run_id (unique), workflow_name, task_id, persona_id, status, started_at
+
+- **workflow_node_logs** table: Individual LLM node execution logs within workflows
+  - Created: 2026-02-24
+  - Migration: `/home/niro/galacticos/avatar-data-generator/migrations/add_workflow_logging_tables.sql`
+  - Tracks individual LLM calls (node_name, model, prompts, tokens, cost, execution time)
+  - Foreign key: workflow_log_id -> workflow_logs.id (CASCADE delete)
+  - Indexes: workflow_log_id, node_name, (workflow_log_id, node_order)
+
 ### Security Notes
 - Database password stored in `/home/niro/galacticos/avatar-data-generator/.env` (NOT committed to git)
 - PostgreSQL is configured for localhost connections only (peer + scram-sha-256 authentication)

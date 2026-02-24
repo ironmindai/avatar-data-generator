@@ -10,9 +10,12 @@ chain to generate creative, non-repetitive image ideas.
 import os
 import json
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+
+# Import workflow logger
+from services.workflow_logger import create_workflow_logger
 
 # Load environment variables
 load_dotenv()
@@ -48,7 +51,9 @@ class ImagePromptChain:
         self,
         person_data: Dict[str, any],
         num_images: int = 4,
-        prompts_history: Optional[List[str]] = None
+        prompts_history: Optional[List[str]] = None,
+        task_id: Optional[int] = None,
+        persona_id: Optional[int] = None
     ) -> tuple[List[str], List[str]]:
         """
         Generate N image prompts sequentially with context awareness.
@@ -64,114 +69,158 @@ class ImagePromptChain:
                 - age: Age (optional)
             num_images: Number of image prompts to generate (default: 4)
             prompts_history: Optional list of previously used image ideas to avoid
+            task_id: Optional GenerationTask.id for workflow logging
+            persona_id: Optional GenerationResult.id for workflow logging
 
         Returns:
             Tuple of (final_prompts, image_ideas):
                 - final_prompts: List of complete prompts ready for image generation
                 - image_ideas: List of raw image ideas (for history tracking)
         """
-        try:
-            logger.info(f"Generating {num_images} image prompts for {person_data.get('firstname')} {person_data.get('lastname')}")
+        # Start workflow logging
+        async with create_workflow_logger(
+            workflow_name='image_prompt_chain',
+            task_id=task_id,
+            persona_id=persona_id
+        ) as wf_logger:
+            try:
+                # Log input data
+                wf_logger.set_input({
+                    'person_data': person_data,
+                    'num_images': num_images,
+                    'prompts_history': prompts_history,
+                    'prompts_history_count': len(prompts_history) if prompts_history else 0
+                })
 
-            # Validate person data
-            required_fields = ['firstname', 'lastname', 'gender', 'bio_facebook']
-            missing = [f for f in required_fields if f not in person_data]
-            if missing:
-                raise ValueError(f"Missing required person data: {missing}")
+                logger.info(f"Generating {num_images} image prompts for {person_data.get('firstname')} {person_data.get('lastname')}")
 
-            # Initialize context
-            generated_ideas = prompts_history or []
-            final_prompts = []
+                # Validate person data
+                required_fields = ['firstname', 'lastname', 'gender', 'bio_facebook']
+                missing = [f for f in required_fields if f not in person_data]
+                if missing:
+                    raise ValueError(f"Missing required person data: {missing}")
 
-            # Realistic social media mix (dynamic based on num_images)
-            # Selfies: ~25% (1-2 max), Candid/friend photos: ~50%, Group photos: ~25%
-            import random
+                # Initialize context
+                generated_ideas = prompts_history or []
+                final_prompts = []
 
-            image_types = []
-            if num_images <= 4:
-                # For 4 images: 1 selfie, 2 candid, 1 group
-                image_types = ['selfie', 'candid', 'candid', 'group']
-            elif num_images <= 6:
-                # For 5-6 images: 1 selfie, 3-4 candid, 1 group
-                image_types = ['selfie'] + ['candid'] * (num_images - 2) + ['group']
-            else:
-                # For 7+ images: 2 selfies, rest split between candid and group
-                num_selfies = 2
-                num_groups = max(1, num_images // 4)  # ~25% groups
-                num_candid = num_images - num_selfies - num_groups
-                image_types = ['selfie'] * num_selfies + ['candid'] * num_candid + ['group'] * num_groups
+                # Realistic social media mix (dynamic based on num_images)
+                # Selfies: ~25% (1-2 max), Candid/friend photos: ~50%, Group photos: ~25%
+                import random
 
-            # Shuffle to randomize order (except keep first image as selfie for consistency)
-            first = image_types[0]
-            rest = image_types[1:]
-            random.shuffle(rest)
-            image_types = [first] + rest
+                image_types = []
+                if num_images <= 4:
+                    # For 4 images: 1 selfie, 2 candid, 1 group
+                    image_types = ['selfie', 'candid', 'candid', 'group']
+                elif num_images <= 6:
+                    # For 5-6 images: 1 selfie, 3-4 candid, 1 group
+                    image_types = ['selfie'] + ['candid'] * (num_images - 2) + ['group']
+                else:
+                    # For 7+ images: 2 selfies, rest split between candid and group
+                    num_selfies = 2
+                    num_groups = max(1, num_images // 4)  # ~25% groups
+                    num_candid = num_images - num_selfies - num_groups
+                    image_types = ['selfie'] * num_selfies + ['candid'] * num_candid + ['group'] * num_groups
 
-            logger.info(f"Image type distribution: {image_types}")
+                # Shuffle to randomize order (except keep first image as selfie for consistency)
+                first = image_types[0]
+                rest = image_types[1:]
+                random.shuffle(rest)
+                image_types = [first] + rest
 
-            # Generate each prompt sequentially
-            for i in range(num_images):
-                image_type = image_types[i]
+                logger.info(f"Image type distribution: {image_types}")
 
-                # Map to description for LLM
-                if image_type == 'selfie':
-                    image_desc = "selfie taken by the person"
-                elif image_type == 'candid':
-                    image_desc = "casual photo taken by a friend during an activity"
-                else:  # group
-                    image_desc = "photo with other people (friends, family, or colleagues)"
+                # Generate each prompt sequentially
+                for i in range(num_images):
+                    image_type = image_types[i]
 
-                logger.info(f"Generating prompt {i+1}/{num_images} ({image_type})...")
+                    # Map to description for LLM
+                    if image_type == 'selfie':
+                        image_desc = "selfie taken by the person"
+                    elif image_type == 'candid':
+                        image_desc = "casual photo taken by a friend during an activity"
+                    else:  # group
+                        image_desc = "photo with other people (friends, family, or colleagues)"
 
-                # Step 1: Generate image idea
-                idea = await self._generate_idea(
-                    person_data=person_data,
-                    image_type=image_desc,
-                    previous_ideas=generated_ideas
-                )
+                    logger.info(f"Generating prompt {i+1}/{num_images} ({image_type})...")
 
-                logger.debug(f"Generated idea: {idea}")
+                    # Step 1: Generate image idea
+                    idea = await self._generate_idea(
+                        person_data=person_data,
+                        image_type=image_desc,
+                        previous_ideas=generated_ideas,
+                        wf_logger=wf_logger,
+                        node_order=i * 3  # Each image has 3 nodes
+                    )
 
-                # Step 2: Compose structured prompt
-                structured_prompt = await self._compose_structured_prompt(
-                    person_data=person_data,
-                    image_idea=idea,
-                    image_number=i + 1,
-                    is_selfie=(image_type == 'selfie')
-                )
+                    logger.debug(f"Generated idea: {idea}")
 
-                logger.debug(f"Structured prompt: {structured_prompt}")
+                    # Step 2: Compose structured prompt
+                    structured_prompt = await self._compose_structured_prompt(
+                        person_data=person_data,
+                        image_idea=idea,
+                        image_number=i + 1,
+                        is_selfie=(image_type == 'selfie'),
+                        wf_logger=wf_logger,
+                        node_order=i * 3 + 1
+                    )
 
-                # Step 3: Add dual-reference suffix
-                final_prompt = await self._add_dual_reference_suffix(
-                    structured_prompt=structured_prompt,
-                    image_type=image_type
-                )
+                    logger.debug(f"Structured prompt: {structured_prompt}")
 
-                logger.info(f"Final prompt {i+1}: {final_prompt[:100]}...")
+                    # Step 3: Add dual-reference suffix
+                    final_prompt = await self._add_dual_reference_suffix(
+                        structured_prompt=structured_prompt,
+                        image_type=image_type,
+                        wf_logger=wf_logger,
+                        node_order=i * 3 + 2
+                    )
 
-                # Add to history and results
-                generated_ideas.append(idea)
-                final_prompts.append(final_prompt)
+                    logger.info(f"Final prompt {i+1}: {final_prompt[:100]}...")
 
-            logger.info(f"Successfully generated {len(final_prompts)} image prompts with {len(generated_ideas)} ideas")
-            return final_prompts, generated_ideas
+                    # Add to history and results
+                    generated_ideas.append(idea)
+                    final_prompts.append(final_prompt)
 
-        except Exception as e:
-            logger.error(f"Error generating image prompts: {str(e)}", exc_info=True)
-            raise
+                logger.info(f"Successfully generated {len(final_prompts)} image prompts with {len(generated_ideas)} ideas")
+
+                # Log output data
+                wf_logger.set_output({
+                    'final_prompts': final_prompts,
+                    'image_ideas': generated_ideas,
+                    'prompts_generated': len(final_prompts),
+                    'ideas_generated': len(generated_ideas)
+                })
+
+                return final_prompts, generated_ideas
+
+            except Exception as e:
+                logger.error(f"Error generating image prompts: {str(e)}", exc_info=True)
+                raise
 
     async def _generate_idea(
         self,
         person_data: Dict[str, any],
         image_type: str,
-        previous_ideas: List[str]
+        previous_ideas: List[str],
+        wf_logger=None,
+        node_order: int = 0
     ) -> str:
         """
         Step 1: Generate a single image idea.
 
         Equivalent to Flowise "Generate Ideas" node (llmAgentflow_0).
         """
+        # Start node logging
+        node_logger = wf_logger.start_node(
+            node_name='generate_idea',
+            order=node_order,
+            input_data={
+                'person_name': f"{person_data['firstname']} {person_data['lastname']}",
+                'image_type': image_type,
+                'previous_ideas_count': len(previous_ideas)
+            }
+        ) if wf_logger else None
+
         try:
             # Build person description
             name = f"{person_data['firstname']} {person_data['lastname']}"
@@ -223,10 +272,33 @@ class ImagePromptChain:
             )
 
             idea = response.choices[0].message.content.strip()
+
+            # Log LLM call details
+            if node_logger:
+                node_logger.log_llm_call(
+                    model=LLM_MODEL,
+                    temperature=LLM_TEMPERATURE,
+                    max_tokens=200,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    response=idea,
+                    usage={
+                        'prompt_tokens': response.usage.prompt_tokens,
+                        'completion_tokens': response.usage.completion_tokens,
+                        'total_tokens': response.usage.total_tokens
+                    }
+                )
+                node_logger.complete(
+                    status='completed',
+                    output_data={'idea': idea}
+                )
+
             return idea
 
         except Exception as e:
             logger.error(f"Error generating idea: {str(e)}")
+            if node_logger:
+                node_logger.complete(status='failed', error_message=str(e))
             raise
 
     async def _compose_structured_prompt(
@@ -234,7 +306,9 @@ class ImagePromptChain:
         person_data: Dict[str, any],
         image_idea: str,
         image_number: int,
-        is_selfie: bool = True
+        is_selfie: bool = True,
+        wf_logger=None,
+        node_order: int = 1
     ) -> str:
         """
         Step 2: Compose a SHORT, SIMPLE prompt from the idea.
@@ -242,6 +316,17 @@ class ImagePromptChain:
         Equivalent to Flowise "Final Prompt" node (llmAgentflow_1).
         Generates concise, natural descriptions that work better with SeeDream.
         """
+        # Start node logging
+        node_logger = wf_logger.start_node(
+            node_name='compose_structured_prompt',
+            order=node_order,
+            input_data={
+                'image_idea': image_idea,
+                'image_number': image_number,
+                'is_selfie': is_selfie
+            }
+        ) if wf_logger else None
+
         try:
             # System prompt with SHORT examples
             system_prompt = (
@@ -285,16 +370,41 @@ class ImagePromptChain:
             )
 
             structured_prompt = response.choices[0].message.content.strip()
+
+            # Log LLM call details
+            if node_logger:
+                node_logger.log_llm_call(
+                    model=LLM_MODEL,
+                    temperature=LLM_TEMPERATURE,
+                    max_tokens=100,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    response=structured_prompt,
+                    usage={
+                        'prompt_tokens': response.usage.prompt_tokens,
+                        'completion_tokens': response.usage.completion_tokens,
+                        'total_tokens': response.usage.total_tokens
+                    }
+                )
+                node_logger.complete(
+                    status='completed',
+                    output_data={'structured_prompt': structured_prompt}
+                )
+
             return structured_prompt
 
         except Exception as e:
             logger.error(f"Error composing structured prompt: {str(e)}")
+            if node_logger:
+                node_logger.complete(status='failed', error_message=str(e))
             raise
 
     async def _add_dual_reference_suffix(
         self,
         structured_prompt: str,
-        image_type: str = 'selfie'
+        image_type: str = 'selfie',
+        wf_logger=None,
+        node_order: int = 2
     ) -> str:
         """
         Step 3: Add dual-reference suffix using Format 2 from matrix tests.
@@ -308,6 +418,16 @@ class ImagePromptChain:
         This format produced the best results in playground testing with natural, concise prompts.
         Uses POSITIVE quality descriptors (amateur, casual, poor lighting) rather than negatives.
         """
+        # Start node logging
+        node_logger = wf_logger.start_node(
+            node_name='add_dual_reference_suffix',
+            order=node_order,
+            input_data={
+                'structured_prompt': structured_prompt,
+                'image_type': image_type
+            }
+        ) if wf_logger else None
+
         try:
             # Build natural prompt with Format 2 structure + positive amateur quality descriptors
             if image_type == 'selfie':
@@ -331,10 +451,19 @@ class ImagePromptChain:
 
             logger.debug(f"Final prompt with dual-reference ({image_type}): {final_prompt}")
 
+            # Log node completion (no LLM call, just string formatting)
+            if node_logger:
+                node_logger.complete(
+                    status='completed',
+                    output_data={'final_prompt': final_prompt}
+                )
+
             return final_prompt
 
         except Exception as e:
             logger.error(f"Error adding dual-reference suffix: {str(e)}")
+            if node_logger:
+                node_logger.complete(status='failed', error_message=str(e))
             raise
 
 

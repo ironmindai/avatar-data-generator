@@ -9,7 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
-from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult
+from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult, WorkflowLog, WorkflowNodeLog
 import os
 import atexit
 import logging
@@ -1266,6 +1266,140 @@ def create_app():
             flash('An error occurred while creating the ZIP export. Please try again.', 'error')
             return redirect(url_for('datasets'))
 
+    @app.route('/datasets/<task_id>/delete', methods=['DELETE', 'POST'])
+    @login_required
+    def delete_dataset(task_id):
+        """
+        Delete a dataset and all associated S3 files.
+
+        Accepts both DELETE and POST methods for compatibility.
+        DELETE method is preferred for RESTful API design.
+        POST method allows deletion from HTML forms (which don't support DELETE).
+
+        Args:
+            task_id: Task ID (short UUID string)
+
+        Returns:
+            JSON response with success status or redirect on error
+        """
+        try:
+            # Find task by task_id string
+            task = GenerationTask.query.filter_by(task_id=task_id).first()
+
+            # Return 404 if task not found
+            if not task:
+                if request.method == 'DELETE' or request.is_json:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Task not found'
+                    }), 404
+                else:
+                    flash('Dataset not found.', 'error')
+                    return redirect(url_for('datasets'))
+
+            # Verify task belongs to current user
+            if task.user_id != current_user.id:
+                if request.method == 'DELETE' or request.is_json:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Access denied'
+                    }), 403
+                else:
+                    flash('Access denied.', 'error')
+                    return redirect(url_for('datasets'))
+
+            # Get all results for this task to delete S3 files
+            results = GenerationResult.query.filter_by(task_id=task.id).all()
+
+            # Track deletion statistics
+            deleted_base_images = 0
+            deleted_split_images = 0
+            failed_deletions = []
+
+            # Import S3 deletion function
+            from services.image_utils import delete_s3_url
+
+            # Delete S3 files for each result
+            for result in results:
+                # Delete base image if exists
+                if result.base_image_url:
+                    try:
+                        delete_s3_url(result.base_image_url)
+                        deleted_base_images += 1
+                        logging.info(f"Deleted base image: {result.base_image_url}")
+                    except Exception as e:
+                        logging.warning(f"Failed to delete base image {result.base_image_url}: {e}")
+                        failed_deletions.append(result.base_image_url)
+
+                # Delete split images if exist
+                if result.images and isinstance(result.images, list):
+                    for image_url in result.images:
+                        try:
+                            delete_s3_url(image_url)
+                            deleted_split_images += 1
+                            logging.info(f"Deleted split image: {image_url}")
+                        except Exception as e:
+                            logging.warning(f"Failed to delete split image {image_url}: {e}")
+                            failed_deletions.append(image_url)
+
+            # Delete all GenerationResult records (CASCADE will handle this automatically,
+            # but we can be explicit for clarity)
+            GenerationResult.query.filter_by(task_id=task.id).delete()
+
+            # Delete the GenerationTask record
+            db.session.delete(task)
+            db.session.commit()
+
+            # Log deletion summary
+            logging.info(
+                f"Dataset {task_id} deleted - "
+                f"Base images: {deleted_base_images}, "
+                f"Split images: {deleted_split_images}, "
+                f"Failed deletions: {len(failed_deletions)}"
+            )
+
+            # Return appropriate response based on request type
+            if request.method == 'DELETE' or request.is_json:
+                response_data = {
+                    'success': True,
+                    'message': f'Dataset deleted successfully',
+                    'deleted_base_images': deleted_base_images,
+                    'deleted_split_images': deleted_split_images,
+                    'total_deleted': deleted_base_images + deleted_split_images
+                }
+
+                if failed_deletions:
+                    response_data['warning'] = f'{len(failed_deletions)} file(s) failed to delete from S3'
+                    response_data['failed_deletions'] = failed_deletions
+
+                return jsonify(response_data), 200
+            else:
+                # HTML form submission - redirect with flash message
+                if failed_deletions:
+                    flash(
+                        f'Dataset deleted successfully. '
+                        f'Warning: {len(failed_deletions)} file(s) could not be deleted from S3.',
+                        'warning'
+                    )
+                else:
+                    flash('Dataset deleted successfully.', 'success')
+                return redirect(url_for('datasets'))
+
+        except Exception as e:
+            # Rollback database changes on error
+            db.session.rollback()
+
+            logging.error(f"Error deleting dataset {task_id}: {str(e)}", exc_info=True)
+
+            if request.method == 'DELETE' or request.is_json:
+                return jsonify({
+                    'success': False,
+                    'error': 'An error occurred while deleting the dataset'
+                }), 500
+            else:
+                flash('An error occurred while deleting the dataset. Please try again.', 'error')
+                return redirect(url_for('datasets'))
+
     @app.route('/api/dashboard/stats')
     @login_required
     def dashboard_stats():
@@ -1437,6 +1571,104 @@ def create_app():
                 'success': False,
                 'error': 'An error occurred while generating dashboard statistics'
             }), 500
+
+    @app.route('/workflow-logs')
+    @login_required
+    def workflow_logs():
+        """
+        Workflow logs page - displays all workflow execution logs with filtering and pagination.
+
+        GET: Display workflow logs table
+
+        Query Parameters:
+            page: Page number (default: 1)
+            workflow_name: Filter by workflow name (optional)
+            status: Filter by status (optional)
+        """
+        user_name = current_user.email.split('@')[0]
+
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        workflow_name_filter = request.args.get('workflow_name', '', type=str)
+        status_filter = request.args.get('status', '', type=str)
+
+        # Build query
+        query = WorkflowLog.query
+
+        # Apply filters
+        if workflow_name_filter:
+            query = query.filter(WorkflowLog.workflow_name == workflow_name_filter)
+
+        if status_filter:
+            query = query.filter(WorkflowLog.status == status_filter)
+
+        # Order by newest first
+        query = query.order_by(WorkflowLog.started_at.desc())
+
+        # Paginate (25 per page)
+        pagination = query.paginate(page=page, per_page=25, error_out=False)
+
+        # Get unique workflow names for filter dropdown
+        workflow_names = db.session.query(WorkflowLog.workflow_name)\
+            .distinct()\
+            .order_by(WorkflowLog.workflow_name)\
+            .all()
+        workflow_names = [name[0] for name in workflow_names]
+
+        return render_template(
+            'workflow_logs.html',
+            user_name=user_name,
+            logs=pagination.items,
+            pagination=pagination,
+            workflow_names=workflow_names,
+            current_workflow_filter=workflow_name_filter,
+            current_status_filter=status_filter
+        )
+
+    @app.route('/workflow-logs/<workflow_run_id>')
+    @login_required
+    def workflow_log_detail(workflow_run_id):
+        """
+        Workflow log detail page - displays detailed view of a specific workflow execution.
+
+        Args:
+            workflow_run_id: Workflow run UUID (full or first 8 chars)
+
+        Returns:
+            HTML page with workflow details and node execution logs
+        """
+        user_name = current_user.email.split('@')[0]
+
+        # Find workflow log by workflow_run_id (support both full UUID and first 8 chars)
+        workflow_log = WorkflowLog.query.filter(
+            WorkflowLog.workflow_run_id.like(f"{workflow_run_id}%")
+        ).first()
+
+        if not workflow_log:
+            flash('Workflow log not found.', 'error')
+            return redirect(url_for('workflow_logs'))
+
+        # Get all node logs for this workflow, ordered by node_order
+        node_logs = WorkflowNodeLog.query.filter_by(workflow_log_id=workflow_log.id)\
+            .order_by(WorkflowNodeLog.node_order)\
+            .all()
+
+        # Debug logging
+        logging.info(f"[WORKFLOW LOG DETAIL] Workflow: {workflow_log.workflow_run_id}, Nodes: {len(node_logs)}")
+        for node in node_logs:
+            logging.info(
+                f"  Node {node.node_order}: {node.node_name} - "
+                f"system_prompt={'YES' if node.system_prompt else 'NO'}, "
+                f"user_prompt={'YES' if node.user_prompt else 'NO'}, "
+                f"output_data={'YES' if node.output_data else 'NO'}"
+            )
+
+        return render_template(
+            'workflow_log_detail.html',
+            user_name=user_name,
+            workflow_log=workflow_log,
+            node_logs=node_logs
+        )
 
     @app.route('/forgot-password')
     def forgot_password():

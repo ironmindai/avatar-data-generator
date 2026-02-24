@@ -440,3 +440,117 @@ class GenerationResult(db.Model):
         job_info = f' ({self.job_title})' if self.job_title else ''
         location_info = f' in {self.current_city}, {self.current_state}' if self.current_city and self.current_state else ''
         return f'<GenerationResult {self.firstname} {self.lastname}{age_info}{ethnicity_info}{job_info}{location_info} task_id={self.task_id} batch={self.batch_number}>'
+
+
+class WorkflowLog(db.Model):
+    """
+    WorkflowLog model for storing LLM workflow execution logs.
+
+    This table tracks every execution of LLM workflows (like image prompt generation)
+    for observability, debugging, and cost analysis.
+
+    Attributes:
+        id: Primary key
+        workflow_run_id: Unique UUID for this workflow execution
+        workflow_name: Name of the workflow (e.g., "image_prompt_chain")
+        task_id: Foreign key to generation_tasks.id (optional, for tracking task context)
+        persona_id: Foreign key to generation_results.id (optional, for tracking persona context)
+        status: Workflow status (running, completed, failed)
+        input_data: JSONB containing workflow input parameters
+        output_data: JSONB containing workflow output/results
+        total_tokens: Total tokens used across all nodes
+        total_cost: Total cost in USD across all nodes
+        execution_time_ms: Total execution time in milliseconds
+        error_message: Error message if workflow failed
+        started_at: Timestamp when workflow started
+        completed_at: Timestamp when workflow completed
+        created_at: Timestamp of log creation
+    """
+    __tablename__ = 'workflow_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_run_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    workflow_name = db.Column(db.String(100), nullable=False, index=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('generation_tasks.id', ondelete='SET NULL'), nullable=True, index=True)
+    persona_id = db.Column(db.Integer, db.ForeignKey('generation_results.id', ondelete='SET NULL'), nullable=True, index=True)
+    status = db.Column(db.String(50), nullable=False, default='running', index=True)
+    input_data = db.Column(db.JSON, nullable=True)
+    output_data = db.Column(db.JSON, nullable=True)
+    total_tokens = db.Column(db.Integer, nullable=True)
+    total_cost = db.Column(db.Float, nullable=True)
+    execution_time_ms = db.Column(db.Integer, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+
+    # Relationships
+    task = db.relationship('GenerationTask', backref=db.backref('workflow_logs', lazy='dynamic'))
+    persona = db.relationship('GenerationResult', backref=db.backref('workflow_logs', lazy='dynamic'))
+
+    def __repr__(self):
+        duration = f'{self.execution_time_ms}ms' if self.execution_time_ms else 'running'
+        tokens = f'{self.total_tokens} tokens' if self.total_tokens else 'N/A'
+        return f'<WorkflowLog {self.workflow_run_id[:8]} {self.workflow_name} status={self.status} duration={duration} {tokens}>'
+
+
+class WorkflowNodeLog(db.Model):
+    """
+    WorkflowNodeLog model for storing individual node execution logs within a workflow.
+
+    This table tracks each step/node execution in an LLM workflow for detailed observability.
+
+    Attributes:
+        id: Primary key
+        workflow_log_id: Foreign key to workflow_logs table
+        node_name: Name of the node (e.g., "generate_idea", "compose_prompt")
+        node_order: Execution order of this node (0-indexed)
+        status: Node status (running, completed, failed)
+        model_name: LLM model used (e.g., "gpt-4o-mini")
+        temperature: Temperature setting used
+        max_tokens: Max tokens setting
+        system_prompt: System prompt sent to LLM
+        user_prompt: User prompt sent to LLM
+        input_data: JSONB containing node input parameters
+        output_data: JSONB containing node output/response
+        prompt_tokens: Number of prompt tokens used
+        completion_tokens: Number of completion tokens generated
+        total_tokens: Total tokens used (prompt + completion)
+        cost: Cost in USD for this node execution
+        execution_time_ms: Execution time in milliseconds
+        error_message: Error message if node failed
+        started_at: Timestamp when node started
+        completed_at: Timestamp when node completed
+        created_at: Timestamp of log creation
+    """
+    __tablename__ = 'workflow_node_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_log_id = db.Column(db.Integer, db.ForeignKey('workflow_logs.id', ondelete='CASCADE'), nullable=False, index=True)
+    node_name = db.Column(db.String(100), nullable=False, index=True)
+    node_order = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(50), nullable=False, default='running')
+    model_name = db.Column(db.String(100), nullable=True)
+    temperature = db.Column(db.Float, nullable=True)
+    max_tokens = db.Column(db.Integer, nullable=True)
+    system_prompt = db.Column(db.Text, nullable=True)
+    user_prompt = db.Column(db.Text, nullable=True)
+    input_data = db.Column(db.JSON, nullable=True)
+    output_data = db.Column(db.JSON, nullable=True)
+    prompt_tokens = db.Column(db.Integer, nullable=True)
+    completion_tokens = db.Column(db.Integer, nullable=True)
+    total_tokens = db.Column(db.Integer, nullable=True)
+    cost = db.Column(db.Float, nullable=True)
+    execution_time_ms = db.Column(db.Integer, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+
+    # Relationship
+    workflow_log = db.relationship('WorkflowLog', backref=db.backref('nodes', lazy='dynamic', cascade='all, delete-orphan', order_by='WorkflowNodeLog.node_order'))
+
+    def __repr__(self):
+        duration = f'{self.execution_time_ms}ms' if self.execution_time_ms else 'running'
+        tokens = f'{self.total_tokens}tok' if self.total_tokens else 'N/A'
+        return f'<WorkflowNodeLog {self.node_name} order={self.node_order} status={self.status} {duration} {tokens}>'

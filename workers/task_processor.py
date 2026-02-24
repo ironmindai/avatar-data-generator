@@ -905,7 +905,9 @@ async def process_persona_images(
             prompts, new_ideas = await prompt_chain.generate_image_prompts(
                 person_data=person_data,
                 num_images=images_per_persona,
-                prompts_history=existing_history  # Pass history to avoid duplicates
+                prompts_history=existing_history,  # Pass history to avoid duplicates
+                task_id=task_db_id,  # Pass task ID for workflow logging
+                persona_id=result.id  # Pass persona ID for workflow logging
             )
 
             if not prompts or len(prompts) != images_per_persona:

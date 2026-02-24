@@ -1328,6 +1328,56 @@
   height: 14px;
 }
 
+/* Delete Button */
+.btn-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: 0.5rem 0.75rem;
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-none);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.btn-delete:hover {
+  background-color: rgba(255, 68, 102, 0.1);
+  border-color: var(--color-error);
+  color: var(--color-error);
+  box-shadow: 0 0 15px rgba(255, 68, 102, 0.2);
+}
+
+.btn-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-delete.deleting {
+  background-color: rgba(255, 68, 102, 0.1);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.btn-delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Actions Cell - Flex Layout for Multiple Buttons */
+.td-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
 /* ========================================
    TASK CARDS (Mobile View)
    ======================================== */
@@ -1414,6 +1464,58 @@
 }
 
 .btn-view-details-mobile svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Mobile Actions Container */
+.task-actions-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  width: 100%;
+}
+
+/* Delete Button Mobile */
+.btn-delete-mobile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  width: 100%;
+  padding: var(--spacing-3) var(--spacing-4);
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-none);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.btn-delete-mobile:hover {
+  background-color: rgba(255, 68, 102, 0.1);
+  border-color: var(--color-error);
+  color: var(--color-error);
+  box-shadow: 0 0 20px rgba(255, 68, 102, 0.3);
+}
+
+.btn-delete-mobile:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-delete-mobile.deleting {
+  background-color: rgba(255, 68, 102, 0.1);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.btn-delete-mobile svg {
   width: 16px;
   height: 16px;
 }

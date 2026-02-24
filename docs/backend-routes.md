@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-02-05 (Added supplementary persona fields to all export routes)*
+> *Last Updated: 2026-02-24 (Added workflow logs routes for LLM observability)*
 
 ## Application Information
 
@@ -392,6 +392,88 @@ Lists all avatar generation tasks for the current user, similar to /history but 
 
 ---
 
+#### DELETE/POST `/datasets/<task_id>/delete`
+**Description**: Delete a dataset and all associated S3 files
+**Authentication**: Required
+**Methods**: DELETE (preferred), POST (for HTML forms)
+
+**Path Parameters**:
+- `task_id`: String - Task ID (short UUID)
+
+**Behavior**:
+1. Validates dataset exists and belongs to current user
+2. Deletes all S3 files:
+   - Base images (base_image_url for each result)
+   - Split images (all images in images array for each result)
+3. Deletes all GenerationResult records for the task
+4. Deletes the GenerationTask record
+
+**Success Response (200)** - JSON (DELETE/AJAX):
+```json
+{
+  "success": true,
+  "message": "Dataset deleted successfully",
+  "deleted_base_images": 10,
+  "deleted_split_images": 80,
+  "total_deleted": 90,
+  "warning": "2 file(s) failed to delete from S3",
+  "failed_deletions": [
+    "https://s3.../image1.png",
+    "https://s3.../image2.png"
+  ]
+}
+```
+
+**Success Response** - HTML form (POST):
+- Redirect to `/datasets` with flash message
+- Flash category: `success` or `warning` (if some S3 deletions failed)
+
+**Error Responses**:
+- **404**: Task not found
+  ```json
+  {
+    "success": false,
+    "error": "Task not found"
+  }
+  ```
+- **403**: Access denied (task belongs to another user)
+  ```json
+  {
+    "success": false,
+    "error": "Access denied"
+  }
+  ```
+- **500**: Server error during deletion
+  ```json
+  {
+    "success": false,
+    "error": "An error occurred while deleting the dataset"
+  }
+  ```
+
+**S3 Deletion Behavior**:
+- Uses `delete_s3_url()` from `services.image_utils`
+- Logs warnings for failed S3 deletions but continues
+- Returns warning in response if any S3 deletions failed
+- Non-existent S3 objects are treated as successful deletions
+
+**Database Transaction**:
+- All database changes are wrapped in a transaction
+- Rollback occurs on any error
+- CASCADE delete on GenerationResult ensures referential integrity
+
+**Security**:
+- Verifies task ownership before deletion
+- Requires authentication
+- Proper error handling prevents information leakage
+
+**Logging**:
+- Logs each S3 file deletion (success and failure)
+- Logs deletion summary with statistics
+- Error logs include full stack trace for debugging
+
+---
+
 #### GET `/datasets/<task_id>/export/zip`
 **Description**: Export complete dataset as ZIP file with images and data.json
 **Authentication**: Required
@@ -453,6 +535,112 @@ dataset_{task_id}.zip/
 
 **Implementation**:
 Lists all avatar generation tasks for the current user with status and basic information.
+
+---
+
+#### GET `/workflow-logs`
+**Description**: Workflow execution logs page - displays all LLM workflow runs with filtering and pagination
+**Authentication**: Required
+**Template**: `templates/workflow_logs.html`
+
+**Query Parameters**:
+- `page`: Integer (default: 1) - Page number for pagination
+- `workflow_name`: String (optional) - Filter by workflow name
+- `status`: String (optional) - Filter by status (completed, failed, running)
+
+**Template Variables**:
+- `user_name`: String - Username (extracted from email)
+- `logs`: List - Paginated WorkflowLog objects
+- `pagination`: Object - Flask-SQLAlchemy pagination object
+- `workflow_names`: List - Unique workflow names for filter dropdown
+- `current_workflow_filter`: String - Current workflow name filter
+- `current_status_filter`: String - Current status filter
+
+**Features**:
+- Displays workflow execution logs in table format
+- Shows truncated workflow run IDs (first 8 characters)
+- Links to task datasets when task_id is available
+- Displays status with color-coded badges (green=completed, red=failed, yellow=running)
+- Shows total tokens, total cost (formatted as $X.XXXXXX), execution time (ms)
+- Formatted timestamps (YYYY-MM-DD HH:MM:SS)
+- Filter by workflow name and status
+- Pagination (25 logs per page)
+- Mobile-responsive design
+
+**Implementation**:
+Lists all workflow execution logs from the `workflow_logs` table, ordered by `started_at DESC` (newest first). Supports filtering and pagination for efficient browsing of large log datasets.
+
+---
+
+#### GET `/workflow-logs/<workflow_run_id>`
+**Description**: Workflow log detail page - displays detailed execution information for a specific workflow run
+**Authentication**: Required
+**Template**: `templates/workflow_log_detail.html`
+
+**Path Parameters**:
+- `workflow_run_id`: String - Workflow run UUID (supports full UUID or first 8 characters)
+
+**Template Variables**:
+- `user_name`: String - Username (extracted from email)
+- `workflow_log`: Object - WorkflowLog object with workflow execution details
+- `node_logs`: List - WorkflowNodeLog objects ordered by node_order
+
+**Workflow Information Displayed**:
+- Workflow run ID (full UUID)
+- Workflow name
+- Status (with color coding)
+- Execution time (ms)
+- Started at / Completed at timestamps
+- Task ID (linked to dataset if available)
+- Persona ID
+- Total tokens used
+- Total cost (USD)
+- Error message (if failed)
+
+**Node Execution Table Columns**:
+- Node Order (execution sequence)
+- Node Name
+- Model Name (e.g., gpt-4o-mini)
+- Temperature setting
+- Max Tokens setting
+- Prompt Tokens used
+- Completion Tokens generated
+- Total Tokens
+- Cost (USD, formatted to 6 decimal places)
+- Execution Time (ms)
+- Status (with badge)
+- Actions (View Prompts, View Output buttons)
+
+**Expandable Sections**:
+- **View Prompts**: Expands to show system_prompt and user_prompt sent to LLM
+  - Always shows buttons (even if data is null)
+  - Displays fallback message if prompt data not available
+  - JavaScript console logging for debugging
+- **View Output**: Expands to show output_data JSON response from LLM
+  - Always shows button (even if data is null)
+  - Displays fallback message if output data not available
+  - JavaScript console logging for debugging
+
+**Features**:
+- Breadcrumb navigation back to logs list
+- Info cards for status, context, and token/cost metrics
+- Expandable prompt and output viewing (always visible, with fallbacks)
+- Mobile-responsive design
+- Formatted JSON output with syntax preservation
+- Error message display for failed workflows
+- Debug console logging for JavaScript toggle functions
+
+**Implementation**:
+Displays complete observability data for a single workflow execution. Node logs are ordered by execution sequence. Prompts and outputs are hidden by default and can be expanded inline for detailed inspection. All nodes always show "View Prompts" and "View Output" buttons regardless of data availability - fallback messages are displayed when data is null/None.
+
+**Debugging**:
+- Route logs node data availability (system_prompt, user_prompt, output_data)
+- JavaScript console logs toggle actions and DOM element detection
+- Check browser console for troubleshooting expandable sections
+
+**Error Handling**:
+- Returns 404 flash message and redirects to `/workflow-logs` if workflow_run_id not found
+- Gracefully handles missing prompt/output data with fallback messages
 
 ---
 
@@ -644,6 +832,86 @@ db.session.commit()
 
 ---
 
+### WorkflowLog Model (`models.WorkflowLog`)
+
+**Table**: `workflow_logs`
+
+**Description**: Stores LLM workflow execution logs for observability and cost analysis
+
+**Fields**:
+- `id`: Integer, Primary Key, Auto-increment
+- `workflow_run_id`: String(36), Unique UUID for this workflow execution, Indexed
+- `workflow_name`: String(100), Name of workflow (e.g., "image_prompt_chain"), Indexed
+- `task_id`: Integer, Foreign Key to generation_tasks.id, Nullable, Indexed
+- `persona_id`: Integer, Foreign Key to generation_results.id, Nullable, Indexed
+- `status`: String(50), Workflow status (running, completed, failed), Indexed
+- `input_data`: JSONB, Workflow input parameters
+- `output_data`: JSONB, Workflow output/results
+- `total_tokens`: Integer, Total tokens used across all nodes
+- `total_cost`: Float, Total cost in USD across all nodes
+- `execution_time_ms`: Integer, Total execution time in milliseconds
+- `error_message`: Text, Error message if workflow failed
+- `started_at`: DateTime, Timestamp when workflow started, Indexed (DESC)
+- `completed_at`: DateTime, Timestamp when workflow completed
+- `created_at`: DateTime, Default: current timestamp
+
+**Relationships**:
+- `nodes`: One-to-many relationship with WorkflowNodeLog (CASCADE delete)
+- `task`: Many-to-one relationship with GenerationTask (SET NULL on delete)
+- `persona`: Many-to-one relationship with GenerationResult (SET NULL on delete)
+
+**Indexes**:
+- `workflow_run_id` (unique)
+- `workflow_name`
+- `task_id`
+- `persona_id`
+- `status`
+- `started_at DESC`
+
+---
+
+### WorkflowNodeLog Model (`models.WorkflowNodeLog`)
+
+**Table**: `workflow_node_logs`
+
+**Description**: Stores individual node execution logs within LLM workflows for detailed observability
+
+**Fields**:
+- `id`: Integer, Primary Key, Auto-increment
+- `workflow_log_id`: Integer, Foreign Key to workflow_logs.id, Not Null, Indexed
+- `node_name`: String(100), Name of the node (e.g., "generate_idea"), Indexed
+- `node_order`: Integer, Execution order (0-indexed), Indexed with workflow_log_id
+- `status`: String(50), Node status (running, completed, failed)
+- `model_name`: String(100), LLM model used (e.g., "gpt-4o-mini")
+- `temperature`: Float, Temperature setting used
+- `max_tokens`: Integer, Max tokens setting
+- `system_prompt`: Text, System prompt sent to LLM
+- `user_prompt`: Text, User prompt sent to LLM
+- `input_data`: JSONB, Node input parameters
+- `output_data`: JSONB, Node output/response
+- `prompt_tokens`: Integer, Number of prompt tokens used
+- `completion_tokens`: Integer, Number of completion tokens generated
+- `total_tokens`: Integer, Total tokens used (prompt + completion)
+- `cost`: Float, Cost in USD for this node execution
+- `execution_time_ms`: Integer, Execution time in milliseconds
+- `error_message`: Text, Error message if node failed
+- `started_at`: DateTime, Timestamp when node started
+- `completed_at`: DateTime, Timestamp when node completed
+- `created_at`: DateTime, Default: current timestamp
+
+**Relationships**:
+- `workflow_log`: Many-to-one relationship with WorkflowLog
+
+**Indexes**:
+- `workflow_log_id`
+- `node_name`
+- Composite index on (workflow_log_id, node_order)
+
+**Usage**:
+WorkflowNodeLog records are created for each step in an LLM workflow execution. The `node_order` field maintains the execution sequence, and the complete prompts, responses, and token usage are stored for full observability.
+
+---
+
 ## Flash Message Categories
 
 Used with `flash(message, category)`:
@@ -691,7 +959,6 @@ DATABASE_URL=postgresql://avatar_data_gen:password@localhost:5432/avatar_data_ge
 - `GET /api/datasets` - List datasets
 - `POST /api/datasets` - Create dataset
 - `GET /api/datasets/:id` - Get dataset details
-- `DELETE /api/datasets/:id` - Delete dataset
 
 ### User Management
 - `POST /api/users` - Create user (admin only)
