@@ -583,6 +583,9 @@ def create_app():
 
         GET: Display settings form with current values
         """
+        # Import degradation prompts map
+        from services.style_degradation_prompts import DEGRADATION_PROMPTS_MAP
+
         # Extract user name from email (part before @)
         user_name = current_user.email.split('@')[0]
 
@@ -603,6 +606,12 @@ def create_app():
         # Load concurrency settings from IntConfig table (stored as integer values)
         max_concurrent_tasks = IntConfig.get_value('max_concurrent_tasks', 1)
 
+        # Load degradation prompt enabled states
+        degradation_states = {}
+        for prompt_id in DEGRADATION_PROMPTS_MAP.keys():
+            config_key = f'degradation_{prompt_id}'
+            degradation_states[config_key] = Config.get_value(config_key, True)
+
         return render_template(
             'settings.html',
             user_name=user_name,
@@ -611,7 +620,9 @@ def create_app():
             randomize_face_gender_lock=randomize_face_gender_lock,
             crop_white_borders=crop_white_borders,
             randomize_image_style=randomize_image_style,
-            max_concurrent_tasks=max_concurrent_tasks
+            max_concurrent_tasks=max_concurrent_tasks,
+            degradation_states=degradation_states,
+            degradation_prompts=DEGRADATION_PROMPTS_MAP
         )
 
     @app.route('/settings/save', methods=['POST'])
@@ -624,6 +635,9 @@ def create_app():
         Returns: JSON response with success/error status
         """
         try:
+            # Import degradation prompts map for dynamic key generation
+            from services.style_degradation_prompts import DEGRADATION_PROMPTS_MAP
+
             # Get JSON data from request
             data = request.get_json()
 
@@ -641,11 +655,14 @@ def create_app():
                 'bio_prompt_tiktok'
             ]
 
+            # Build boolean keys list dynamically (includes degradation prompts)
             expected_boolean_keys = [
                 'randomize_face_base',
                 'randomize_face_gender_lock',
                 'crop_white_borders',
-                'randomize_image_style'
+                'randomize_image_style',
+                # Add all degradation prompt keys dynamically
+                *[f'degradation_{prompt_id}' for prompt_id in DEGRADATION_PROMPTS_MAP.keys()]
             ]
 
             expected_integer_keys = [

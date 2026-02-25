@@ -163,6 +163,84 @@
             <!-- End Form Wrapper -->
         </div>
 
+        <!-- Image Degradation Settings Section -->
+        <div class="settings-section">
+            <div class="section-header">
+                <i data-feather="image" class="section-icon"></i>
+                <h2 class="section-title">IMAGE DEGRADATION SETTINGS</h2>
+            </div>
+            <p class="section-description">
+                Control which degradation effects are applied to generated images. Disabled prompts will not be used during image generation.
+            </p>
+
+            <!-- Form Wrapper for Elevated Background -->
+            <div class="settings-form-wrapper">
+                <form id="degradationSettingsForm" class="settings-form">
+                    {% set categories = {} %}
+                    {% for prompt_id, prompt_data in degradation_prompts.items() %}
+                        {% set category = prompt_data.category %}
+                        {% if category not in categories %}
+                            {% set _ = categories.update({category: []}) %}
+                        {% endif %}
+                        {% set _ = categories[category].append((prompt_id, prompt_data)) %}
+                    {% endfor %}
+
+                    {% for category in ['Backlighting', 'Flash Problems', 'Overexposure', 'Low Light', 'Old Camera Quality', 'Focus Issues', 'White Balance'] %}
+                        {% if category in categories %}
+                            <div class="degradation-category">
+                                <h3 class="category-title">{{ category }}</h3>
+                                {% for prompt_id, prompt_data in categories[category] %}
+                                    <div class="form-group">
+                                        <label class="checkbox-container">
+                                            <input
+                                                type="checkbox"
+                                                id="degradation_{{ prompt_id }}"
+                                                name="degradation_{{ prompt_id }}"
+                                                class="checkbox-input degradation-checkbox"
+                                                {% if degradation_states.get('degradation_' + prompt_id, True) %}checked{% endif %}
+                                            >
+                                            <span class="checkbox-custom"></span>
+                                            <span class="checkbox-label">
+                                                {{ prompt_data.name|upper }}
+                                            </span>
+                                        </label>
+                                        <p class="form-help checkbox-help">
+                                            {{ prompt_data.description }}
+                                        </p>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+
+                    <!-- Form Actions -->
+                    <div class="form-actions">
+                        <button type="submit" id="saveDegradationButton" class="btn btn-primary" disabled>
+                            <i data-feather="save"></i>
+                            <span class="btn-text">SAVE CHANGES</span>
+                            <span class="btn-loading" style="display: none;">
+                                <span class="spinner-small"></span>
+                                SAVING...
+                            </span>
+                        </button>
+                        <button type="button" id="resetDegradationButton" class="btn btn-secondary">
+                            <i data-feather="rotate-ccw"></i>
+                            RESET TO ORIGINAL
+                        </button>
+                        <button type="button" id="enableAllDegradationButton" class="btn btn-secondary">
+                            <i data-feather="check-square"></i>
+                            ENABLE ALL
+                        </button>
+                        <button type="button" id="disableAllDegradationButton" class="btn btn-secondary">
+                            <i data-feather="square"></i>
+                            DISABLE ALL
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <!-- End Form Wrapper -->
+        </div>
+
         <!-- Bio Prompts Configuration Section -->
         <div class="settings-section">
             <div class="section-header">

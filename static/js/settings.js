@@ -19,6 +19,11 @@
             originalValues: {},
             isDirty: false,
             isSubmitting: false
+        },
+        degradationSettings: {
+            originalValues: {},
+            isDirty: false,
+            isSubmitting: false
         }
     };
 
@@ -47,7 +52,13 @@
         randomizeFaceCheckbox: document.getElementById('randomize_face_base'),
         genderLockCheckbox: document.getElementById('randomize_face_gender_lock'),
         genderLockGroup: document.getElementById('genderLockGroup'),
-        maxConcurrentTasksInput: document.getElementById('max_concurrent_tasks')
+        maxConcurrentTasksInput: document.getElementById('max_concurrent_tasks'),
+        degradationSettingsForm: document.getElementById('degradationSettingsForm'),
+        saveDegradationButton: document.getElementById('saveDegradationButton'),
+        resetDegradationButton: document.getElementById('resetDegradationButton'),
+        enableAllDegradationButton: document.getElementById('enableAllDegradationButton'),
+        disableAllDegradationButton: document.getElementById('disableAllDegradationButton'),
+        degradationCheckboxes: document.querySelectorAll('.degradation-checkbox')
     };
 
     // ========================================
@@ -58,6 +69,7 @@
         // Store original values
         storeOriginalValues();
         storeFaceSettingsOriginalValues();
+        storeDegradationSettingsOriginalValues();
 
         // Initialize character counters
         updateAllCharCounts();
@@ -68,6 +80,7 @@
         // Attach event listeners
         attachEventListeners();
         attachFaceSettingsListeners();
+        attachDegradationSettingsListeners();
 
         console.log('[Settings] Initialized');
     }
@@ -577,6 +590,205 @@
 
         console.log('[Settings] Face settings reset to original values');
         showToast('Face settings reset to original values', 'success');
+    }
+
+    // ========================================
+    // Degradation Settings: Store Original Values
+    // ========================================
+
+    function storeDegradationSettingsOriginalValues() {
+        state.degradationSettings.originalValues = {};
+        elements.degradationCheckboxes.forEach(checkbox => {
+            state.degradationSettings.originalValues[checkbox.id] = checkbox.checked;
+        });
+        console.log('[Settings] Degradation settings original values stored:', state.degradationSettings.originalValues);
+    }
+
+    // ========================================
+    // Degradation Settings: Event Listeners
+    // ========================================
+
+    function attachDegradationSettingsListeners() {
+        // Checkbox change events
+        elements.degradationCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', checkDegradationSettingsDirtyState);
+        });
+
+        // Form submission
+        elements.degradationSettingsForm.addEventListener('submit', handleDegradationSettingsSubmit);
+
+        // Reset button
+        elements.resetDegradationButton.addEventListener('click', handleDegradationSettingsReset);
+
+        // Enable all button
+        elements.enableAllDegradationButton.addEventListener('click', handleEnableAllDegradation);
+
+        // Disable all button
+        elements.disableAllDegradationButton.addEventListener('click', handleDisableAllDegradation);
+    }
+
+    // ========================================
+    // Degradation Settings: Check Dirty State
+    // ========================================
+
+    function checkDegradationSettingsDirtyState() {
+        let hasChanges = false;
+
+        elements.degradationCheckboxes.forEach(checkbox => {
+            if (checkbox.checked !== state.degradationSettings.originalValues[checkbox.id]) {
+                hasChanges = true;
+            }
+        });
+
+        state.degradationSettings.isDirty = hasChanges;
+        elements.saveDegradationButton.disabled = !hasChanges;
+
+        console.log('[Settings] Degradation settings dirty state:', state.degradationSettings.isDirty);
+    }
+
+    // ========================================
+    // Degradation Settings: Form Submission
+    // ========================================
+
+    async function handleDegradationSettingsSubmit(event) {
+        event.preventDefault();
+
+        if (state.degradationSettings.isSubmitting) {
+            console.log('[Settings] Already submitting degradation settings, ignoring duplicate submission');
+            return;
+        }
+
+        if (!state.degradationSettings.isDirty) {
+            console.log('[Settings] No degradation settings changes to save');
+            return;
+        }
+
+        state.degradationSettings.isSubmitting = true;
+
+        // Show loading state
+        elements.saveDegradationButton.classList.add('loading');
+        elements.saveDegradationButton.disabled = true;
+
+        // Collect form data
+        const formData = {};
+        elements.degradationCheckboxes.forEach(checkbox => {
+            formData[checkbox.id] = checkbox.checked;
+        });
+
+        // Get CSRF token
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+
+        try {
+            console.log('[Settings] Submitting degradation settings data...', formData);
+
+            // Make AJAX request
+            const response = await fetch('/settings/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                console.log('[Settings] Degradation settings save successful:', result);
+
+                // Update original values to current values
+                storeDegradationSettingsOriginalValues();
+
+                // Reset dirty state
+                state.degradationSettings.isDirty = false;
+                elements.saveDegradationButton.disabled = true;
+
+                // Show success notification
+                showToast('Image degradation settings saved successfully', 'success');
+            } else {
+                console.error('[Settings] Degradation settings save failed:', result);
+                showToast(result.message || result.error || 'Failed to save degradation settings', 'error');
+            }
+        } catch (error) {
+            console.error('[Settings] Network error:', error);
+            showToast('Network error. Please try again.', 'error');
+        } finally {
+            // Hide loading state
+            elements.saveDegradationButton.classList.remove('loading');
+            state.degradationSettings.isSubmitting = false;
+
+            // Re-check dirty state
+            checkDegradationSettingsDirtyState();
+        }
+    }
+
+    // ========================================
+    // Degradation Settings: Reset Handler
+    // ========================================
+
+    function handleDegradationSettingsReset(event) {
+        event.preventDefault();
+
+        if (!state.degradationSettings.isDirty) {
+            console.log('[Settings] No degradation settings changes to reset');
+            return;
+        }
+
+        // Confirm reset
+        const confirmReset = confirm('Are you sure you want to reset degradation settings to their original values? Unsaved changes will be lost.');
+
+        if (!confirmReset) {
+            return;
+        }
+
+        // Restore original values
+        elements.degradationCheckboxes.forEach(checkbox => {
+            checkbox.checked = state.degradationSettings.originalValues[checkbox.id];
+        });
+
+        // Reset dirty state
+        state.degradationSettings.isDirty = false;
+        elements.saveDegradationButton.disabled = true;
+
+        console.log('[Settings] Degradation settings reset to original values');
+        showToast('Degradation settings reset to original values', 'success');
+    }
+
+    // ========================================
+    // Degradation Settings: Enable All
+    // ========================================
+
+    function handleEnableAllDegradation(event) {
+        event.preventDefault();
+
+        elements.degradationCheckboxes.forEach(checkbox => {
+            checkbox.checked = true;
+        });
+
+        checkDegradationSettingsDirtyState();
+        console.log('[Settings] All degradation prompts enabled');
+    }
+
+    // ========================================
+    // Degradation Settings: Disable All
+    // ========================================
+
+    function handleDisableAllDegradation(event) {
+        event.preventDefault();
+
+        // Confirm disabling all
+        const confirmDisable = confirm('Are you sure you want to disable all degradation prompts? This will use only base compression.');
+
+        if (!confirmDisable) {
+            return;
+        }
+
+        elements.degradationCheckboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+
+        checkDegradationSettingsDirtyState();
+        console.log('[Settings] All degradation prompts disabled');
     }
 
     // ========================================

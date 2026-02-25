@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-02-24 (Added workflow logs routes for LLM observability)*
+> *Last Updated: 2026-02-25 (Added degradation prompts settings with toggles)*
 
 ## Application Information
 
@@ -645,7 +645,7 @@ Displays complete observability data for a single workflow execution. Node logs 
 ---
 
 #### GET `/settings`
-**Description**: User settings page - display bio prompt configuration
+**Description**: Settings page - display bio prompts, face generation, and image degradation configuration
 **Authentication**: Required
 **Template**: `templates/settings.html`
 
@@ -656,18 +656,55 @@ Displays complete observability data for a single workflow execution. Node logs 
   - `bio_prompt_instagram`: String - Instagram bio prompt text
   - `bio_prompt_x`: String - X (Twitter) bio prompt text
   - `bio_prompt_tiktok`: String - TikTok bio prompt text
+- `randomize_face_base`: Boolean - Enable random face generation for base images
+- `randomize_face_gender_lock`: Boolean - Lock gender during face randomization
+- `crop_white_borders`: Boolean - Auto-crop white borders from generated images
+- `randomize_image_style`: Boolean - Apply random style variations to images
+- `max_concurrent_tasks`: Integer - Max concurrent generation tasks (1-5)
+- `degradation_states`: Dictionary - Enabled state for each degradation prompt (key: `degradation_<prompt_id>`, value: Boolean)
+- `degradation_prompts`: Dictionary - Map of all available degradation prompts with metadata
+
+**Degradation Prompts Structure**:
+Each prompt in `degradation_prompts` has the following structure:
+```python
+{
+  'prompt_id': {
+    'name': 'Human-readable name',
+    'description': 'Short description of the effect',
+    'prompt': 'Full prompt text used in generation',
+    'category': 'Category name'
+  }
+}
+```
+
+**Degradation Categories**:
+- Backlighting (2 prompts)
+- Flash Problems (2 prompts)
+- Overexposure (2 prompts)
+- Low Light (2 prompts)
+- Old Camera Quality (3 prompts)
+- Focus Issues (1 prompt)
+- White Balance (1 prompt)
 
 **Current Implementation**:
-Loads current bio prompt settings from the database and displays them in an editable form.
+Displays three main settings sections:
+1. Face Generation Settings - Control face randomization and concurrency
+2. Image Degradation Settings - Toggle individual degradation prompts on/off
+3. Bio Prompts Configuration - Edit AI prompts for bio generation
+
+All settings are loaded from the database. Degradation prompt states default to enabled (True) if not found in Config table.
 
 ---
 
 #### POST `/settings/save`
-**Description**: Save bio prompt settings (AJAX endpoint)
+**Description**: Save bio prompts, face generation, and degradation settings (AJAX endpoint)
 **Authentication**: Required
 **Content-Type**: `application/json`
 
 **Request Body**:
+Can include any combination of the following settings:
+
+**String Settings** (stored in Settings table):
 ```json
 {
   "bio_prompt_facebook": "string",
@@ -677,11 +714,45 @@ Loads current bio prompt settings from the database and displays them in an edit
 }
 ```
 
+**Boolean Settings** (stored in Config table):
+```json
+{
+  "randomize_face_base": true,
+  "randomize_face_gender_lock": false,
+  "crop_white_borders": true,
+  "randomize_image_style": false,
+  "degradation_backlight_1": true,
+  "degradation_backlight_2": false,
+  "degradation_flash_1": true,
+  "degradation_flash_2": true,
+  "degradation_overexposure_1": true,
+  "degradation_overexposure_2": false,
+  "degradation_lowlight_1": true,
+  "degradation_lowlight_2": true,
+  "degradation_oldcamera_1": true,
+  "degradation_oldcamera_2": false,
+  "degradation_oldcamera_3": true,
+  "degradation_blur_1": true,
+  "degradation_whitebalance_1": true
+}
+```
+
+**Integer Settings** (stored in IntConfig table):
+```json
+{
+  "max_concurrent_tasks": 3
+}
+```
+
 **Validation**:
 - Request body must contain valid JSON
 - At least one valid setting key must be provided
-- All values must be strings
-- Only accepts expected setting keys (bio_prompt_*)
+- String values must be strings
+- Boolean values must be booleans
+- Integer values must be integers
+- `max_concurrent_tasks` must be between 1 and 5
+- Only accepts expected setting keys
+- Degradation prompt keys dynamically validated against `DEGRADATION_PROMPTS_MAP`
 
 **Responses**:
 
@@ -726,11 +797,32 @@ Loads current bio prompt settings from the database and displays them in an edit
 }
 ```
 
+**Usage Example**:
+You can send any combination of settings in a single request:
+```json
+{
+  "bio_prompt_facebook": "Updated prompt...",
+  "randomize_face_base": true,
+  "degradation_backlight_1": false,
+  "max_concurrent_tasks": 3
+}
+```
+
+**Implementation Notes**:
+- String settings saved to `settings` table via `Settings.set_value()`
+- Boolean settings saved to `config` table via `Config.set_value()`
+- Integer settings saved to `int_config` table via `IntConfig.set_value()`
+- All changes committed in a single transaction
+- Partial updates supported (only provided keys are updated)
+- Degradation prompt keys are dynamically generated from `services.style_degradation_prompts.DEGRADATION_PROMPTS_MAP`
+
 **Security Notes**:
 - CSRF protection enabled (automatic via Flask-WTF)
-- Settings are user-agnostic (shared across application)
-- Input validation ensures only string values are stored
+- Bio prompt settings are application-wide (shared across all users)
+- Face generation and degradation settings are application-wide
+- Input validation by type (string, boolean, integer)
 - Database rollback on error to maintain data integrity
+- Strict validation of integer ranges (e.g., max_concurrent_tasks: 1-5)
 
 ---
 
