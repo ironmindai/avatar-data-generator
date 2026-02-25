@@ -28,39 +28,40 @@ BASE_COMPRESSION_PREFIX = (
 
 # Diverse collection of specific degradation issues
 # ONE of these is randomly selected and added to the base compression
+# Optimized based on data analysis: removed prompts that made images look too professional/perfect
 SPECIFIC_DEGRADATION_PROMPTS = [
-    # Backlighting issues (2 variations)
+    # Backlighting issues (2 variations) - HIGH PERFORMERS
     "Apply strong backlight causing underexposed subject, blown out background, hazy lens flare, auto-exposure failure, silhouette effect partially corrected",
     "Apply harsh window backlight with subject too dark, completely blown out white windows, muddy shadowed face, failed auto-exposure, amateur mistake",
 
-    # Flash problems (2 variations)
+    # Flash problems (2 variations) - GOOD PERFORMERS
     "Apply direct on-camera flash, harsh shadows behind subject, overexposed foreground, flat depth, artificial lighting",
     "Apply harsh flash with red-eye effect, washed out skin tones, sharp shadows, flat lighting, overexposed center",
 
-    # Low light / underexposure (3 variations)
+    # Overexposure issues (2 variations) - TOP PERFORMERS
+    "Apply overexposure with blown highlights on face and bright areas, lost detail, harsh bright spots, washed out appearance",
+    "Apply cheap webcam quality: overexposed center, auto-gain boost creating noise, washed out flat look, artificial oversaturation in patches, low quality sensor",
+
+    # Low light / underexposure (2 variations) - KEPT FOR VARIETY
     "Apply dim ambient lighting, underexposed shadows, heavy grain from high ISO, slight motion blur, muted colors, poor dynamic range",
     "Apply poor indoor lighting, visible noise in dark areas, muddy colors, soft focus from low shutter speed, uneven exposure",
-    "Apply evening indoor lighting, high ISO grain throughout, slight blur, warm yellow color cast, compressed shadows",
 
-    # Harsh overhead lighting (2 variations)
-    "Apply harsh overhead fluorescent lighting with greenish tint, unflattering shadows under eyes and chin, washed out colors, institutional look",
-    "Apply bright overhead office lighting, flat top-down shadows, pale washed out skin, sterile fluorescent color cast",
-
-    # Old/cheap camera quality (3 variations)
+    # Old/cheap camera quality (3 variations) - GOOD PERFORMERS
     "Apply old smartphone camera quality: heavy compression artifacts, noise in shadows, poor white balance, soft focus, muddy colors, natural sensor noise",
     "Apply poorly timed snapshot: caught mid-blink or mid-expression, awkward unflattering angle, accidental bad timing, candid caught-off-guard look",
     "Apply dirty lens or fingerprint smudge: slight blur in parts, reduced contrast, hazy softness from smudged camera lens, uneven sharpness, casual neglected phone camera",
 
-    # Out of focus / blur issues (1 variation)
+    # Out of focus / blur issues (1 variation) - KEPT FOR VARIETY
     "Apply low shutter speed blur: subject and camera both moved, double blur, smeared edges, motion streaks across face, shaky unstable shot",
 
-    # Bad white balance / color issues (2 variations)
+    # Bad white balance (1 variation) - KEPT FOR VARIETY (removed cool blue cast)
     "Apply incorrect white balance with strong orange color cast, oversaturated warm tones, unnatural skin color, tungsten lighting look",
-    "Apply cool blue color cast from bad auto white balance, desaturated look, cold fluorescent feel, unnatural tones",
 
-    # Overexposure issues (2 variations)
-    "Apply overexposure with blown highlights on face and bright areas, lost detail, harsh bright spots, washed out appearance",
-    "Apply cheap webcam quality: overexposed center, auto-gain boost creating noise, washed out flat look, artificial oversaturation in patches, low quality sensor",
+    # REMOVED (appeared in BAD images, made photos look too professional):
+    # - "evening indoor lighting, high ISO grain throughout..." (too artistic)
+    # - "harsh overhead fluorescent lighting with greenish tint..." (too institutional)
+    # - "bright overhead office lighting..." (too uniform)
+    # - "cool blue color cast from bad auto white balance..." (too filtered/stylized)
 ]
 
 

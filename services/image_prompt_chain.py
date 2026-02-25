@@ -245,20 +245,102 @@ class ImagePromptChain:
             if previous_ideas:
                 history_context = f"\n\nIdeas already used (DO NOT repeat these):\n" + "\n".join(f"- {idea}" for idea in previous_ideas)
 
-            # System prompt
+            # Determine if this is a solo photo (selfie or candid) or group photo
+            is_solo = "selfie" in image_type.lower() or "friend during an activity" in image_type.lower()
+            is_group = "with other people" in image_type.lower()
+
+            # Build gaze instruction based on photo type
+            if is_solo:
+                gaze_instruction = (
+                    "GAZE DIRECTION (SOLO PHOTO - CRITICAL):\n"
+                    "- Person MUST be looking at camera (making eye contact with camera)\n"
+                    "- Can have: tired eyes AT CAMERA, squinting AT CAMERA, blank stare AT CAMERA\n"
+                    "- NEVER: looking away, looking down, distracted, looking to the side\n"
+                    "- Examples: 'staring at camera with tired eyes', 'squinting at camera', 'blank expression looking at camera'\n"
+                )
+            elif is_group:
+                gaze_instruction = (
+                    "GAZE DIRECTION (GROUP PHOTO - NATURAL INTERACTION):\n"
+                    "- Person CAN look away, interact with others, laugh with friends\n"
+                    "- Natural social interaction is authentic\n"
+                    "- Eye contact with camera is OPTIONAL\n"
+                    "- Examples: 'laughing with friend', 'talking to coworker', 'looking at someone', 'distracted by conversation'\n"
+                )
+            else:
+                # Fallback to solo rules
+                gaze_instruction = (
+                    "GAZE DIRECTION:\n"
+                    "- Person should be looking at camera or making eye contact\n"
+                    "- Can have tired eyes, squinting, or blank stare at camera\n"
+                )
+
+            # Add expression variety guidance
+            expression_variety = (
+                "EXPRESSION VARIETY (CRITICAL - MATCH TO SCENARIO):\n"
+                "Choose expression that fits the context naturally:\n"
+                "- Outdoor/bright light: squinting, shielding eyes makes sense\n"
+                "- Indoor/dim light: tired eyes, bored, zoned out, normal face\n"
+                "- Group/social context: mid-laugh, talking, animated (if with others)\n"
+                "- Solo candid: wide-eyed, confused, slight frown, annoyed, alert\n"
+                "- Selfie: half-smirk, bored, normal eye contact, slight frown\n\n"
+                "AVOID OVERUSING (max 20% each):\n"
+                "- Tired eyes (currently overused)\n"
+                "- Squinting (only if bright light context)\n"
+                "- Blank stare (currently overused)\n\n"
+                "EXPRESSION OPTIONS (rotate through these):\n"
+                "- Wide-eyed at camera, alert expression\n"
+                "- Bored expression at camera\n"
+                "- Confused look at camera\n"
+                "- Slight frown at camera\n"
+                "- Half-smirk at camera\n"
+                "- Annoyed expression at camera\n"
+                "- Zoned out looking at camera\n"
+                "- Normal eye contact (no special descriptor)\n"
+                "- Mid-yawn (use sparingly)\n\n"
+                "Check previous ideas - if last 2 used 'tired eyes' or 'squinting', pick something different!"
+            )
+
+            # System prompt with conditional gaze instruction
+            if is_solo:
+                unflattering_examples = (
+                    "UNFLATTERING/MESSY MOMENT EXAMPLES (VARY THESE - DON'T REPEAT):\n"
+                    "- Physical posture: slouched on couch, lying down awkwardly, hunched over laptop, sprawled in bed\n"
+                    "- Appearance: messy hair, just woke up look, hair in face\n"
+                    "- Environmental mess: unmade bed, messy room, cluttered desk, dirty mirror, laundry pile visible\n"
+                    "- Poor timing: scratching, adjusting clothes, stretching, rubbing eyes, fixing hair\n\n"
+                    "LOCATION VARIETY - Rotate through different location types:\n"
+                    "- Home/private (30%): bedroom, couch, kitchen, bathroom mirror\n"
+                    "- Work/productive (25%): office desk, coffee shop table, library, cubicle\n"
+                    "- Outdoor (25%): park bench, sidewalk, street corner, hiking trail, beach\n"
+                    "- Public places (20%): gym locker room, car, store, waiting area\n\n"
+                    "IMPORTANT: Check previous ideas and vary location types - avoid repeating same location category."
+                )
+            else:
+                unflattering_examples = (
+                    "UNFLATTERING/MESSY MOMENT EXAMPLES (VARY THESE - DON'T REPEAT):\n"
+                    "- Physical posture: slouched, awkward stance, hunched over\n"
+                    "- Appearance: messy hair, disheveled look, wrinkled clothes\n"
+                    "- Social interaction: mid-laugh with friends, talking to someone, distracted by conversation\n"
+                    "- Environmental mess: cluttered background, messy environment, casual setting\n"
+                    "- Poor timing: caught mid-gesture, awkward group pose, off-guard moment\n\n"
+                    "LOCATION VARIETY - Rotate through social location types:\n"
+                    "- Social venues (35%): restaurant, cafe, bar, food court\n"
+                    "- Outdoor social (30%): park, backyard BBQ, outdoor event, street festival\n"
+                    "- Work/school (20%): office break room, campus, conference room\n"
+                    "- Activities (15%): gym, sports area, concert venue, party\n\n"
+                    "IMPORTANT: Vary locations - check previous ideas to avoid repeating location types."
+                )
+
             system_prompt = (
                 "You are to come up with an idea for 1 image of this social media person. "
                 "The image should be a MESSY, CANDID, UNFLATTERING day-to-day life photo. "
                 "They are NOT an influencer - this is an AUTHENTICALLY AMATEUR social media photo.\n\n"
-                "UNFLATTERING/MESSY MOMENT EXAMPLES (VARY THESE - DON'T REPEAT):\n"
-                "- Physical posture: slouched on couch, lying down awkwardly, hunched over laptop, sprawled in bed\n"
-                "- Appearance: messy hair, just woke up look, hair in face, squinting, tired eyes\n"
-                "- Distracted/bored: looking away from camera, looking down at phone, staring blankly, zoned out\n"
-                "- Environmental mess: unmade bed, messy room, cluttered desk, dirty mirror, laundry pile visible\n"
-                "- Poor timing: scratching, adjusting clothes, stretching, rubbing eyes, fixing hair\n\n"
+                f"{unflattering_examples}\n"
+                f"{gaze_instruction}\n"
+                f"{expression_variety}\n"
                 "CRITICAL - AVOID REPETITION:\n"
                 "- MINIMIZE mouth-open moments (mid-chew, yawning, mid-sentence) - use sparingly\n"
-                "- Focus on POSTURE, DISTRACTION, MESSY ENVIRONMENTS instead\n"
+                "- Focus on POSTURE, MESSY ENVIRONMENTS, and appropriate gaze direction\n"
                 "- Vary the type of unflattering element in each image\n"
                 "- Each image should have DIFFERENT clothes, pose, and facial expression\n\n"
                 "Avoid smiling in all images. Be creative with REAL human moments (bored, tired, distracted, slouched).\n\n"
@@ -339,29 +421,77 @@ class ImagePromptChain:
         ) if wf_logger else None
 
         try:
-            # System prompt with examples that include attire and pose
+            # Determine if this is a solo or group photo from the image_idea
+            is_group_photo = any(keyword in image_idea.lower() for keyword in [
+                "with friend", "with coworker", "with family", "with other people",
+                "group", "with someone", "talking to", "laughing with"
+            ])
+
+            # Build conditional examples and gaze requirements
+            if is_selfie or not is_group_photo:
+                # SOLO PHOTO EXAMPLES - person looking at camera with VARIED expressions
+                examples = (
+                    "<EXAMPLES>\n"
+                    "at coffee shop table with laptop, messy hair, wearing wrinkled hoodie, slouched posture, bored expression at camera, off-center, napkins cluttered around\n"
+                    "taking bathroom mirror selfie, finger partially in shot, messy sink visible, wearing pajamas, hair unbrushed, wide-eyed at camera, awkward angle\n"
+                    "sitting at office desk, off-center in frame, papers scattered everywhere, wearing wrinkled work shirt, slight frown at camera, distracted look\n"
+                    "on park bench with phone, wearing faded t-shirt and shorts, squinting at camera in harsh sunlight, slouched back, slightly blurry, backpack messily open\n"
+                    "in car taking selfie, one hand on steering wheel, looking at camera with tired eyes, wearing tank top, fast food bag on passenger seat, slightly blurry\n"
+                    "slouched on couch at home, messy hair, wearing old t-shirt and sweatpants, zoned out looking at camera, blurry, clothes scattered around\n"
+                    "at gym locker room mirror, towel around neck, sweaty and exhausted, alert expression at camera, bad overhead lighting, clutter in background\n"
+                    "</EXAMPLES>\n"
+                )
+                gaze_requirement = (
+                    "GAZE DIRECTION (CRITICAL FOR SOLO PHOTOS):\n"
+                    "- Person MUST be looking at camera, staring at camera, or making eye contact with camera\n"
+                    "- Can describe as: 'looking at camera', 'staring at camera', 'tired eyes at camera', 'squinting at camera', 'blank stare at camera'\n"
+                    "- NEVER use: 'looking away', 'looking down', 'distracted gaze', 'looking to the side'\n"
+                )
+            else:
+                # GROUP PHOTO EXAMPLES - person can interact naturally with varied expressions
+                examples = (
+                    "<EXAMPLES>\n"
+                    "at restaurant table with friends, wearing casual shirt, mid-laugh with mouth open, blurry, messy background\n"
+                    "at outdoor park picnic with friends, wearing t-shirt, talking and gesturing, awkward angle, food scattered around, harsh sunlight\n"
+                    "in office break room with coworker, wearing wrinkled work clothes, slouched at table, animated conversation, cluttered counter behind\n"
+                    "at backyard BBQ with family, wearing shorts and tank top, mid-sentence with hand raised, off-center, messy grill and coolers visible\n"
+                    "at coffee shop booth with friend, casual hoodie, laughing at something, slightly blurry, cups and papers cluttered on table\n"
+                    "at bar with colleagues, wearing t-shirt, talking to someone off-camera, slightly blurry, drinks and clutter on table behind\n"
+                    "at gym with workout buddy, tank top and shorts, talking while stretching, awkward pose, equipment scattered around\n"
+                    "</EXAMPLES>\n"
+                )
+                gaze_requirement = (
+                    "GAZE DIRECTION (NATURAL FOR GROUP PHOTOS):\n"
+                    "- Person can look away, interact with others, laugh with friends, talk to someone\n"
+                    "- Natural social interaction: 'laughing with friend', 'talking to coworker', 'looking at someone', 'mid-conversation'\n"
+                    "- Eye contact with camera is optional and natural\n"
+                )
+
+            # System prompt with conditional examples and gaze requirements
             system_prompt = (
                 "You are to generate a MESSY, AMATEUR, CANDID scene description for social media photo generation. "
                 "Include the activity, location, clothing/attire, pose, expression, AND amateur photo flaws. "
                 "This should look like a REAL social media photo, not a professional shot.\n\n"
-                "Here are examples of GOOD amateur photos:\n\n"
-                "<EXAMPLES>\n"
-                "slouched on couch eating pizza, messy hair, wearing old t-shirt and sweatpants, mouth open mid-chew, blurry, clothes on floor in background\n"
-                "taking bathroom mirror selfie, finger partially in shot, messy sink visible, wearing pajamas, hair unbrushed, awkward angle\n"
-                "sitting at desk with laptop, off-center in frame, messy papers everywhere, wearing hoodie, looking away from camera, distracted\n"
-                "lying on unmade bed scrolling phone, wearing wrinkled t-shirt, awkward angle from above, yawning, messy room visible\n"
-                "at gym locker room mirror, towel around neck, sweaty and exhausted, bad overhead lighting, other people's stuff in background\n"
-                "in car taking selfie, one hand on steering wheel, squinting from sun, fast food bag on passenger seat, slightly blurry\n"
-                "standing in messy kitchen, wearing tank top and shorts, mid-sentence with mouth open, dirty dishes in sink behind, awkward pose\n"
-                "</EXAMPLES>\n\n"
+                f"Here are examples of GOOD amateur photos:\n\n{examples}\n"
+                "AVOID STAGED ELEMENTS (these make photos look posed):\n"
+                "- 'surrounded by [objects]' - sounds deliberately arranged\n"
+                "  → Instead use: '[objects] scattered around', 'cluttered with [objects]', '[objects] everywhere'\n"
+                "- Specific hand positions: 'chin in hand', 'forehead on hand', 'elbow on table'\n"
+                "  → Instead use: 'slouched', 'leaning back', general posture without hand specifics\n"
+                "- Staged activities: 'working on laptop', 'hunched over screen', 'staring at screen'\n"
+                "  → Instead use: 'laptop open', 'slouched at desk', 'at desk with papers'\n\n"
+                "KEEP MESSY ENVIRONMENTS (beneficial!):\n"
+                "- Use 'scattered around', 'cluttered', 'everywhere', 'messy [location]'\n"
+                "- Environmental mess is GOOD, just avoid 'surrounded by' phrasing\n\n"
                 "AMATEUR PHOTO REQUIREMENTS (MUST INCLUDE 2-3 OF THESE):\n"
                 "- Technical flaws: blurry, finger in shot, awkward angle, bad framing, poorly centered, off-center, bad lighting\n"
                 "- Environmental mess: messy background, cluttered room, unmade bed, dirty mirror, stuff on floor, messy desk, visible clutter\n"
                 "- Poor composition: awkward angle, bad framing, off-center, too close, weird perspective\n"
                 "- Human mess: slouched posture, messy hair, unbrushed hair, wrinkled clothes, mid-action, unflattering pose\n"
-                "- Caught moments: mid-chew, yawning, looking away, distracted, mouth open, eyes half-closed, awkward expression\n\n"
+                "- Caught moments: mid-chew, yawning, mouth open, eyes half-closed, awkward expression, mid-gesture\n\n"
+                f"{gaze_requirement}\n"
                 "CRITICAL REQUIREMENTS:\n"
-                "- Include: activity, location, clothing/attire, pose, expression, AND 2-3 amateur photo flaws\n"
+                "- Include: activity, location, clothing/attire, pose, expression, gaze direction, AND 2-3 amateur photo flaws\n"
                 "- MUST include environmental mess OR technical flaws in EVERY description\n"
                 "- Clothing should be casual/worn/wrinkled (old t-shirts, sweatpants, pajamas, hoodies)\n"
                 "- Pose should be natural/slouched/awkward (not posed or flattering)\n"
@@ -370,7 +500,7 @@ class ImagePromptChain:
                 "- Keep it under 30 words (extra 5 words for amateur details)\n"
                 "- ABSOLUTELY NO mentions of: camera, phone, mobile, lens, photograph, taking photo, smartphone, device, screen\n"
                 "- For selfies, NEVER mention the camera/phone - it's implied by 'selfie'\n\n"
-                "Output ONLY the scene description with attire/pose/expression/amateur flaws, nothing else."
+                "Output ONLY the scene description with attire/pose/expression/gaze/amateur flaws, nothing else."
             )
 
             # User prompt

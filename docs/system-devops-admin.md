@@ -692,6 +692,25 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Metadata is queryable using standard tools like `exiftool` or Python piexif/PIL
 - Enables tracing generation parameters, LLM prompts, and persona details from both PNG and JPEG files
 
+### Service Restart for Gaze Direction LLM Prompt Chain Fixes (2026-02-25 07:46 UTC)
+**Reason**: Applied LLM prompt chain fixes to improve gaze direction in generated images
+**Affected Files**:
+- `services/image_prompt_chain.py` - Updated LLM prompts for better gaze direction control
+**Action**: Restarted avatar-data-generator.service to apply code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 280300 (master), 280303 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: No tasks need recovery (clean startup)
+- Memory usage: 131.2M (peak: 132.0M)
+- Startup logs: Application initialized successfully at 07:46:28 UTC
+**Impact**:
+- Future image generation will use improved LLM prompt chain for better gaze direction control
+- Enhanced consistency in avatar eye contact and facial orientation
+- All subsequent generation tasks will benefit from refined gaze direction prompts
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)
