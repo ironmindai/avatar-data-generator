@@ -325,7 +325,7 @@
         updateProgressBar(data.task, data.progress);
         updateErrorSection(data.task);
         updateExportButtons(data.task);
-        updateResults(data.results, data.pagination);
+        updateResults(data.results, data.pagination, data.task.show_base_images);
         updatePagination(data.pagination, taskId);
 
         // Stop polling if task is completed or failed
@@ -492,7 +492,7 @@
   /**
    * Update results grid
    */
-  function updateResults(results, pagination) {
+  function updateResults(results, pagination, showBaseImages) {
     const grid = document.getElementById('resultsGrid');
     if (!grid) return;
 
@@ -507,7 +507,7 @@
       return;
     }
 
-    grid.innerHTML = results.map(result => createResultCardHTML(result)).join('');
+    grid.innerHTML = results.map(result => createResultCardHTML(result, showBaseImages)).join('');
 
     // Initialize bio tabs and image previews
     initializeBioTabs();
@@ -533,7 +533,7 @@
   /**
    * Create HTML for a result card
    */
-  function createResultCardHTML(result) {
+  function createResultCardHTML(result, showBaseImages) {
     const genderClass = result.gender.toLowerCase();
     const genderIcon = result.gender.toLowerCase() === 'male' ? 'user' : 'user';
 
@@ -655,7 +655,7 @@
           </div>
           ` : ''}
 
-          ${result.base_image_url ? `
+          ${showBaseImages && result.base_image_url ? `
           <div class="base-image-section">
             <div class="base-image-label">
               <i data-feather="aperture"></i>

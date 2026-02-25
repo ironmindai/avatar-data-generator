@@ -603,6 +603,7 @@ def create_app():
         crop_white_borders = Config.get_value('crop_white_borders', False)
         randomize_image_style = Config.get_value('randomize_image_style', False)
         obfuscate_exif_metadata = Config.get_value('obfuscate_exif_metadata', False)
+        show_base_images = Config.get_value('show_base_images', True)
 
         # Load concurrency settings from IntConfig table (stored as integer values)
         max_concurrent_tasks = IntConfig.get_value('max_concurrent_tasks', 1)
@@ -622,6 +623,7 @@ def create_app():
             crop_white_borders=crop_white_borders,
             randomize_image_style=randomize_image_style,
             obfuscate_exif_metadata=obfuscate_exif_metadata,
+            show_base_images=show_base_images,
             max_concurrent_tasks=max_concurrent_tasks,
             degradation_states=degradation_states,
             degradation_prompts=DEGRADATION_PROMPTS_MAP
@@ -664,6 +666,7 @@ def create_app():
                 'crop_white_borders',
                 'randomize_image_style',
                 'obfuscate_exif_metadata',
+                'show_base_images',
                 # Add all degradation prompt keys dynamically
                 *[f'degradation_{prompt_id}' for prompt_id in DEGRADATION_PROMPTS_MAP.keys()]
             ]
@@ -905,6 +908,9 @@ def create_app():
                 'images': result.images or []
             })
 
+        # Get show_base_images setting from Config
+        show_base_images = Config.get_value('show_base_images', True)
+
         # Return JSON response
         return jsonify({
             'success': True,
@@ -919,7 +925,8 @@ def create_app():
                 'completed_at': task.completed_at.isoformat() if task.completed_at else None,
                 'error_log': task.error_log,
                 'ethnicity_distribution': ethnicity_counts,
-                'age_stats': age_stats
+                'age_stats': age_stats,
+                'show_base_images': show_base_images
             },
             'progress': {
                 'total_personas': total_personas,

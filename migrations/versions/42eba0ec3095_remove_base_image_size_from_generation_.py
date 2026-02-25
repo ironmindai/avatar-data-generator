@@ -1,7 +1,7 @@
 """remove_base_image_size_from_generation_results
 
 Revision ID: 42eba0ec3095
-Revises: 0601dbe40e04
+Revises: 312faec904ca
 Create Date: 2026-02-25 16:26:48.669898
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '42eba0ec3095'
-down_revision = '0601dbe40e04'
+down_revision = '312faec904ca'
 branch_labels = None
 depends_on = None
 

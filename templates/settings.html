@@ -76,6 +76,26 @@
                         </p>
                     </div>
 
+                    <!-- Show Base Images Checkbox -->
+                    <div class="form-group">
+                        <label class="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="show_base_images"
+                                name="show_base_images"
+                                class="checkbox-input"
+                                {% if show_base_images %}checked{% endif %}
+                            >
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-label">
+                                SHOW BASE IMAGES
+                            </span>
+                        </label>
+                        <p class="form-help checkbox-help">
+                            Display base reference images in the dataset detail view. When disabled, only processed persona images will be shown.
+                        </p>
+                    </div>
+
                     <!-- Main Checkbox: Randomize Face -->
                     <div class="form-group">
                         <label class="checkbox-container">

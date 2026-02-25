@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-02-25 (Added degradation prompts settings with toggles)*
+> *Last Updated: 2026-02-25 (Added show_base_images setting)*
 
 ## Application Information
 
@@ -243,7 +243,8 @@ Lists all avatar generation tasks for the current user, similar to /history but 
     "images_per_persona": 4,
     "created_at": "2025-01-30T10:00:00",
     "completed_at": "2025-01-30T10:15:00",
-    "error_log": null
+    "error_log": null,
+    "show_base_images": true
   },
   "progress": {
     "total_personas": 50,
@@ -661,6 +662,7 @@ Displays complete observability data for a single workflow execution. Node logs 
 - `crop_white_borders`: Boolean - Auto-crop white borders from generated images
 - `randomize_image_style`: Boolean - Apply random style variations to images
 - `obfuscate_exif_metadata`: Boolean - Strip and replace EXIF metadata with randomized fake data for persona images
+- `show_base_images`: Boolean - Show base images in dataset detail view (default: True)
 - `max_concurrent_tasks`: Integer - Max concurrent generation tasks (1-5)
 - `degradation_states`: Dictionary - Enabled state for each degradation prompt (key: `degradation_<prompt_id>`, value: Boolean)
 - `degradation_prompts`: Dictionary - Map of all available degradation prompts with metadata
@@ -735,6 +737,7 @@ Can include any combination of the following settings:
   "crop_white_borders": true,
   "randomize_image_style": false,
   "obfuscate_exif_metadata": true,
+  "show_base_images": true,
   "degradation_backlight_1": true,
   "degradation_backlight_2": false,
   "degradation_flash_1": true,
