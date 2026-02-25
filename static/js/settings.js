@@ -49,6 +49,7 @@
         resetFaceSettingsButton: document.getElementById('resetFaceSettingsButton'),
         cropWhiteBordersCheckbox: document.getElementById('crop_white_borders'),
         randomizeImageStyleCheckbox: document.getElementById('randomize_image_style'),
+        obfuscateExifMetadataCheckbox: document.getElementById('obfuscate_exif_metadata'),
         randomizeFaceCheckbox: document.getElementById('randomize_face_base'),
         genderLockCheckbox: document.getElementById('randomize_face_gender_lock'),
         genderLockGroup: document.getElementById('genderLockGroup'),
@@ -101,6 +102,7 @@
         state.faceSettings.originalValues = {
             crop_white_borders: elements.cropWhiteBordersCheckbox.checked,
             randomize_image_style: elements.randomizeImageStyleCheckbox.checked,
+            obfuscate_exif_metadata: elements.obfuscateExifMetadataCheckbox.checked,
             randomize_face_base: elements.randomizeFaceCheckbox.checked,
             randomize_face_gender_lock: elements.genderLockCheckbox.checked,
             max_concurrent_tasks: parseInt(elements.maxConcurrentTasksInput.value, 10)
@@ -134,6 +136,11 @@
 
         // Randomize image style checkbox - check dirty state
         elements.randomizeImageStyleCheckbox.addEventListener('change', function() {
+            checkFaceSettingsDirtyState();
+        });
+
+        // Obfuscate EXIF metadata checkbox - check dirty state
+        elements.obfuscateExifMetadataCheckbox.addEventListener('change', function() {
             checkFaceSettingsDirtyState();
         });
 
@@ -461,6 +468,7 @@
         const hasChanges =
             elements.cropWhiteBordersCheckbox.checked !== state.faceSettings.originalValues.crop_white_borders ||
             elements.randomizeImageStyleCheckbox.checked !== state.faceSettings.originalValues.randomize_image_style ||
+            elements.obfuscateExifMetadataCheckbox.checked !== state.faceSettings.originalValues.obfuscate_exif_metadata ||
             elements.randomizeFaceCheckbox.checked !== state.faceSettings.originalValues.randomize_face_base ||
             elements.genderLockCheckbox.checked !== state.faceSettings.originalValues.randomize_face_gender_lock ||
             currentMaxConcurrent !== state.faceSettings.originalValues.max_concurrent_tasks;
@@ -503,6 +511,7 @@
         const formData = {
             crop_white_borders: elements.cropWhiteBordersCheckbox.checked,
             randomize_image_style: elements.randomizeImageStyleCheckbox.checked,
+            obfuscate_exif_metadata: elements.obfuscateExifMetadataCheckbox.checked,
             randomize_face_base: elements.randomizeFaceCheckbox.checked,
             randomize_face_gender_lock: elements.genderLockCheckbox.checked,
             max_concurrent_tasks: validatedMaxConcurrent
@@ -577,6 +586,7 @@
         // Restore original values
         elements.cropWhiteBordersCheckbox.checked = state.faceSettings.originalValues.crop_white_borders;
         elements.randomizeImageStyleCheckbox.checked = state.faceSettings.originalValues.randomize_image_style;
+        elements.obfuscateExifMetadataCheckbox.checked = state.faceSettings.originalValues.obfuscate_exif_metadata;
         elements.randomizeFaceCheckbox.checked = state.faceSettings.originalValues.randomize_face_base;
         elements.genderLockCheckbox.checked = state.faceSettings.originalValues.randomize_face_gender_lock;
         elements.maxConcurrentTasksInput.value = state.faceSettings.originalValues.max_concurrent_tasks;

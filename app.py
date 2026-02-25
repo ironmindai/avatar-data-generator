@@ -602,6 +602,7 @@ def create_app():
         randomize_face_gender_lock = Config.get_value('randomize_face_gender_lock', False)
         crop_white_borders = Config.get_value('crop_white_borders', False)
         randomize_image_style = Config.get_value('randomize_image_style', False)
+        obfuscate_exif_metadata = Config.get_value('obfuscate_exif_metadata', False)
 
         # Load concurrency settings from IntConfig table (stored as integer values)
         max_concurrent_tasks = IntConfig.get_value('max_concurrent_tasks', 1)
@@ -620,6 +621,7 @@ def create_app():
             randomize_face_gender_lock=randomize_face_gender_lock,
             crop_white_borders=crop_white_borders,
             randomize_image_style=randomize_image_style,
+            obfuscate_exif_metadata=obfuscate_exif_metadata,
             max_concurrent_tasks=max_concurrent_tasks,
             degradation_states=degradation_states,
             degradation_prompts=DEGRADATION_PROMPTS_MAP
@@ -661,6 +663,7 @@ def create_app():
                 'randomize_face_gender_lock',
                 'crop_white_borders',
                 'randomize_image_style',
+                'obfuscate_exif_metadata',
                 # Add all degradation prompt keys dynamically
                 *[f'degradation_{prompt_id}' for prompt_id in DEGRADATION_PROMPTS_MAP.keys()]
             ]

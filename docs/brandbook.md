@@ -678,6 +678,49 @@ Provides:
 
 ---
 
+### 2026-02-25 - Obfuscate EXIF Metadata Setting Added
+
+**New Setting Created:**
+- Added "Obfuscate EXIF Metadata" toggle as the third setting in Face Generation Settings section
+- Boolean checkbox that controls EXIF metadata obfuscation for persona images
+- Setting stored in Config table with key `obfuscate_exif_metadata`
+- Positioned after "Randomize Image Styles" and before "Randomize Face" options
+- Integrated with existing face settings form and state management
+- Saves via AJAX to `/settings/save` endpoint
+- Default value: False (disabled)
+
+**Components Updated:**
+- Settings template: Added checkbox after "Randomize Image Styles" option
+- Settings JavaScript:
+  - Added obfuscateExifMetadataCheckbox to elements object
+  - Integrated into face settings state tracking (storeFaceSettingsOriginalValues)
+  - Added change event listener for dirty state detection
+  - Included in checkFaceSettingsDirtyState function
+  - Added to form submission data (handleFaceSettingsSubmit)
+  - Added to reset functionality (handleFaceSettingsReset)
+- Checkbox follows brandbook styling (sharp corners, neon cyan glow on checked)
+
+**Implementation Details:**
+- Label: "OBFUSCATE EXIF METADATA" (uppercase, semibold, letter-spacing 0.05em)
+- Description: "Strip debug metadata and inject randomized fake data (camera models, GPS, timestamps) into persona images before upload. Base images are not affected."
+- Clear explanation that only persona images are affected, not base images
+- Consistent styling with other Face Generation Settings checkboxes
+- State tracked independently from other settings
+- Save button enables only when changes are detected
+- Reset button restores original database value
+
+**Files Modified:**
+- `/templates/settings.html` - Added obfuscate_exif_metadata checkbox after randomize_image_style
+- `/static/js/settings.js` - Added complete state management, event listeners, submission, and reset handling
+- `/docs/brandbook.md` - Documented new setting implementation
+
+**Backend Integration Required:**
+- Backend must handle `obfuscate_exif_metadata` boolean field in `/settings/save` endpoint
+- Backend must pass `obfuscate_exif_metadata` value to template when rendering settings page
+- Database migration required to add `obfuscate_exif_metadata` to Config table (if not already present)
+
+---
+
 ### 2026-02-01 - Randomize Image Styles Setting Added
 
 **New Setting Created:**

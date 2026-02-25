@@ -660,6 +660,7 @@ Displays complete observability data for a single workflow execution. Node logs 
 - `randomize_face_gender_lock`: Boolean - Lock gender during face randomization
 - `crop_white_borders`: Boolean - Auto-crop white borders from generated images
 - `randomize_image_style`: Boolean - Apply random style variations to images
+- `obfuscate_exif_metadata`: Boolean - Strip and replace EXIF metadata with randomized fake data for persona images
 - `max_concurrent_tasks`: Integer - Max concurrent generation tasks (1-5)
 - `degradation_states`: Dictionary - Enabled state for each degradation prompt (key: `degradation_<prompt_id>`, value: Boolean)
 - `degradation_prompts`: Dictionary - Map of all available degradation prompts with metadata
@@ -688,11 +689,23 @@ Each prompt in `degradation_prompts` has the following structure:
 
 **Current Implementation**:
 Displays three main settings sections:
-1. Face Generation Settings - Control face randomization and concurrency
+1. Face Generation Settings - Control face randomization, EXIF obfuscation, and concurrency
 2. Image Degradation Settings - Toggle individual degradation prompts on/off
 3. Bio Prompts Configuration - Edit AI prompts for bio generation
 
 All settings are loaded from the database. Degradation prompt states default to enabled (True) if not found in Config table.
+
+**EXIF Metadata Obfuscation** (`obfuscate_exif_metadata`):
+- When enabled, strips existing EXIF metadata from persona images and injects randomized fake data
+- Applies to persona images ONLY (image_0.png, image_1.png, etc.), NOT base images
+- Randomized data includes:
+  - Timestamps: Random dates between 2017-2021
+  - GPS coordinates: Random worldwide locations (100+ cities with offsets)
+  - Camera models: 50+ smartphones and cameras from 2015-2020 era
+  - Technical EXIF: ISO, aperture, focal length, shutter speed, etc.
+- Provides astronomical variety: billions of unique metadata combinations
+- Gracefully degrades on failure (returns original image if obfuscation fails)
+- See `playground/EXIF_OBFUSCATION_IMPLEMENTATION.md` for full documentation
 
 ---
 
@@ -721,6 +734,7 @@ Can include any combination of the following settings:
   "randomize_face_gender_lock": false,
   "crop_white_borders": true,
   "randomize_image_style": false,
+  "obfuscate_exif_metadata": true,
   "degradation_backlight_1": true,
   "degradation_backlight_2": false,
   "degradation_flash_1": true,

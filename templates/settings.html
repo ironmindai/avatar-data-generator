@@ -176,6 +176,26 @@
             <!-- Form Wrapper for Elevated Background -->
             <div class="settings-form-wrapper">
                 <form id="degradationSettingsForm" class="settings-form">
+                    <!-- Obfuscate EXIF Metadata Checkbox -->
+                    <div class="form-group">
+                        <label class="checkbox-container">
+                            <input
+                                type="checkbox"
+                                id="obfuscate_exif_metadata"
+                                name="obfuscate_exif_metadata"
+                                class="checkbox-input"
+                                {% if obfuscate_exif_metadata %}checked{% endif %}
+                            >
+                            <span class="checkbox-custom"></span>
+                            <span class="checkbox-label">
+                                OBFUSCATE EXIF METADATA
+                            </span>
+                        </label>
+                        <p class="form-help checkbox-help">
+                            Strip debug metadata and inject randomized fake data (camera models, GPS, timestamps) into persona images before upload. Base images are not affected.
+                        </p>
+                    </div>
+
                     {% set categories = {} %}
                     {% for prompt_id, prompt_data in degradation_prompts.items() %}
                         {% set category = prompt_data.category %}

@@ -881,10 +881,12 @@ async def process_persona_images(
         # Fetch post-processing settings (apply consistently to all images)
         crop_white_borders_enabled = Config.get_value('crop_white_borders', False)
         randomize_image_style_enabled = Config.get_value('randomize_image_style', False)
+        obfuscate_exif_enabled = Config.get_value('obfuscate_exif_metadata', False)
 
         logger.info(f"[Task {task_id_str}] [{persona_name}] Post-processing settings:")
         logger.info(f"[Task {task_id_str}] [{persona_name}] - crop_white_borders: {crop_white_borders_enabled}")
         logger.info(f"[Task {task_id_str}] [{persona_name}] - randomize_image_style: {randomize_image_style_enabled}")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] - obfuscate_exif_metadata: {obfuscate_exif_enabled}")
 
         person_data = {
             'firstname': result.firstname,
@@ -1045,6 +1047,15 @@ async def process_persona_images(
                         logger.debug(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Style randomized")
                     except Exception as e:
                         logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Style randomization failed: {str(e)}")
+
+                # Conditionally apply EXIF metadata obfuscation (PERSONA IMAGES ONLY, NOT BASE IMAGE)
+                if obfuscate_exif_enabled:
+                    try:
+                        from services.exif_obfuscation import obfuscate_exif_metadata
+                        processed_bytes = obfuscate_exif_metadata(processed_bytes)
+                        logger.debug(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] EXIF metadata obfuscated")
+                    except Exception as e:
+                        logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] EXIF obfuscation failed: {str(e)}")
 
                 # Upload final degraded image to S3 with prompts as metadata
                 object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}.png"

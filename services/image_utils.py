@@ -21,6 +21,7 @@ from split_image import split_image
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
+import piexif
 
 # Load environment variables
 load_dotenv()
@@ -179,6 +180,9 @@ def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
     This allows metadata to survive downloads - it's embedded in the image file itself,
     not just stored in S3 object metadata.
 
+    IMPORTANT: This function preserves existing EXIF data (added by EXIF obfuscation)
+    when re-saving the image with PNG text chunks or JPEG comment.
+
     Args:
         image_bytes: Original image bytes (PNG or JPEG)
         metadata: Dictionary of metadata key-value pairs to embed
@@ -187,6 +191,16 @@ def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
         bytes: Image with embedded metadata (same format as input)
     """
     try:
+        # Extract existing EXIF data BEFORE opening with PIL
+        # This preserves EXIF data added by obfuscate_exif_metadata()
+        existing_exif = None
+        try:
+            existing_exif = piexif.load(image_bytes)
+            logger.debug("Existing EXIF data found, will preserve during re-save")
+        except Exception:
+            # No EXIF data present (or not JPEG) - this is fine
+            logger.debug("No existing EXIF data to preserve")
+
         # Load image from bytes
         img = Image.open(io.BytesIO(image_bytes))
         original_format = img.format
@@ -201,9 +215,25 @@ def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
             import json
             metadata_json = json.dumps(metadata, ensure_ascii=False)
 
-            # Save as JPEG with comment
+            # Save as JPEG with comment AND preserved EXIF
             output_buffer = io.BytesIO()
-            img.save(output_buffer, format='JPEG', quality=95, optimize=True, comment=metadata_json)
+            save_kwargs = {
+                'format': 'JPEG',
+                'quality': 95,
+                'optimize': True,
+                'comment': metadata_json
+            }
+
+            # Re-insert existing EXIF if present
+            if existing_exif:
+                try:
+                    exif_bytes = piexif.dump(existing_exif)
+                    save_kwargs['exif'] = exif_bytes
+                    logger.debug("Preserved EXIF data in JPEG re-save")
+                except Exception as e:
+                    logger.warning(f"Failed to preserve EXIF data: {e}")
+
+            img.save(output_buffer, **save_kwargs)
             logger.debug(f"Embedded metadata in JPEG comment: {len(metadata)} fields")
             return output_buffer.getvalue()
 
@@ -218,7 +248,21 @@ def embed_metadata_in_png(image_bytes: bytes, metadata: dict) -> bytes:
 
             # Save to bytes with metadata
             output_buffer = io.BytesIO()
-            img.save(output_buffer, format='PNG', pnginfo=png_info)
+            save_kwargs = {
+                'format': 'PNG',
+                'pnginfo': png_info
+            }
+
+            # Re-insert existing EXIF if present (PNGs can have EXIF too)
+            if existing_exif:
+                try:
+                    exif_bytes = piexif.dump(existing_exif)
+                    save_kwargs['exif'] = exif_bytes
+                    logger.debug("Preserved EXIF data in PNG re-save")
+                except Exception as e:
+                    logger.warning(f"Failed to preserve EXIF data in PNG: {e}")
+
+            img.save(output_buffer, **save_kwargs)
             return output_buffer.getvalue()
 
     except Exception as e:

@@ -75,6 +75,7 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - opencv-python==4.13.0.90 (image processing - installed 2026-02-01)
 - numpy==2.4.2 (dependency for opencv-python)
 - httpx==0.28.1 (async HTTP client - dependency of openai package, verified 2026-02-20)
+- piexif==1.1.3 (EXIF metadata manipulation for JPEG images - installed 2026-02-25)
 
 ## Nginx Sites
 **Subdomain**: avatar-data-generator.dev.iron-mind.ai
@@ -734,6 +735,47 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Fixed orientation bug affecting landscape photos
 - Natural photo orientation distribution restored
 - All future image generation will respect original photo aspect ratios correctly
+
+### Service Restart for EXIF Obfuscation Feature (2026-02-25 16:46 UTC)
+**Reason**: Deployed EXIF obfuscation feature to remove/randomize metadata from generated images
+**New Dependency**: Installed `piexif==1.1.3` in project virtual environment
+**Action**: Restarted avatar-data-generator.service to apply new feature
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 408150 (master), 408152 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: Clean startup
+- Memory usage: 109.4M (peak: 109.4M)
+- Startup logs: Application initialized successfully at 16:46:59 UTC
+**Impact**:
+- All future generated images will have EXIF metadata removed or randomized for privacy
+- Enhanced anonymization of avatar images
+- EXIF obfuscation applied during image degradation pipeline
+
+### Service Restart for EXIF Preservation Fix (2026-02-25 17:02 UTC)
+**Reason**: Applied EXIF preservation fix to maintain original EXIF data during image degradation
+**Affected Files**:
+- `utils/image_utils.py` - Fixed EXIF preservation in image rotation and format conversion
+**Changes**:
+- Corrected EXIF handling to preserve original metadata during image transformations
+- Fixed rotation operations to maintain EXIF orientation tags
+- Enhanced format conversion to preserve EXIF data when converting between formats
+**Action**: Restarted avatar-data-generator.service to apply fix
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 417714 (master), 417722 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: No tasks need recovery (clean startup)
+- Memory usage: 99.9M (peak: 100.5M)
+- Startup logs: Application initialized successfully at 17:02:15 UTC
+**Impact**:
+- EXIF metadata now properly preserved during image degradation pipeline
+- Original camera/phone metadata maintained in generated images
+- Enhanced authenticity of avatar images with preserved EXIF data
 
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
