@@ -576,7 +576,51 @@ Adds a new JSONB column to track image ideas/prompts that have been generated fo
 - JSONB type is efficient for storing and querying array data in PostgreSQL
 - **Downgrade Warning**: Rolling back this migration will permanently delete all image ideas history data
 
+**Status**: APPLIED
+
+---
+
+### Migration: 42eba0ec3095 - remove_base_image_size_from_generation_results
+**Date**: 2026-02-25 16:26:48
+**Parent**: 0601dbe40e04
+
+**Changes:**
+- Removed `base_image_size` column from `generation_results` table
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/42eba0ec3095_remove_base_image_size_from_generation_.py`
+
+**Purpose:**
+Removes the `base_image_size` field that was previously added to store base image dimensions. This field is no longer needed as SeeDream dimensions are now randomized directly in the application code rather than being stored in the database. The dimension randomization happens at generation time, making database storage unnecessary.
+
+**Rationale:**
+- SeeDream dimensions are randomized in code on-the-fly for each generation
+- No need to persist dimensions in database after generation completes
+- Reduces schema complexity and removes unused column
+- Dimensions don't need to be stored for future reference
+
+**Safety Notes:**
+- **DESTRUCTIVE OPERATION**: Permanently deletes the `base_image_size` column and any data it contained
+- Fully reversible via downgrade function (restores empty column)
+- Any data previously stored in `base_image_size` will be lost
+- **Downgrade Warning**: Rolling back this migration will restore the column but data will be NULL
+
 **Status**: APPLIED (Current)
+
+---
+
+### Migration: 0601dbe40e04 - add_base_image_size_to_generation_results
+**Date**: 2026-02-25 15:49:00
+**Parent**: 312faec904ca
+
+**Status**: REVERTED (File Deleted)
+
+**Why Reverted:**
+This migration added the `base_image_size` field to store base image dimensions for SeeDream generation. However, this approach was replaced with direct code-based dimension randomization, making database storage unnecessary. The field was removed by migration 42eba0ec3095.
+
+**Resolution:**
+- Migration rolled forward to 42eba0ec3095 which removes the column
+- Original migration file deleted as it's superseded by the removal migration
+- Dimensions now randomized in code without database persistence
 
 ---
 
@@ -622,12 +666,13 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 312faec904ca (add_image_ideas_history_to_generation_results) - APPLIED
+**Latest Migration**: 42eba0ec3095 (remove_base_image_size_from_generation_results) - APPLIED
 **Total Tables**: 5
-**Total Migrations**: 13 (1 reverted)
+**Total Migrations**: 14 (2 reverted/deleted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
+- REMOVED `generation_results.base_image_size` - no longer needed as dimensions are randomized in code
 - NEW `generation_results.image_ideas_history` (JSONB array) - tracks image ideas/prompts to prevent duplicates in future generations
 - NEW `generation_results.ethnicity` (String(100)), `age` (Integer) - demographic fields from updated Flowise workflow (71bf0c86-c802-4221-b6e7-0af16e350bb6)
 - NEW `generation_results.job_title`, `workplace`, `edu_establishment`, `edu_study`, `current_city`, `current_state`, `prev_city`, `prev_state`, `about` - supplementary persona fields from updated Flowise workflow

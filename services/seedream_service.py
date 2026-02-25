@@ -31,7 +31,8 @@ SEEDREAM_TIMEOUT = 600  # 10 minutes timeout
 async def generate_image_with_reference(
     prompt: str,
     base_image_url: str,
-    style_image_url: Optional[str] = None
+    style_image_url: Optional[str] = None,
+    size: Optional[str] = None
 ) -> Optional[bytes]:
     """
     Generate an image using SeeDream 4.5 with single or dual image references.
@@ -46,6 +47,8 @@ async def generate_image_with_reference(
                        (must be accessible by SeeDream API - use S3 presigned URL)
         style_image_url: Optional URL of style reference image (Image 2 - quality/aesthetic).
                         If provided, uses dual-reference mode. If None, uses single reference.
+        size: Optional image size (e.g., "1024x1024", "1024x1536", "1536x1024").
+              If provided, overrides SEEDREAM_IMAGE_SIZE. If None, uses SEEDREAM_IMAGE_SIZE.
 
     Returns:
         bytes: Generated image as bytes, or None if generation fails
@@ -75,6 +78,9 @@ async def generate_image_with_reference(
             logger.info(f"Using SINGLE-REFERENCE mode")
             logger.info(f"  Reference image: {base_image_url}")
 
+        # Determine image size (use provided size or fallback to env var)
+        image_size = size if size else SEEDREAM_IMAGE_SIZE
+        logger.info(f"Image size: {image_size}")
         logger.info("=" * 80)
 
         # Prepare request payload
@@ -82,7 +88,7 @@ async def generate_image_with_reference(
         payload = {
             'model': SEEDREAM_MODEL,
             'prompt': prompt,
-            'size': SEEDREAM_IMAGE_SIZE,
+            'size': image_size,
             'watermark': SEEDREAM_WATERMARK,
             'sequential_image_generation': 'disabled',
             'response_format': 'url',
@@ -162,7 +168,8 @@ async def generate_image_with_reference(
 async def generate_images_batch(
     prompts: list[str],
     base_image_url: str,
-    style_image_url: Optional[str] = None
+    style_image_url: Optional[str] = None,
+    size: Optional[str] = None
 ) -> list[bytes]:
     """
     Generate multiple images sequentially using SeeDream with single or dual image references.
@@ -171,6 +178,7 @@ async def generate_images_batch(
         prompts: List of text prompts for each image
         base_image_url: Publicly accessible URL of the base image (Image 1 - person/identity)
         style_image_url: Optional URL of style reference image (Image 2 - quality/aesthetic)
+        size: Optional image size (e.g., "1024x1024", "1024x1536", "1536x1024")
 
     Returns:
         List of generated images as bytes
@@ -188,7 +196,8 @@ async def generate_images_batch(
             image_bytes = await generate_image_with_reference(
                 prompt=prompt,
                 base_image_url=base_image_url,
-                style_image_url=style_image_url
+                style_image_url=style_image_url,
+                size=size
             )
 
             images.append(image_bytes)

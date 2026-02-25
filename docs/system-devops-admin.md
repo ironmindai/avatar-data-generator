@@ -711,6 +711,30 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Enhanced consistency in avatar eye contact and facial orientation
 - All subsequent generation tasks will benefit from refined gaze direction prompts
 
+### Service Restart for Image Orientation Bug Fix (2026-02-25 16:03 UTC)
+**Reason**: Applied image orientation bug fix to prevent landscape photos from being incorrectly rotated
+**Affected Files**:
+- `services/degradation_pipeline.py` - Fixed conditional check for 90/270 degree rotations on portrait orientation
+**Changes**:
+- Corrected bug where landscape images (height < width) were being forced into portrait orientation
+- Fixed: Changed `if height < width and random.random() < 0.15:` to `if height > width and random.random() < 0.15:`
+- Now only portrait images (height > width) are candidates for 90/270 degree rotation
+- Maintains natural photo orientation distribution
+**Action**: Restarted avatar-data-generator.service to apply bug fix
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 383171 (master), 383174 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Port 8085: Listening and accepting connections (verified via ss)
+- Scheduler: Background scheduler started successfully, checking for tasks every 5 seconds
+- Startup recovery: No tasks need recovery (clean startup)
+- Memory usage: 100.1M (peak: 100.5M)
+- Startup logs: Application initialized successfully at 16:03:05 UTC
+**Impact**:
+- Fixed orientation bug affecting landscape photos
+- Natural photo orientation distribution restored
+- All future image generation will respect original photo aspect ratios correctly
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)

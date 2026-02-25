@@ -12,7 +12,7 @@ import base64
 import httpx
 import logging
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Tuple
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -102,7 +102,7 @@ async def generate_base_image(
     randomize_face_gender_lock: bool = False,
     ethnicity: Optional[str] = None,
     age: Optional[int] = None
-) -> Optional[bytes]:
+) -> Tuple[Optional[bytes], Optional[str]]:
     """
     Generate base avatar image from bio using text-to-image or image-to-image generation.
 
@@ -125,7 +125,9 @@ async def generate_base_image(
         age: Optional age of the person (e.g., 23)
 
     Returns:
-        bytes: Generated image as bytes, or None if generation fails
+        Tuple of (image_bytes, selected_size) or (None, None) if generation fails
+        - image_bytes: Generated image as bytes
+        - selected_size: Image size string (e.g., "1024x1024", "1024x1536", "1536x1024")
 
     Raises:
         Exception: If API call fails or returns invalid response
@@ -266,7 +268,7 @@ async def generate_base_image(
 
                         if final_image_bytes:
                             logger.info("Two-stage pipeline completed successfully!")
-                            return final_image_bytes
+                            return final_image_bytes, selected_size
                         else:
                             logger.warning("Stage 2 (OpenAI) failed, falling back to single-stage")
                             # Fall through to single-stage pipeline below
@@ -340,7 +342,7 @@ async def generate_base_image(
                                 image_bytes = base64.b64decode(base64_image)
 
                                 logger.info(f"Successfully generated base image with face reference ({len(image_bytes)} bytes)")
-                                return image_bytes
+                                return image_bytes, selected_size
                             else:
                                 logger.error("Response data missing 'b64_json' field")
                                 raise Exception("Invalid response format: missing b64_json")
@@ -458,7 +460,7 @@ async def generate_base_image(
                         image_bytes = base64.b64decode(base64_image)
 
                         logger.info(f"Successfully generated base image ({len(image_bytes)} bytes)")
-                        return image_bytes
+                        return image_bytes, selected_size
                     else:
                         logger.error("Response data missing 'b64_json' field")
                         raise Exception("Invalid response format: missing b64_json")
@@ -734,10 +736,10 @@ async def test_generation():
     test_gender = "male"
 
     logger.info("Testing base image generation...")
-    base_image = await generate_base_image(test_bio, test_gender)
+    base_image, selected_size = await generate_base_image(test_bio, test_gender)
 
     if base_image:
-        logger.info("Base image generation successful!")
+        logger.info(f"Base image generation successful! Size: {selected_size}")
 
         test_prompt = "Create 4 variations of this person in different poses and lighting"
         logger.info("Testing image-to-image generation...")

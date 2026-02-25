@@ -785,6 +785,7 @@ async def process_persona_images(
 
         # Step 1: Check if base image already exists (resumption support)
         base_image_bytes = None
+        selected_size = None
 
         if result.base_image_url:
             logger.info(f"[Task {task_id_str}] [{persona_name}] Base image already exists: {result.base_image_url}")
@@ -796,7 +797,7 @@ async def process_persona_images(
             logger.info(f"[Task {task_id_str}] [{persona_name}] Step 1/3: Generating base selfie image...")
 
             try:
-                base_image_bytes = await generate_base_image(
+                base_image_bytes, selected_size = await generate_base_image(
                     bio_facebook=result.bio_facebook or '',
                     gender=result.gender,
                     randomize_face=randomize_face,
@@ -806,7 +807,7 @@ async def process_persona_images(
                 )
                 if not base_image_bytes:
                     raise Exception("OpenAI returned empty image")
-                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image generated ({len(base_image_bytes)} bytes)")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image generated ({len(base_image_bytes)} bytes, size: {selected_size})")
             except Exception as e:
                 error_msg = f"Base image generation failed: {str(e)}"
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
@@ -821,10 +822,11 @@ async def process_persona_images(
                 _, base_image_url = upload_to_s3(base_image_bytes, base_object_key)
                 logger.info(f"[Task {task_id_str}] [{persona_name}] Base image uploaded: {base_image_url}")
 
-                # SAVE IMMEDIATELY to database
+                # SAVE IMMEDIATELY to database (including size)
                 result.base_image_url = base_image_url
+                result.base_image_size = selected_size
                 db.session.commit()
-                logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED base_image_url to database immediately")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED base_image_url and size ({selected_size}) to database immediately")
 
             except Exception as e:
                 error_msg = f"Base image S3 upload failed: {str(e)}"
@@ -843,7 +845,7 @@ async def process_persona_images(
         if not base_image_bytes:
             logger.info(f"[Task {task_id_str}] [{persona_name}] Regenerating base image for grid generation...")
             try:
-                base_image_bytes = await generate_base_image(
+                base_image_bytes, selected_size = await generate_base_image(
                     bio_facebook=result.bio_facebook or '',
                     gender=result.gender,
                     randomize_face=randomize_face,
@@ -853,7 +855,14 @@ async def process_persona_images(
                 )
                 if not base_image_bytes:
                     raise Exception("OpenAI returned empty image")
-                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image regenerated ({len(base_image_bytes)} bytes)")
+
+                # Save the size if it wasn't saved earlier
+                if not result.base_image_size and selected_size:
+                    result.base_image_size = selected_size
+                    db.session.commit()
+                    logger.info(f"[Task {task_id_str}] [{persona_name}] Saved base_image_size ({selected_size}) during regeneration")
+
+                logger.info(f"[Task {task_id_str}] [{persona_name}] Base image regenerated ({len(base_image_bytes)} bytes, size: {selected_size})")
             except Exception as e:
                 error_msg = f"Base image regeneration failed: {str(e)}"
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
@@ -964,6 +973,16 @@ async def process_persona_images(
             """
             logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Starting two-stage generation...")
 
+            # Randomly select SeeDream size (minimum 3.6M pixels required)
+            import random
+            seedream_sizes = [
+                "2560x2560",   # Square
+                "1920x2880",   # Portrait
+                "2880x1920"    # Landscape
+            ]
+            seedream_size = random.choice(seedream_sizes)
+            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Selected orientation: {seedream_size}")
+
             try:
                 # STAGE 1: Generate clean image from base-face (no style degradation)
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 1: Generating clean image...")
@@ -971,7 +990,8 @@ async def process_persona_images(
                 clean_image_bytes = await generate_image_with_reference(
                     prompt=prompt,
                     base_image_url=base_image_presigned_url,
-                    style_image_url=None  # NO style image - single reference only
+                    style_image_url=None,  # NO style image - single reference only
+                    size=seedream_size  # Use randomly selected SeeDream size
                 )
                 if not clean_image_bytes:
                     raise Exception("SeeDream Stage 1 returned empty image")
@@ -999,7 +1019,8 @@ async def process_persona_images(
                 degraded_image_bytes = await generate_image_with_reference(
                     prompt=degradation_prompt,
                     base_image_url=clean_image_presigned_url,
-                    style_image_url=None  # Single reference only
+                    style_image_url=None,  # Single reference only
+                    size=seedream_size  # Reuse same size from Stage 1
                 )
                 if not degraded_image_bytes:
                     raise Exception("SeeDream Stage 2 returned empty image")
