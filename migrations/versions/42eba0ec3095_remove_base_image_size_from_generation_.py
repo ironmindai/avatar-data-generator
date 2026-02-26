@@ -19,7 +19,13 @@ depends_on = None
 def upgrade():
     # Remove base_image_size column from generation_results table
     # This field is no longer needed as dimensions are randomized in code
-    op.drop_column('generation_results', 'base_image_size')
+    # Check if column exists before dropping (for databases that never had this column)
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns('generation_results')]
+    if 'base_image_size' in columns:
+        op.drop_column('generation_results', 'base_image_size')
 
 
 def downgrade():
