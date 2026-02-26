@@ -822,11 +822,10 @@ async def process_persona_images(
                 _, base_image_url = upload_to_s3(base_image_bytes, base_object_key)
                 logger.info(f"[Task {task_id_str}] [{persona_name}] Base image uploaded: {base_image_url}")
 
-                # SAVE IMMEDIATELY to database (including size)
+                # SAVE IMMEDIATELY to database
                 result.base_image_url = base_image_url
-                result.base_image_size = selected_size
                 db.session.commit()
-                logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED base_image_url and size ({selected_size}) to database immediately")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED base_image_url to database immediately")
 
             except Exception as e:
                 error_msg = f"Base image S3 upload failed: {str(e)}"
@@ -855,12 +854,6 @@ async def process_persona_images(
                 )
                 if not base_image_bytes:
                     raise Exception("OpenAI returned empty image")
-
-                # Save the size if it wasn't saved earlier
-                if not result.base_image_size and selected_size:
-                    result.base_image_size = selected_size
-                    db.session.commit()
-                    logger.info(f"[Task {task_id_str}] [{persona_name}] Saved base_image_size ({selected_size}) during regeneration")
 
                 logger.info(f"[Task {task_id_str}] [{persona_name}] Base image regenerated ({len(base_image_bytes)} bytes, size: {selected_size})")
             except Exception as e:
@@ -1253,12 +1246,12 @@ def process_image_generation() -> bool:
             task.updated_at = datetime.utcnow()
             logger.info(f"[Task {task.task_id}] Task COMPLETED successfully - all images generated")
         else:
-            # Partial success
-            task.status = 'completed'
-            task.completed_at = datetime.utcnow()
+            # Partial success - reset to 'data-generated' for retry
+            task.status = 'data-generated'
+            task.completed_at = None
             task.updated_at = datetime.utcnow()
-            task.error_log = f"Partial success: {success_count}/{len(results)} personas with images.\nErrors:\n" + "\n".join(error_logs)
-            logger.warning(f"[Task {task.task_id}] Task COMPLETED with partial success - {success_count}/{len(results)} images generated")
+            task.error_log = f"Partial success: {success_count}/{len(results)} personas with images. Resetting for retry.\nErrors:\n" + "\n".join(error_logs)
+            logger.warning(f"[Task {task.task_id}] Task had partial success - {success_count}/{len(results)} images generated. Resetting to 'data-generated' for retry.")
 
         db.session.commit()
         return True
