@@ -587,20 +587,55 @@ class ImagePromptChain:
         try:
             # Build clean prompt WITHOUT any quality/style descriptors
             # Quality will be applied in Stage 2 via degradation prompts
+            # EMPHASIZE FACIAL EXPRESSION by repeating it at the end
+
+            # Extract facial expression from structured_prompt if present
+            # Extended list to catch more variations
+            expression_keywords = [
+                # Primary expressions
+                'bored expression', 'annoyed expression', 'confused expression',
+                'slight frown', 'half-smirk', 'wide-eyed', 'alert expression',
+                'zoned out', 'tired eyes', 'squinting', 'mid-laugh', 'mid-yawn',
+                'blank stare', 'normal expression', 'neutral face',
+                # Additional variations
+                'confused look', 'annoyed look', 'bored look', 'tired look',
+                'squinting at camera', 'squinting in', 'eyes half-closed',
+                'mouth open', 'mid-chew', 'mid-sentence', 'talking',
+                'laughing', 'smiling', 'frowning', 'grimacing',
+                'surprised', 'shocked', 'skeptical', 'thoughtful',
+                'distracted', 'focused', 'concentrating', 'daydreaming',
+                'eye contact', 'looking at camera', 'staring at camera'
+            ]
+
+            found_expression = None
+            structured_lower = structured_prompt.lower()
+            for expr in expression_keywords:
+                if expr in structured_lower:
+                    found_expression = expr
+                    break
+
+            # Build prompt with STRONG expression emphasis
+            # ALWAYS specify to use face features but NOT the expression
             if image_type == 'selfie':
+                base_part = f"The person from the base image is taking a selfie - {structured_prompt}. "
+            else:  # candid or group
+                base_part = f"The person from the base image is {structured_prompt}. "
+
+            # Always add directive about face vs expression
+            if found_expression:
+                # Specific expression found - emphasize it strongly
                 final_prompt = (
-                    f"The person from the base image is taking a selfie - {structured_prompt}. "
-                    f"Use the person's face and identity from the base image."
+                    f"{base_part}"
+                    f"Use the person's facial features from the base image but NOT their expression. "
+                    f"IMPORTANT: Generate with {found_expression.upper()} facial expression, "
+                    f"different from the base image's expression."
                 )
-            elif image_type == 'candid':
+            else:
+                # No specific expression found - still tell it not to copy expression
                 final_prompt = (
-                    f"The person from the base image is {structured_prompt}. "
-                    f"Use the person's face and identity from the base image."
-                )
-            else:  # group
-                final_prompt = (
-                    f"The person from the base image is {structured_prompt}. "
-                    f"Use the person's face and identity from the base image."
+                    f"{base_part}"
+                    f"Use the person's facial features from the base image but with a DIFFERENT, "
+                    f"more natural expression matching the scene context, NOT the base image's expression."
                 )
 
             logger.debug(f"Final clean prompt ({image_type}): {final_prompt}")
