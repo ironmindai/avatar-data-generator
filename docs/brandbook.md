@@ -1780,4 +1780,136 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-03-04 (Fixed Image Modal Navigation Button Positioning)*
+### 2026-03-04 - Image Regeneration Feature Implementation
+
+**New Feature Added:**
+- Added complete image regeneration workflow to dataset detail page
+- Users can regenerate individual images within a dataset with custom prompts
+- Three-step modal process: Prompt Input → Loading → Result Preview
+- Sequential modal approach (image modal closes, regeneration modal opens)
+- Optimistic UI updates with background refresh for data consistency
+
+**Regeneration Modal (Three Steps):**
+
+**Step 1: Prompt Input**
+- Textarea: 5 rows, 2000 character limit
+- Placeholder: "Example: Change background to office setting, make expression more serious..."
+- Character count helper text below textarea
+- Form validation: Required, max 2000 characters
+- Modal footer: Cancel (ghost button), Generate (primary button with zap icon)
+- Focus management: Prompt textarea auto-focused on modal open
+- Sharp corners, neon cyan glow on focus
+
+**Step 2: Loading State**
+- Centered layout with vertical stack
+- Circular spinner: 64px, cyan border-top animation
+- Loading text: H4 size, semibold, "Regenerating your avatar..."
+- Loading subtext: Small size, secondary color, "This may take 30-60 seconds"
+- All buttons disabled during generation
+- Screen reader announcement: "Generating new image. This may take 30 to 60 seconds."
+
+**Step 3: Result Preview**
+- Centered image preview: max-width 100%, max-height 400px (300px mobile)
+- Cyan border with neon glow `0 0 30px rgba(0, 217, 255, 0.2)`
+- Modal footer: Cancel (ghost), Try Again (secondary with refresh icon), Save & Replace (primary with save icon)
+- Try Again: Returns to Step 1 with cleared prompt
+- Save & Replace: Saves image, updates UI optimistically, refreshes data in background
+- Screen reader announcement on success
+
+**Image Modal Integration:**
+- Regenerate button: Secondary button in modal footer
+- Icon: refresh-cw (Feather Icons)
+- Positioned below image caption with top border separator
+- Button opens regeneration modal and closes image modal (sequential, not nested)
+- Context preservation: Stores current image URL, result ID, and image index
+
+**Regeneration Flow:**
+1. User views image in image modal → clicks "Regenerate"
+2. Image modal closes, regeneration modal opens (Step 1)
+3. User enters prompt describing desired changes → clicks "Generate"
+4. Step 2 loading state displays with spinner (30-60 second wait)
+5. Step 3 result preview shows regenerated image
+6. User options:
+   - Cancel: Close modal, discard changes
+   - Try Again: Return to Step 1 with new prompt
+   - Save & Replace: Replace original image in dataset
+
+**API Integration:**
+- Generate endpoint: `POST /datasets/<task_id>/regenerate`
+  - Request body: `{ result_id, image_index, prompt }`
+  - Response: `{ success, result_id, image_url }`
+- Save endpoint: `POST /datasets/<task_id>/regenerate/save`
+  - Request body: `{ result_id }`
+  - Response: `{ success, image_url }`
+
+**State Management (RegenerationManager):**
+- Properties:
+  - `currentImageUrl`: URL of image being regenerated
+  - `currentResultId`: Database ID of persona result
+  - `currentImageIndex`: Index of image in gallery (0-based)
+  - `generatedResultId`: Temporary result ID for generated image
+- Reset on modal close
+
+**UI Updates:**
+- Optimistic update: Immediately replaces image in result card after save
+- Background refresh: Calls `loadTaskData()` after 500ms to ensure consistency
+- Updates both main image (if index 0) and gallery thumbnail
+- Toast notifications for success/error states
+
+**Accessibility Features:**
+- ARIA labels on all interactive elements
+- `role="dialog"` on modal with proper `aria-labelledby` and `aria-hidden` attributes
+- Screen reader only element (`#regenStatus`) with `aria-live="polite"` for status announcements
+- Keyboard support: Escape key closes modal
+- Focus management: Prompt textarea auto-focused on modal open
+- Focus indicators: Cyan glow on focus states
+
+**Form Validation:**
+- Client-side validation before submission
+- Prompt required and max 2000 characters
+- Error state: Red border with error glow `0 0 20px rgba(255, 68, 102, 0.3)`
+- Clear error on input
+- Toast notification on validation failure
+
+**Error Handling:**
+- Network errors: Toast notification with error message
+- Returns to Step 1 on failure
+- Save button re-enabled if save fails
+- Screen reader announcements for failures
+
+**Visual Design:**
+- Modal: Elevated background, cyan border, neon glow
+- Sharp corners throughout (border-radius: 0)
+- Buttons follow brandbook: Primary (cyan glow), Secondary (outlined), Ghost (transparent)
+- Spinner: Circular exception for rotating element
+- Textarea: Dark background, cyan focus glow, monospace placeholder
+- Form help text: Small, tertiary color
+
+**Responsive Adjustments:**
+- Mobile (≤640px):
+  - Modal width: 95%, max-height 95vh
+  - Reduced padding: 16px (from 24px)
+  - Modal title: H4 size (from H3)
+  - Modal footer: Stacked buttons (full-width)
+  - Regenerated image: max-height 300px (from 400px)
+
+**Files Modified:**
+- `/templates/dataset_detail.html` - Added regenerate button in image modal footer, complete regeneration modal with 3 steps
+- `/static/css/datasets.css` - Added modal styles, form styles, loading state, result preview, responsive adjustments
+- `/static/js/datasets.js` - Added RegenerationManager state object, modal initialization, validation, API calls, UI updates
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Sequential modals prevent complex nested modal states
+- Three-step process provides clear progress indication
+- Optimistic updates create responsive feel while ensuring data consistency
+- Try Again option allows iterative improvement without starting over
+- Save & Replace makes intent clear (vs ambiguous "Save" or "Apply")
+- Regenerate button in image modal footer is discoverable and contextual
+- Form validation prevents invalid API calls
+- Screen reader support ensures accessibility
+- Maintains brandbook compliance: Sharp corners, neon cyan accents, proper spacing
+
+---
+
+*Last Updated: 2026-03-04 (Image Regeneration Feature Implementation)*

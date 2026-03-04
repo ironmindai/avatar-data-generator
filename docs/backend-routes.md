@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-02-25 (Added show_base_images setting)*
+> *Last Updated: 2026-03-04 (Added image regeneration endpoints)*
 
 ## Application Information
 
@@ -840,6 +840,218 @@ You can send any combination of settings in a single request:
 - Input validation by type (string, boolean, integer)
 - Database rollback on error to maintain data integrity
 - Strict validation of integer ranges (e.g., max_concurrent_tasks: 1-5)
+
+---
+
+#### POST `/api/regenerate-image`
+**Description**: Regenerate a single image in a dataset using SeeDream img2img
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Request Body**:
+```json
+{
+  "result_id": 123,
+  "image_url": "https://s3.../image_2.png",
+  "image_index": 2,
+  "prompt": "user prompt for regeneration"
+}
+```
+
+**Required Fields**:
+- `result_id`: Integer - GenerationResult ID
+- `image_url`: String - S3 URL of the image to regenerate
+- `image_index`: Integer - Index of the image in the images array (0-based)
+- `prompt`: String - Regeneration prompt (max 2000 characters)
+
+**Workflow**:
+1. Validates all input parameters
+2. Verifies result exists and belongs to current user
+3. Checks task status is 'completed'
+4. Validates image_index is within bounds
+5. Implements concurrency lock (prevents duplicate regenerations)
+6. Extracts S3 key from image_url
+7. Generates presigned URL for SeeDream to access the image
+8. Calls SeeDream API with prompt and base image reference
+9. Uploads regenerated image to S3 with temporary name
+10. Returns temporary image URL for preview
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "new_image_url": "https://s3.../temp_regenerated_1234567890.png"
+}
+```
+
+**Error Responses**:
+- **400**: Invalid input
+  ```json
+  {
+    "success": false,
+    "error": "prompt must be 2000 characters or less"
+  }
+  ```
+- **403**: Access denied (result belongs to another user)
+  ```json
+  {
+    "success": false,
+    "error": "Access denied"
+  }
+  ```
+- **404**: Result not found
+  ```json
+  {
+    "success": false,
+    "error": "Result not found"
+  }
+  ```
+- **409**: Concurrent regeneration conflict
+  ```json
+  {
+    "success": false,
+    "error": "This image is already being regenerated. Please wait."
+  }
+  ```
+- **502**: SeeDream HTTP error
+  ```json
+  {
+    "success": false,
+    "error": "Image generation failed: HTTP 500"
+  }
+  ```
+- **504**: SeeDream timeout
+  ```json
+  {
+    "success": false,
+    "error": "Image generation timed out"
+  }
+  ```
+- **500**: Server error
+  ```json
+  {
+    "success": false,
+    "error": "An unexpected error occurred"
+  }
+  ```
+
+**Concurrency Control**:
+- Uses global `REGENERATION_LOCKS` dictionary
+- Lock key: `(result_id, image_index)`
+- Lock duration: 5 minutes
+- Prevents multiple concurrent regenerations of same image
+- Lock automatically released in finally block
+
+**Security**:
+- Requires authentication
+- Verifies result ownership
+- Validates task status
+- Sanitizes prompt (removes null bytes)
+- Validates prompt length (≤2000 characters)
+- Validates image_index bounds
+
+**Implementation Notes**:
+- Uses `asyncio.run()` to call async SeeDream function
+- Generates presigned URL with 1-hour expiration
+- Temporary images stored with timestamp in filename
+- Logs all errors with full stack trace
+- Catches specific httpx exceptions for better error handling
+
+---
+
+#### POST `/api/save-regenerated-image`
+**Description**: Save a regenerated image to replace the original in the dataset
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Request Body**:
+```json
+{
+  "result_id": 123,
+  "image_index": 2,
+  "new_image_url": "https://s3.../temp_regenerated_1234567890.png"
+}
+```
+
+**Required Fields**:
+- `result_id`: Integer - GenerationResult ID
+- `image_index`: Integer - Index of the image to replace (0-based)
+- `new_image_url`: String - S3 URL of the regenerated image
+
+**Workflow**:
+1. Validates all input parameters
+2. Acquires row-level lock on GenerationResult
+3. Verifies result exists and belongs to current user
+4. Checks task status is 'completed'
+5. Validates image_index is within bounds
+6. Stores old image URL for cleanup
+7. Updates images array atomically
+8. Commits database change
+9. Attempts to delete old image from S3 (non-critical)
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "message": "Image replaced successfully"
+}
+```
+
+**Error Responses**:
+- **400**: Invalid input
+  ```json
+  {
+    "success": false,
+    "error": "image_index must be an integer"
+  }
+  ```
+- **403**: Access denied
+  ```json
+  {
+    "success": false,
+    "error": "Access denied"
+  }
+  ```
+- **404**: Result not found
+  ```json
+  {
+    "success": false,
+    "error": "Result not found"
+  }
+  ```
+- **500**: Server error
+  ```json
+  {
+    "success": false,
+    "error": "An error occurred while saving the regenerated image"
+  }
+  ```
+
+**Database Transaction**:
+- Uses `with_for_update()` for row-level locking
+- Prevents concurrent modifications
+- Uses `flag_modified()` for JSON array update detection
+- Rollback on any error
+- Atomic update ensures data consistency
+
+**S3 Cleanup**:
+- Deletes old image from S3 after successful database update
+- Non-critical operation (logs warning if fails)
+- Does not fail the request if S3 deletion fails
+- Uses `delete_s3_url()` from services.image_utils
+
+**Security**:
+- Requires authentication
+- Verifies result ownership
+- Validates task status
+- Row-level locking prevents race conditions
+- Validates image_index bounds
+
+**Implementation Notes**:
+- Imports `flag_modified` from sqlalchemy.orm.attributes
+- Old image URL stored before modification
+- S3 deletion is best-effort (non-blocking)
+- Logs success and warnings appropriately
 
 ---
 

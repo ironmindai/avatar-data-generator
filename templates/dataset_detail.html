@@ -13,6 +13,9 @@
 
 {% block content %}
 <div class="content-wrapper" data-task-id="{{ task_id }}">
+    <!-- CSRF Token for AJAX requests -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
     <!-- Breadcrumb Navigation -->
     <nav class="breadcrumb" aria-label="Breadcrumb">
         <a href="/datasets" class="breadcrumb-link">
@@ -156,8 +159,79 @@
         </button>
         <img id="modalImage" src="" alt="Preview" class="modal-image">
         <div id="imageCaption" class="image-caption"></div>
+        <div class="image-modal-footer">
+            <button class="btn btn-secondary btn-regenerate" id="btnRegenerateImage" aria-label="Regenerate Image">
+                <i data-feather="refresh-cw"></i> Regenerate
+            </button>
+        </div>
     </div>
 </div>
+
+<!-- Regeneration Modal -->
+<div id="regenerationModal" class="modal" role="dialog" aria-labelledby="regenerationModalTitle" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="regenerationModalTitle" class="modal-title">Regenerate Avatar Image</h2>
+            <button class="btn-modal-close" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <!-- Step 1: Prompt Input -->
+            <div id="promptInputStep" class="regeneration-step" data-step="1">
+                <div class="form-group">
+                    <label for="regenerationPrompt" class="form-label">
+                        Describe the changes you want to make
+                    </label>
+                    <textarea
+                        id="regenerationPrompt"
+                        class="form-input form-textarea"
+                        rows="5"
+                        required
+                        placeholder="Example: Change background to office setting, make expression more serious..."
+                        maxlength="2000"
+                    ></textarea>
+                    <p class="form-help">Maximum 2000 characters</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost" id="btnCancelRegeneration">Cancel</button>
+                    <button class="btn btn-primary" id="btnSubmitRegeneration">
+                        <i data-feather="zap"></i> Generate
+                    </button>
+                </div>
+            </div>
+
+            <!-- Step 2: Loading State -->
+            <div id="loadingStep" class="regeneration-step" data-step="2" style="display: none;">
+                <div class="loading-content">
+                    <div class="spinner"></div>
+                    <p class="loading-text">Regenerating your avatar...</p>
+                    <p class="loading-subtext">This may take 30-60 seconds</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Result Preview -->
+            <div id="resultStep" class="regeneration-step" data-step="3" style="display: none;">
+                <div class="regeneration-preview">
+                    <img id="regeneratedImage" src="" alt="Regenerated result" class="regenerated-image">
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-ghost" id="btnCancelResult">Cancel</button>
+                    <button class="btn btn-secondary" id="btnRegenerateAgain">
+                        <i data-feather="refresh-cw"></i> Try Again
+                    </button>
+                    <button class="btn btn-primary" id="btnSaveRegenerated">
+                        <i data-feather="save"></i> Save & Replace
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Screen reader announcements -->
+<div class="sr-only" role="status" aria-live="polite" aria-atomic="true" id="regenStatus"></div>
 
 {% endblock %}
 

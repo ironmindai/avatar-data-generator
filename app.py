@@ -19,7 +19,14 @@ import zipfile
 import requests
 import tempfile
 import shutil
+import time
+import asyncio
 from datetime import datetime
+from sqlalchemy.orm.attributes import flag_modified
+import httpx
+
+# Global lock for image regeneration (prevents concurrent regeneration of same image)
+REGENERATION_LOCKS = {}
 
 
 def create_app():
@@ -1597,6 +1604,411 @@ def create_app():
             return jsonify({
                 'success': False,
                 'error': 'An error occurred while generating dashboard statistics'
+            }), 500
+
+    @app.route('/api/regenerate-image', methods=['POST'])
+    @login_required
+    def regenerate_image():
+        """
+        Regenerate a single image in a dataset using SeeDream img2img.
+
+        POST: Generate a temporary preview image based on user prompt
+        Returns: JSON with new temporary image URL
+
+        Request Body:
+            {
+                "result_id": 123,
+                "image_url": "https://s3.../image_2.png",
+                "image_index": 2,
+                "prompt": "user prompt for regeneration"
+            }
+
+        Returns:
+            JSON: {"success": true, "new_image_url": "https://s3.../temp_regenerated.png"}
+        """
+        lock_key = None
+        try:
+            # Get JSON payload
+            data = request.get_json()
+
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'error': 'No JSON payload provided'
+                }), 400
+
+            # Extract and validate required fields
+            result_id = data.get('result_id')
+            image_url = data.get('image_url')
+            image_index = data.get('image_index')
+            prompt = data.get('prompt')
+
+            # Validate all fields are present
+            if result_id is None:
+                return jsonify({
+                    'success': False,
+                    'error': 'result_id is required'
+                }), 400
+
+            if image_url is None:
+                return jsonify({
+                    'success': False,
+                    'error': 'image_url is required'
+                }), 400
+
+            if image_index is None:
+                return jsonify({
+                    'success': False,
+                    'error': 'image_index is required'
+                }), 400
+
+            if not prompt:
+                return jsonify({
+                    'success': False,
+                    'error': 'prompt is required'
+                }), 400
+
+            # Validate types
+            if not isinstance(result_id, int):
+                return jsonify({
+                    'success': False,
+                    'error': 'result_id must be an integer'
+                }), 400
+
+            if not isinstance(image_index, int):
+                return jsonify({
+                    'success': False,
+                    'error': 'image_index must be an integer'
+                }), 400
+
+            if not isinstance(prompt, str):
+                return jsonify({
+                    'success': False,
+                    'error': 'prompt must be a string'
+                }), 400
+
+            # Validate prompt length
+            if len(prompt) > 2000:
+                return jsonify({
+                    'success': False,
+                    'error': 'prompt must be 2000 characters or less'
+                }), 400
+
+            # Sanitize prompt (remove null bytes)
+            prompt = prompt.replace('\x00', '')
+
+            # Find result in database
+            result = GenerationResult.query.get(result_id)
+
+            if not result:
+                return jsonify({
+                    'success': False,
+                    'error': 'Result not found'
+                }), 404
+
+            # Verify ownership
+            if result.task.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Access denied'
+                }), 403
+
+            # Verify task is completed
+            if result.task.status != 'completed':
+                return jsonify({
+                    'success': False,
+                    'error': 'Task must be completed before regenerating images'
+                }), 400
+
+            # Validate image_index bounds
+            if not result.images or image_index < 0 or image_index >= len(result.images):
+                return jsonify({
+                    'success': False,
+                    'error': f'image_index must be between 0 and {len(result.images)-1 if result.images else 0}'
+                }), 400
+
+            # Concurrency control: check if this image is already being regenerated
+            lock_key = (result_id, image_index)
+
+            if lock_key in REGENERATION_LOCKS:
+                lock_timestamp = REGENERATION_LOCKS[lock_key]
+                # Check if lock is less than 5 minutes old
+                if time.time() - lock_timestamp < 300:
+                    return jsonify({
+                        'success': False,
+                        'error': 'This image is already being regenerated. Please wait.'
+                    }), 409
+
+            # Set lock before generation
+            REGENERATION_LOCKS[lock_key] = time.time()
+
+            # Import necessary functions
+            from services.seedream_service import generate_image_with_reference
+            from services.image_utils import upload_to_s3, generate_presigned_url
+
+            # Get S3 configuration from environment (same as image_utils.py)
+            S3_PUBLIC_URL_BASE = os.getenv('S3_PUBLIC_URL_BASE', 'https://minio.electric-marinade.com')
+            S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'avatars')
+
+            # Extract S3 key from image_url
+            # URL format: https://s3-api.dev.iron-mind.ai/avatar-images/avatars/task_101/...
+            # We need to remove: base_url + '/' + bucket_name + '/'
+            if not image_url.startswith(S3_PUBLIC_URL_BASE):
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid image URL format'
+                }), 400
+
+            # Remove base URL and bucket name to get the object key
+            # Example: https://s3-api.../avatar-images/avatars/... -> avatars/...
+            url_without_base = image_url[len(S3_PUBLIC_URL_BASE):].lstrip('/')
+
+            # Remove bucket name if present
+            if url_without_base.startswith(S3_BUCKET_NAME + '/'):
+                s3_key = url_without_base[len(S3_BUCKET_NAME) + 1:]
+            else:
+                s3_key = url_without_base
+
+            logging.info(f"Extracted S3 key: {s3_key}")
+
+            # Generate presigned URL for SeeDream to access the image
+            try:
+                presigned_url = generate_presigned_url(s3_key, expiration=3600)
+            except Exception as e:
+                logging.error(f"Error generating presigned URL: {e}", exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to generate presigned URL for image'
+                }), 500
+
+            # Get original image dimensions by downloading it from S3
+            # We need this to preserve the original size in the regeneration
+            logging.info(f"Getting original image dimensions from S3")
+            try:
+                import httpx
+                from PIL import Image
+                from io import BytesIO
+
+                # Download the original image to get its dimensions
+                async def get_image_dimensions(url):
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(url)
+                        response.raise_for_status()
+                        img = Image.open(BytesIO(response.content))
+                        return f"{img.width}x{img.height}"
+
+                original_size = asyncio.run(get_image_dimensions(presigned_url))
+                logging.info(f"Original image size: {original_size}")
+
+            except Exception as e:
+                logging.warning(f"Could not determine original image size, using default: {e}")
+                original_size = None  # Will use default SEEDREAM_IMAGE_SIZE
+
+            # Call SeeDream to generate new image with original dimensions
+            logging.info(f"Regenerating image for result_id={result_id}, image_index={image_index}")
+            logging.info(f"Prompt: {prompt}")
+            logging.info(f"Size: {original_size or 'default (2560x1440)'}")
+
+            try:
+                image_bytes = asyncio.run(generate_image_with_reference(
+                    prompt=prompt,
+                    base_image_url=presigned_url,
+                    size=original_size  # Preserve original dimensions
+                ))
+            except httpx.HTTPStatusError as e:
+                logging.error(f"SeeDream HTTP error: {e}", exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'error': f'Image generation failed: HTTP {e.response.status_code}'
+                }), 502
+            except httpx.TimeoutException as e:
+                logging.error(f"SeeDream timeout: {e}", exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'error': 'Image generation timed out'
+                }), 504
+            except Exception as e:
+                logging.error(f"SeeDream generation error: {e}", exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'error': f'Image generation failed: {str(e)}'
+                }), 500
+
+            # Upload to S3 with temporary name
+            task_id = result.task.id
+            timestamp = int(time.time())
+            temp_key = f"avatars/task_{task_id}/result_{result_id}/temp_regenerated_{timestamp}.png"
+
+            try:
+                _, new_image_url = upload_to_s3(
+                    image_bytes=image_bytes,
+                    object_key=temp_key,
+                    content_type='image/png'
+                )
+            except Exception as e:
+                logging.error(f"S3 upload error: {e}", exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to upload regenerated image'
+                }), 500
+
+            logging.info(f"Successfully regenerated image: {new_image_url}")
+
+            return jsonify({
+                'success': True,
+                'new_image_url': new_image_url
+            }), 200
+
+        except Exception as e:
+            # Log unexpected errors
+            logging.error(f"Unexpected error in regenerate_image: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': 'An unexpected error occurred'
+            }), 500
+
+        finally:
+            # Always release lock
+            if lock_key and lock_key in REGENERATION_LOCKS:
+                del REGENERATION_LOCKS[lock_key]
+
+    @app.route('/api/save-regenerated-image', methods=['POST'])
+    @login_required
+    def save_regenerated_image():
+        """
+        Save a regenerated image to replace the original in the dataset.
+
+        POST: Replace the original image URL with the new regenerated image URL
+        Returns: JSON with success status
+
+        Request Body:
+            {
+                "result_id": 123,
+                "image_index": 2,
+                "new_image_url": "https://s3.../temp_regenerated.png"
+            }
+
+        Returns:
+            JSON: {"success": true, "message": "Image replaced successfully"}
+        """
+        try:
+            # Get JSON payload
+            data = request.get_json()
+
+            if not data:
+                return jsonify({
+                    'success': False,
+                    'error': 'No JSON payload provided'
+                }), 400
+
+            # Extract and validate required fields
+            result_id = data.get('result_id')
+            image_index = data.get('image_index')
+            new_image_url = data.get('new_image_url')
+
+            # Validate all fields are present
+            if result_id is None:
+                return jsonify({
+                    'success': False,
+                    'error': 'result_id is required'
+                }), 400
+
+            if image_index is None:
+                return jsonify({
+                    'success': False,
+                    'error': 'image_index is required'
+                }), 400
+
+            if not new_image_url:
+                return jsonify({
+                    'success': False,
+                    'error': 'new_image_url is required'
+                }), 400
+
+            # Validate types
+            if not isinstance(result_id, int):
+                return jsonify({
+                    'success': False,
+                    'error': 'result_id must be an integer'
+                }), 400
+
+            if not isinstance(image_index, int):
+                return jsonify({
+                    'success': False,
+                    'error': 'image_index must be an integer'
+                }), 400
+
+            if not isinstance(new_image_url, str):
+                return jsonify({
+                    'success': False,
+                    'error': 'new_image_url must be a string'
+                }), 400
+
+            # Find result in database with row-level lock
+            result = GenerationResult.query.with_for_update().get(result_id)
+
+            if not result:
+                return jsonify({
+                    'success': False,
+                    'error': 'Result not found'
+                }), 404
+
+            # Verify ownership
+            if result.task.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'error': 'Access denied'
+                }), 403
+
+            # Verify task is completed
+            if result.task.status != 'completed':
+                return jsonify({
+                    'success': False,
+                    'error': 'Task must be completed before saving regenerated images'
+                }), 400
+
+            # Validate image_index bounds
+            if not result.images or image_index < 0 or image_index >= len(result.images):
+                return jsonify({
+                    'success': False,
+                    'error': f'image_index must be between 0 and {len(result.images)-1 if result.images else 0}'
+                }), 400
+
+            # Store old image URL for cleanup
+            old_image_url = result.images[image_index]
+
+            # Update the image URL atomically
+            result.images[image_index] = new_image_url
+            flag_modified(result, 'images')
+
+            # Commit the change
+            db.session.commit()
+
+            logging.info(f"Successfully replaced image at index {image_index} for result_id={result_id}")
+
+            # Try to delete old image from S3 (non-critical - log warning if fails)
+            try:
+                from services.image_utils import delete_s3_url
+                delete_s3_url(old_image_url)
+                logging.info(f"Successfully deleted old image: {old_image_url}")
+            except Exception as e:
+                logging.warning(f"Failed to delete old image {old_image_url}: {e}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Image replaced successfully'
+            }), 200
+
+        except Exception as e:
+            # Rollback on error
+            db.session.rollback()
+
+            # Log error
+            logging.error(f"Error in save_regenerated_image: {e}", exc_info=True)
+
+            return jsonify({
+                'success': False,
+                'error': 'An error occurred while saving the regenerated image'
             }), 500
 
     @app.route('/workflow-logs')

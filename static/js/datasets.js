@@ -298,6 +298,9 @@
     // Initialize image modal
     initializeImageModal();
 
+    // Initialize regeneration modal
+    initializeRegenerationModal();
+
     // Start polling for updates
     startPolling(taskId);
   }
@@ -538,8 +541,12 @@
     const genderIcon = result.gender.toLowerCase() === 'male' ? 'user' : 'user';
 
     // Use random image from split images for display (not base_image)
-    const displayImage = result.images && result.images.length > 0
-      ? result.images[Math.floor(Math.random() * result.images.length)]
+    // Store the index so we can identify which database image this is
+    const displayImageIndex = result.images && result.images.length > 0
+      ? Math.floor(Math.random() * result.images.length)
+      : -1;
+    const displayImage = displayImageIndex >= 0
+      ? result.images[displayImageIndex]
       : IMAGE_PLACEHOLDER;
 
     // Helper to check if value exists and is not empty
@@ -562,7 +569,7 @@
 
     return `
       <div class="result-card" data-result-id="${result.id || ''}">
-        <div class="result-image-container" data-image-url="${displayImage}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)}">
+        <div class="result-image-container" data-image-url="${displayImage}" data-image-index="${displayImageIndex}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)}">
           <img src="${displayImage}" alt="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)}" class="result-image" loading="lazy" onerror="handleImageError(this)">
         </div>
         <div class="result-content">
@@ -671,7 +678,7 @@
             <div class="gallery-label">Generated Images ${result.images && result.images.length > 0 ? `(${result.images.length})` : ''}</div>
             <div class="gallery-grid">
               ${result.images && result.images.length > 0 ? result.images.map((img, idx) => `
-                <div class="gallery-thumbnail" data-image-url="${img}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)} - Image ${idx + 1}">
+                <div class="gallery-thumbnail" data-image-url="${img}" data-image-index="${idx}" data-name="${escapeHtml(result.firstname)} ${escapeHtml(result.lastname)} - Image ${idx + 1}">
                   <img src="${img}" alt="Image ${idx + 1}" loading="lazy" onerror="handleImageError(this)">
                 </div>
               `).join('') : `
@@ -844,6 +851,502 @@
   // Modal state
   let currentPersonaImages = [];
   let currentImageIndex = 0;
+
+  // ========================================
+  // REGENERATION MANAGER
+  // ========================================
+
+  const RegenerationManager = {
+    currentImageUrl: null,
+    currentResultId: null,
+    currentImageIndex: null,
+    regeneratedImageUrl: null,
+
+    reset() {
+      this.currentImageUrl = null;
+      this.currentResultId = null;
+      this.currentImageIndex = null;
+      this.regeneratedImageUrl = null;
+    }
+  };
+
+  function initializeRegenerationModal() {
+    const regenModal = document.getElementById('regenerationModal');
+    if (!regenModal) return;
+
+    const imageModal = document.getElementById('imageModal');
+    const btnRegenerate = document.getElementById('btnRegenerateImage');
+    const btnCancelRegeneration = document.getElementById('btnCancelRegeneration');
+    const btnSubmitRegeneration = document.getElementById('btnSubmitRegeneration');
+    const btnCancelResult = document.getElementById('btnCancelResult');
+    const btnRegenerateAgain = document.getElementById('btnRegenerateAgain');
+    const btnSaveRegenerated = document.getElementById('btnSaveRegenerated');
+    const closeBtn = regenModal.querySelector('.btn-modal-close');
+    const backdrop = regenModal.querySelector('.modal-backdrop');
+    const promptTextarea = document.getElementById('regenerationPrompt');
+
+    // Open regeneration modal from image modal
+    if (btnRegenerate) {
+      btnRegenerate.addEventListener('click', () => {
+        // Store current image context
+        const modalImage = document.getElementById('modalImage');
+        if (modalImage && modalImage.src) {
+          RegenerationManager.currentImageUrl = modalImage.src;
+
+          // Find the persona card that contains this image
+          const personaCard = findPersonaCardByImage(modalImage.src);
+          if (personaCard) {
+            RegenerationManager.currentResultId = personaCard.dataset.resultId;
+
+            // Find the actual image element (container) with the data-image-index attribute
+            // This gives us the REAL database index, not a calculated position
+            const imageContainer = personaCard.querySelector(`[data-image-url="${modalImage.src}"]`);
+            if (imageContainer && imageContainer.dataset.imageIndex !== undefined) {
+              RegenerationManager.currentImageIndex = parseInt(imageContainer.dataset.imageIndex, 10);
+            } else {
+              console.error('Could not find image index for:', modalImage.src);
+              showToast('Unable to determine image index', 'error');
+              return;
+            }
+
+            console.log('Opening regeneration modal:', {
+              resultId: RegenerationManager.currentResultId,
+              imageUrl: RegenerationManager.currentImageUrl,
+              imageIndex: RegenerationManager.currentImageIndex,
+              imageContainer: imageContainer
+            });
+          } else {
+            console.error('Could not find persona card for image:', modalImage.src);
+            showToast('Unable to find image in dataset', 'error');
+            return;
+          }
+
+          // Close image modal first
+          if (imageModal) {
+            closeImageModal(imageModal);
+          }
+
+          // Open regeneration modal
+          openRegenerationModal();
+        }
+      });
+    }
+
+    // Cancel button - close modal and reset
+    if (btnCancelRegeneration) {
+      btnCancelRegeneration.addEventListener('click', () => {
+        closeRegenerationModal();
+      });
+    }
+
+    // Close button
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        closeRegenerationModal();
+      });
+    }
+
+    // Backdrop click
+    if (backdrop) {
+      backdrop.addEventListener('click', () => {
+        closeRegenerationModal();
+      });
+    }
+
+    // Submit regeneration
+    if (btnSubmitRegeneration) {
+      btnSubmitRegeneration.addEventListener('click', () => {
+        const prompt = promptTextarea.value.trim();
+        if (validatePrompt(prompt)) {
+          handleRegeneration(prompt);
+        } else {
+          highlightError(promptTextarea);
+          showToast('Please enter a description for the changes', 'error');
+        }
+      });
+    }
+
+    // Cancel result - close modal and reset
+    if (btnCancelResult) {
+      btnCancelResult.addEventListener('click', () => {
+        closeRegenerationModal();
+      });
+    }
+
+    // Regenerate again - go back to prompt step
+    if (btnRegenerateAgain) {
+      btnRegenerateAgain.addEventListener('click', () => {
+        showRegenerationStep(1);
+        promptTextarea.value = '';
+        promptTextarea.focus();
+      });
+    }
+
+    // Save regenerated image
+    if (btnSaveRegenerated) {
+      btnSaveRegenerated.addEventListener('click', () => {
+        handleSaveRegenerated();
+      });
+    }
+
+    // Clear error state on input
+    if (promptTextarea) {
+      promptTextarea.addEventListener('input', () => {
+        clearError(promptTextarea);
+      });
+    }
+
+    // Keyboard support
+    document.addEventListener('keydown', (e) => {
+      if (regenModal.classList.contains('is-open') && e.key === 'Escape') {
+        closeRegenerationModal();
+      }
+    });
+  }
+
+  function openRegenerationModal() {
+    const modal = document.getElementById('regenerationModal');
+    const promptTextarea = document.getElementById('regenerationPrompt');
+
+    if (modal) {
+      modal.classList.add('is-open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      // Show prompt step
+      showRegenerationStep(1);
+
+      // Clear previous input
+      if (promptTextarea) {
+        promptTextarea.value = '';
+        clearError(promptTextarea);
+
+        // Focus prompt after a short delay for smooth transition
+        setTimeout(() => {
+          promptTextarea.focus();
+        }, 100);
+      }
+
+      // Re-initialize Feather icons
+      feather.replace();
+
+      // Screen reader announcement
+      announceToScreenReader('Regeneration modal opened. Enter a description for the changes you want to make.');
+    }
+  }
+
+  function closeRegenerationModal() {
+    const modal = document.getElementById('regenerationModal');
+
+    if (modal) {
+      modal.classList.remove('is-open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+
+      // Reset state
+      RegenerationManager.reset();
+
+      // Reset to prompt step
+      setTimeout(() => {
+        showRegenerationStep(1);
+      }, 300);
+
+      // Screen reader announcement
+      announceToScreenReader('Regeneration modal closed.');
+    }
+  }
+
+  function showRegenerationStep(stepNumber) {
+    const steps = document.querySelectorAll('.regeneration-step');
+
+    steps.forEach(step => {
+      const stepNum = parseInt(step.getAttribute('data-step'));
+      if (stepNum === stepNumber) {
+        step.style.display = 'block';
+        step.classList.add('active');
+      } else {
+        step.style.display = 'none';
+        step.classList.remove('active');
+      }
+    });
+
+    // Update buttons state
+    updateRegenerationButtons(stepNumber);
+  }
+
+  function updateRegenerationButtons(stepNumber) {
+    const btnSubmit = document.getElementById('btnSubmitRegeneration');
+    const btnSave = document.getElementById('btnSaveRegenerated');
+
+    if (stepNumber === 2) {
+      // Loading state - disable buttons
+      if (btnSubmit) btnSubmit.disabled = true;
+      if (btnSave) btnSave.disabled = true;
+    } else {
+      // Active state - enable buttons
+      if (btnSubmit) btnSubmit.disabled = false;
+      if (btnSave) btnSave.disabled = false;
+
+      // Reset button text and icons to default state
+      if (btnSubmit) {
+        btnSubmit.innerHTML = '<i data-feather="zap"></i> Generate';
+      }
+      if (btnSave) {
+        btnSave.innerHTML = '<i data-feather="save"></i> Save & Replace';
+      }
+
+      // Re-initialize Feather icons after changing innerHTML
+      feather.replace();
+    }
+  }
+
+  function findPersonaCardByImage(imageUrl) {
+    const cards = document.querySelectorAll('.result-card');
+
+    for (const card of cards) {
+      const images = getPersonaImages(card);
+      if (images.includes(imageUrl)) {
+        return card;
+      }
+    }
+
+    return null;
+  }
+
+  function validatePrompt(prompt) {
+    return prompt && prompt.length > 0 && prompt.length <= 2000;
+  }
+
+  function handleRegeneration(prompt) {
+    const taskId = document.querySelector('[data-task-id]')?.getAttribute('data-task-id');
+
+    if (!taskId || !RegenerationManager.currentResultId || RegenerationManager.currentImageIndex === null) {
+      showToast('Unable to regenerate image. Missing required information.', 'error');
+      return;
+    }
+
+    // Get CSRF token
+    const csrfTokenElement = document.querySelector('input[name="csrf_token"]');
+    if (!csrfTokenElement) {
+      console.error('CSRF token not found in page');
+      showToast('Error: CSRF token missing. Please refresh the page.', 'error');
+      return;
+    }
+    const csrfToken = csrfTokenElement.value;
+
+    // Show loading state
+    showRegenerationStep(2);
+    announceToScreenReader('Generating new image. This may take 30 to 60 seconds.');
+
+    // Convert result_id to integer
+    const resultId = parseInt(RegenerationManager.currentResultId, 10);
+    const imageIndex = parseInt(RegenerationManager.currentImageIndex, 10);
+
+    console.log('Regeneration request:', {
+      result_id: resultId,
+      image_url: RegenerationManager.currentImageUrl,
+      image_index: imageIndex,
+      prompt: prompt
+    });
+
+    // Make API request
+    fetch(`/api/regenerate-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({
+        result_id: resultId,
+        image_url: RegenerationManager.currentImageUrl,
+        image_index: imageIndex,
+        prompt: prompt
+      })
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(data => {
+          throw new Error(data.error || 'Failed to regenerate image');
+        }).catch(err => {
+          // If response is not JSON (HTML error page), throw generic error
+          if (err instanceof SyntaxError) {
+            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+          }
+          throw err;
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success && data.new_image_url) {
+        // Store the new image URL
+        RegenerationManager.regeneratedImageUrl = data.new_image_url;
+
+        // Show result preview
+        const regeneratedImage = document.getElementById('regeneratedImage');
+        if (regeneratedImage) {
+          regeneratedImage.src = data.new_image_url;
+          regeneratedImage.alt = 'Regenerated result';
+        }
+
+        showRegenerationStep(3);
+        announceToScreenReader('Image regenerated successfully. You can now save and replace or try again.');
+
+        // Re-initialize Feather icons
+        feather.replace();
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    })
+    .catch(error => {
+      console.error('Error regenerating image:', error);
+      showToast(error.message || 'Failed to regenerate image. Please try again.', 'error');
+
+      // Go back to prompt step
+      showRegenerationStep(1);
+      announceToScreenReader('Image regeneration failed. Please try again.');
+    });
+  }
+
+  function handleSaveRegenerated() {
+    const taskId = document.querySelector('[data-task-id]')?.getAttribute('data-task-id');
+
+    if (!RegenerationManager.currentResultId || !RegenerationManager.regeneratedImageUrl) {
+      showToast('Unable to save image. Missing required information.', 'error');
+      return;
+    }
+
+    // Get CSRF token
+    const csrfTokenElement = document.querySelector('input[name="csrf_token"]');
+    if (!csrfTokenElement) {
+      console.error('CSRF token not found in page');
+      showToast('Error: CSRF token missing. Please refresh the page.', 'error');
+      return;
+    }
+    const csrfToken = csrfTokenElement.value;
+
+    // Disable save button during request
+    const btnSave = document.getElementById('btnSaveRegenerated');
+    if (btnSave) {
+      btnSave.disabled = true;
+      btnSave.innerHTML = '<i data-feather="loader"></i> Saving...';
+      feather.replace();
+    }
+
+    announceToScreenReader('Saving regenerated image.');
+
+    // Convert to integers
+    const resultId = parseInt(RegenerationManager.currentResultId, 10);
+    const imageIndex = parseInt(RegenerationManager.currentImageIndex, 10);
+
+    // Make API request
+    fetch(`/api/save-regenerated-image`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
+      },
+      body: JSON.stringify({
+        result_id: resultId,
+        image_index: imageIndex,
+        new_image_url: RegenerationManager.regeneratedImageUrl
+      })
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(data => {
+          throw new Error(data.error || 'Failed to save image');
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success) {
+        showToast('Image replaced successfully!', 'success');
+        announceToScreenReader('Image saved successfully. The page will refresh to show the updated image.');
+
+        // Close modal
+        closeRegenerationModal();
+
+        // Optimistically update the UI
+        updateResultCardImage(
+          RegenerationManager.currentResultId,
+          RegenerationManager.currentImageIndex,
+          RegenerationManager.regeneratedImageUrl
+        );
+
+        // Refresh data in background to ensure consistency
+        setTimeout(() => {
+          const taskId = document.querySelector('[data-task-id]')?.getAttribute('data-task-id');
+          if (taskId) {
+            loadTaskData(taskId, currentPage);
+          }
+        }, 500);
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    })
+    .catch(error => {
+      console.error('Error saving regenerated image:', error);
+      showToast(error.message || 'Failed to save image. Please try again.', 'error');
+      announceToScreenReader('Failed to save image. Please try again.');
+
+      // Re-enable save button
+      if (btnSave) {
+        btnSave.disabled = false;
+        btnSave.innerHTML = '<i data-feather="save"></i> Save & Replace';
+        feather.replace();
+      }
+    });
+  }
+
+  function updateResultCardImage(resultId, imageIndex, newImageUrl) {
+    // Find the result card
+    const card = document.querySelector(`.result-card[data-result-id="${resultId}"]`);
+    if (!card) return;
+
+    // Update main image if it's the first image (index 0)
+    if (imageIndex === 0) {
+      const mainImageContainer = card.querySelector('.result-image-container');
+      if (mainImageContainer) {
+        const mainImage = mainImageContainer.querySelector('.result-image');
+        if (mainImage) {
+          mainImage.src = newImageUrl;
+          mainImageContainer.setAttribute('data-image-url', newImageUrl);
+        }
+      }
+    }
+
+    // Update gallery thumbnail
+    const thumbnails = card.querySelectorAll('.gallery-thumbnail');
+    if (thumbnails[imageIndex]) {
+      const thumbnail = thumbnails[imageIndex];
+      const thumbnailImage = thumbnail.querySelector('.gallery-thumbnail-img');
+      if (thumbnailImage) {
+        thumbnailImage.src = newImageUrl;
+        thumbnail.setAttribute('data-image-url', newImageUrl);
+      }
+    }
+  }
+
+  function highlightError(element) {
+    if (element) {
+      element.classList.add('error');
+    }
+  }
+
+  function clearError(element) {
+    if (element) {
+      element.classList.remove('error');
+    }
+  }
+
+  function announceToScreenReader(message) {
+    const statusElement = document.getElementById('regenStatus');
+    if (statusElement) {
+      statusElement.textContent = message;
+    }
+  }
 
   function initializeImageModal() {
     const modal = document.getElementById('imageModal');
