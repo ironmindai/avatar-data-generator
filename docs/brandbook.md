@@ -1557,8 +1557,8 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 **Navigation Controls:**
 - Previous/Next buttons: 48x48px square buttons with chevron icons
-- Positioned on left/right sides of modal content (desktop)
-- Positioned below image on mobile for accessibility
+- Fixed positioning to viewport edges (desktop: left/right 20px, mobile: bottom 80px left/right 12px)
+- Buttons remain stationary regardless of image aspect ratio changes
 - Sharp corners, neon cyan border/glow on hover
 - Disabled state (30% opacity) when at first/last image
 - Buttons track current persona's images only (scoped navigation)
@@ -1745,4 +1745,39 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-02-23 (Dataset Delete Functionality)*
+### 2026-03-04 - Fixed Image Modal Navigation Button Positioning
+
+**Issue Fixed:**
+- Image modal navigation buttons (prev/next) were moving around when navigating between images with different aspect ratios
+- Buttons were positioned relative to `.image-modal-content` at `left: -60px` and `right: -60px`
+- When image aspect ratio changed (portrait vs landscape), content width changed, causing button positions to shift
+- This made rapid navigation difficult and felt janky
+
+**Solution Implemented:**
+- Changed buttons from `position: absolute` (relative to modal content) to `position: fixed` (relative to viewport)
+- Desktop positioning: `left: 20px` and `right: 20px` from viewport edges
+- Mobile positioning: `bottom: 80px`, `left: 12px` and `right: 12px` from viewport edges
+- Buttons now remain stationary regardless of image dimensions
+- Improved z-index to 10000 for proper layering
+
+**Benefits:**
+- Smooth navigation experience without button movement
+- Easier rapid image switching between different aspect ratios
+- Consistent thumb-friendly positioning on mobile
+- Maintains premium developer tool aesthetic with sharp corners and neon glows
+- Works flawlessly for portrait, square, and landscape images
+
+**Files Modified:**
+- `/static/css/datasets.css` - Updated `.btn-image-nav`, `.btn-image-prev`, `.btn-image-next` positioning and mobile media query overrides
+- `/docs/brandbook.md` - Updated documentation to reflect fixed positioning approach
+
+**Design Rationale:**
+- Fixed viewport positioning ensures buttons stay in consistent, predictable locations
+- 20px edge distance on desktop provides comfortable spacing without obscuring image edges
+- Mobile bottom positioning keeps buttons accessible for thumb interaction
+- Solution requires zero changes to HTML or JavaScript - pure CSS fix
+- Maintains brandbook compliance: Sharp corners, neon cyan accents, proper transitions
+
+---
+
+*Last Updated: 2026-03-04 (Fixed Image Modal Navigation Button Positioning)*

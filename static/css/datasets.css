@@ -947,7 +947,7 @@
 }
 
 .btn-image-nav {
-  position: absolute;
+  position: fixed;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
@@ -961,7 +961,7 @@
   cursor: pointer;
   transition: all var(--transition-base);
   padding: 0;
-  z-index: 11;
+  z-index: 10000;
 }
 
 .btn-image-nav:hover:not(:disabled) {
@@ -987,11 +987,11 @@
 }
 
 .btn-image-prev {
-  left: -60px;
+  left: 20px;
 }
 
 .btn-image-next {
-  right: -60px;
+  right: 20px;
 }
 
 .image-caption {
@@ -1645,15 +1645,15 @@
   }
 
   .btn-image-prev {
-    left: 0;
-    bottom: -60px;
+    left: 12px;
+    bottom: 80px;
     top: auto;
     transform: none;
   }
 
   .btn-image-next {
-    right: 0;
-    bottom: -60px;
+    right: 12px;
+    bottom: 80px;
     top: auto;
     transform: none;
   }
