@@ -1744,11 +1744,7 @@ def create_app():
 
             # Import necessary functions
             from services.seedream_service import generate_image_with_reference
-            from services.image_utils import upload_to_s3, generate_presigned_url
-
-            # Get S3 configuration from environment (same as image_utils.py)
-            S3_PUBLIC_URL_BASE = os.getenv('S3_PUBLIC_URL_BASE', 'https://minio.electric-marinade.com')
-            S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'avatars')
+            from services.image_utils import upload_to_s3, generate_presigned_url, S3_PUBLIC_URL_BASE, S3_BUCKET_NAME
 
             # Extract S3 key from image_url
             # URL format: https://s3-api.dev.iron-mind.ai/avatar-images/avatars/task_101/...
