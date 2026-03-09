@@ -1005,6 +1005,42 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Users can now see thumbnail previews when browsing Flickr search results before importing
 - All subsequent image imports from Flickr will use the fixed service
 
+### Service Restart for URL Import Bug Fixes (2026-03-09 16:12 UTC)
+**Reason**: Fixed critical URL import bugs preventing images from displaying in dataset view
+**Root Causes Identified and Fixed**:
+
+1. **Source Type Mismatch**:
+   - **Issue**: URL imports were stored with `source_type='url_import'` in database
+   - **Problem**: Template filter buttons use `data-filter="url"` and JavaScript checks `sourceType === 'url'`
+   - **Result**: Imported images wouldn't display in dataset view even though they were in the database
+   - **Fix**: Changed `source_type='url_import'` to `source_type='url'` in `services/url_import_service.py` line 294
+   - **Impact**: URL-imported images now display correctly with Flickr-imported images
+
+2. **Silent Failure on Import**:
+   - **Issue**: When URL import failed (0 images imported, some URLs failed), frontend showed "Successfully imported 0 images"
+   - **Problem**: Users had no idea why their import failed - confusing success message masked failure
+   - **Root Cause**: Frontend logic only checked `response.ok && result.success` without verifying `imported_count > 0`
+   - **Fix**: Enhanced frontend error handling in `static/js/image_dataset_detail.js`:
+     - Success message only shows if `imported_count > 0`
+     - When all URLs fail, shows detailed error message with first error reason
+     - Displays count of additional failures: "Failed to import 3 URL(s): [reason] (and 2 more)"
+   - **Impact**: Users now get clear feedback when URLs fail, with specific error reasons
+
+**Files Modified**:
+- `services/url_import_service.py` - Changed source_type from 'url_import' to 'url'
+- `static/js/image_dataset_detail.js` - Enhanced error feedback for failed imports
+
+**Testing Performed**:
+- Facebook CDN URL tested: HTTP 200, image/jpeg, 10.5KB - fully accessible
+- URL validation: Passes
+- Image download: Passes
+- Database operations: Working with proper Flask app context
+- S3 storage: Configured and accessible
+- Filter logic: Now matches source_type values
+
+**Action**: Service restart required to pick up code changes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+
 ### Service Restart for S3 ACL Fix - Image Datasets Public Access (2026-03-09 12:44:34 UTC)
 **Reason**: Restarted service after applying S3 ACL fix to enable public read access for image-datasets bucket
 **Changes Applied**:
