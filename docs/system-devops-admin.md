@@ -1145,6 +1145,44 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Image hashes provide unique identification without storing full URLs
 - Dataset image tracking now works reliably for all sources
 
+### Service Restart for URL Import Fixes - Source Type and Error Feedback (2026-03-09 16:12:59 UTC)
+**Reason**: Applied URL import fixes to improve frontend filter compatibility and error feedback
+**Changes Applied**:
+
+1. **Changed source_type from 'url_import' to 'url'**:
+   - **File**: `services/url_import_service.py` line 294
+   - **Issue**: Frontend filter buttons use `data-filter="url"` and JavaScript checks `sourceType === 'url'`
+   - **Previous value**: `source_type='url_import'` was not matching frontend filters
+   - **New value**: `source_type='url'` matches Flickr imports for consistent filtering
+   - **Impact**: URL-imported images now display correctly alongside Flickr-imported images in dataset view
+
+2. **Improved error feedback for failed imports**:
+   - **File**: `static/js/image_dataset_detail.js`
+   - **Previous behavior**: Showed "Successfully imported 0 images" even when all URLs failed (confusing success message)
+   - **New behavior**:
+     - Success message only shows if `imported_count > 0`
+     - When all URLs fail, displays detailed error message with first failure reason
+     - Shows count of additional failures: "Failed to import 3 URL(s): [reason] (and 2 more)"
+   - **Impact**: Users now receive clear feedback when imports fail with specific error reasons
+
+**Action**: Restarted avatar-data-generator.service to apply fixes
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 2878340 (master), 2878343 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Gunicorn startup: v24.1.1, listening on 0.0.0.0:8085
+- Port 8085: Listening and accepting connections (verified via ss -tulpn)
+- Scheduler: Background scheduler started - checking for tasks every 5 seconds
+- Startup recovery: No tasks need recovery (clean startup)
+- Memory usage: 108.3M (peak: 108.7M)
+- Application startup: Initialized successfully at 16:12:59 UTC
+- HTTPS endpoint: Responds with HTTP/2 302 redirect to login (expected for unauthenticated requests)
+- Latest logs: Scheduler running normally, no errors detected
+**Impact**:
+- URL imports now display correctly in dataset views (source_type filter now matches)
+- Users receive actionable error feedback when URL imports fail
+- Both URL and Flickr imports use consistent 'url' and 'flickr' source types respectively
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)

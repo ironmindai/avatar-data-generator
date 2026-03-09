@@ -2788,7 +2788,7 @@ def create_app():
             result = url_import_service.batch_import_urls(
                 urls=urls,
                 dataset_id=dataset.id,
-                app=current_app,
+                app=current_app._get_current_object(),
                 max_workers=5
             )
 
