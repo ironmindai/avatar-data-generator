@@ -12,6 +12,7 @@ import os
 import io
 import tempfile
 import logging
+import hashlib
 from typing import List, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
@@ -335,7 +336,8 @@ def upload_to_s3(
             'Bucket': bucket,
             'Key': object_key,
             'Body': image_to_upload,
-            'ContentType': content_type
+            'ContentType': content_type,
+            'ACL': 'public-read'
         }
 
         # Note: We no longer attach metadata to S3 headers because:
@@ -614,6 +616,121 @@ def delete_s3_url(
     except Exception as e:
         logger.error(f"Error deleting S3 URL {s3_url}: {str(e)}", exc_info=True)
         raise Exception(f"S3 URL deletion failed: {str(e)}")
+
+
+def compute_image_hash(image_bytes: bytes) -> str:
+    """
+    Compute SHA256 hash of image bytes for duplicate detection.
+
+    This creates a unique fingerprint of the image content that can be used
+    to detect duplicate images in the dataset.
+
+    Args:
+        image_bytes: Image data as bytes
+
+    Returns:
+        SHA256 hash as hexadecimal string (64 characters)
+
+    Example:
+        >>> with open('image.jpg', 'rb') as f:
+        ...     image_bytes = f.read()
+        >>> hash_str = compute_image_hash(image_bytes)
+        >>> print(f"Image hash: {hash_str}")
+        Image hash: a3f8c9d2e...
+    """
+    try:
+        logger.debug(f"Computing hash for {len(image_bytes)} byte image")
+
+        # Compute SHA256 hash
+        hash_obj = hashlib.sha256(image_bytes)
+        hash_hex = hash_obj.hexdigest()
+
+        logger.debug(f"Computed hash: {hash_hex}")
+        return hash_hex
+
+    except Exception as e:
+        logger.error(f"Error computing image hash: {e}", exc_info=True)
+        raise Exception(f"Hash computation failed: {str(e)}")
+
+
+def upload_dataset_image_to_s3(
+    image_bytes: bytes,
+    dataset_id: int,
+    source_id: str,
+    file_extension: str = 'jpg'
+) -> Tuple[str, str]:
+    """
+    Upload an image to the S3 image-datasets bucket.
+
+    Uses a structured object key format specific to the Image Datasets feature:
+    datasets/{dataset_id}/{source_id}.{extension}
+
+    Args:
+        image_bytes: Image data as bytes
+        dataset_id: Database ID of the ImageDataset
+        source_id: Source identifier (e.g., Flickr photo ID or hash for URL imports)
+        file_extension: File extension without dot (e.g., 'jpg', 'png')
+
+    Returns:
+        Tuple[str, str]: (object_key, public_url)
+            - object_key: The S3 object key used for storage
+            - public_url: Full public URL to access the image
+
+    Raises:
+        Exception: If S3 upload fails or bucket doesn't exist
+
+    Example:
+        >>> from config import Config
+        >>> object_key, url = upload_dataset_image_to_s3(
+        ...     image_bytes=image_data,
+        ...     dataset_id=123,
+        ...     source_id="flickr_987654321",
+        ...     file_extension="jpg"
+        ... )
+        >>> print(f"Uploaded to: {url}")
+        Uploaded to: https://minio.electric-marinade.com/image-datasets/datasets/123/flickr_987654321.jpg
+    """
+    try:
+        # Import here to avoid circular dependency
+        from config import Config
+        config = Config()
+
+        # Get image-datasets bucket name from config
+        bucket_name = getattr(config, 'S3_IMAGE_DATASETS_BUCKET', 'image-datasets')
+
+        # Construct object key: datasets/{dataset_id}/{source_id}.{ext}
+        object_key = f"datasets/{dataset_id}/{source_id}.{file_extension}"
+
+        logger.info(f"Uploading dataset image to S3: {bucket_name}/{object_key}")
+
+        # Determine content type
+        content_type_map = {
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'png': 'image/png',
+            'gif': 'image/gif',
+            'webp': 'image/webp',
+            'bmp': 'image/bmp',
+            'tiff': 'image/tiff',
+        }
+        content_type = content_type_map.get(file_extension.lower(), 'image/jpeg')
+
+        # Upload using existing upload_to_s3 function
+        # Note: No metadata needed for dataset images (just storage)
+        uploaded_key, public_url = upload_to_s3(
+            image_bytes=image_bytes,
+            object_key=object_key,
+            bucket_name=bucket_name,
+            content_type=content_type,
+            metadata=None
+        )
+
+        logger.info(f"Successfully uploaded dataset image: {public_url}")
+        return uploaded_key, public_url
+
+    except Exception as e:
+        logger.error(f"Error uploading dataset image to S3: {e}", exc_info=True)
+        raise Exception(f"Failed to upload dataset image: {str(e)}")
 
 
 # Utility function for testing/debugging

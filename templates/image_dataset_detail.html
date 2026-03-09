@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'image-datasets' %}
+
+{% block meta_description %}{{ dataset.name }} - Image Dataset Details{% endblock %}
+
+{% block title %}{{ dataset.name }} - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/image_dataset_detail.css">
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Hidden CSRF token for AJAX requests -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" id="datasetId" value="{{ dataset.dataset_id }}">
+    <input type="hidden" id="isOwner" value="{{ is_owner }}">
+    <input type="hidden" id="permissionLevel" value="{{ permission_level or 'view' }}">
+
+    <!-- Breadcrumb Navigation -->
+    <div class="breadcrumb">
+        <a href="/image-datasets" class="breadcrumb-link">
+            <i data-feather="layers"></i>
+            Image Datasets
+        </a>
+        <i data-feather="chevron-right" class="breadcrumb-separator"></i>
+        <span class="breadcrumb-current">{{ dataset.name }}</span>
+    </div>
+
+    <!-- Dataset Header -->
+    <div class="dataset-header">
+        <div class="dataset-header-main">
+            <h1 class="dataset-title" id="datasetTitle" {% if is_owner %}contenteditable="true"{% endif %}>{{ dataset.name }}</h1>
+            <div class="dataset-description-wrapper">
+                <p class="dataset-description" id="datasetDescription" {% if is_owner %}contenteditable="true"{% endif %}>
+                    {{ dataset.description or 'No description provided' }}
+                </p>
+            </div>
+            <div class="dataset-stats">
+                <div class="dataset-stat">
+                    <i data-feather="image"></i>
+                    <span class="stat-value" id="imageCount">{{ images|length }}</span>
+                    <span class="stat-label">images</span>
+                </div>
+                <div class="dataset-stat">
+                    <i data-feather="calendar"></i>
+                    <span class="stat-label">Created:</span>
+                    <time class="datetime-value" datetime="{{ dataset.created_at.isoformat() }}">
+                        {{ dataset.created_at.strftime('%Y-%m-%d %H:%M') }}
+                    </time>
+                </div>
+                <div class="dataset-stat">
+                    {% if dataset.is_public %}
+                        <span class="access-badge access-public">
+                            <i data-feather="globe"></i>
+                            Public
+                        </span>
+                    {% else %}
+                        <span class="access-badge access-private">
+                            <i data-feather="lock"></i>
+                            Private
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="dataset-actions">
+            {% if permission_level == 'edit' or is_owner %}
+            <button class="btn btn-secondary" id="addFromFlickrBtn">
+                <i data-feather="search"></i>
+                Add from Flickr
+            </button>
+            <button class="btn btn-secondary" id="importUrlsBtn">
+                <i data-feather="link"></i>
+                Import URLs
+            </button>
+            {% endif %}
+
+            {% if is_owner %}
+            <button class="btn btn-secondary" id="shareBtn">
+                <i data-feather="share-2"></i>
+                Share
+            </button>
+            {% endif %}
+
+            <div class="dropdown">
+                <button class="btn btn-secondary" id="exportBtn">
+                    <i data-feather="download"></i>
+                    Export
+                    <i data-feather="chevron-down"></i>
+                </button>
+                <div class="dropdown-menu" id="exportMenu">
+                    <button class="dropdown-item" data-export-type="json">
+                        <i data-feather="file-text"></i>
+                        Export as JSON
+                    </button>
+                    <button class="dropdown-item" data-export-type="zip">
+                        <i data-feather="package"></i>
+                        Download as ZIP
+                    </button>
+                </div>
+            </div>
+
+            {% if is_owner %}
+            <button class="btn btn-ghost" id="deleteDatasetBtn">
+                <i data-feather="trash-2"></i>
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="filter-section">
+        <div class="filter-label">
+            <i data-feather="filter"></i>
+            FILTER:
+        </div>
+        <div class="filter-buttons">
+            <button class="filter-btn active" data-filter="all">
+                All Images
+                <span class="filter-count" id="filterCountAll">{{ images|length }}</span>
+            </button>
+            <button class="filter-btn" data-filter="flickr">
+                <i data-feather="image"></i>
+                Flickr
+                <span class="filter-count" id="filterCountFlickr">0</span>
+            </button>
+            <button class="filter-btn" data-filter="url">
+                <i data-feather="link"></i>
+                URL Import
+                <span class="filter-count" id="filterCountUrl">0</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Images Grid -->
+    {% if images and images|length > 0 %}
+    <div class="images-grid" id="imagesGrid">
+        {% for image in images %}
+        <div class="image-card" data-image-id="{{ image.id }}" data-source-type="{{ image.source_type }}">
+            <div class="image-container">
+                <img src="{{ image.image_url }}"
+                     alt="Image {{ loop.index }}"
+                     class="image-thumbnail"
+                     loading="lazy">
+                <div class="image-overlay">
+                    <button class="image-action-btn" data-action="view" data-image-url="{{ image.image_url }}">
+                        <i data-feather="maximize-2"></i>
+                    </button>
+                    {% if permission_level == 'edit' or is_owner %}
+                    <button class="image-action-btn btn-remove" data-action="remove" data-image-id="{{ image.id }}">
+                        <i data-feather="trash-2"></i>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="image-footer">
+                {% if image.source_type == 'flickr' %}
+                <span class="source-badge source-flickr">
+                    <i data-feather="image"></i>
+                    Flickr
+                </span>
+                {% else %}
+                <span class="source-badge source-url">
+                    <i data-feather="link"></i>
+                    URL
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+    <div class="pagination" id="pagination">
+        <button class="pagination-btn" id="prevPage" {% if not pagination.has_prev %}disabled{% endif %}>
+            <i data-feather="chevron-left"></i>
+        </button>
+
+        <div class="pagination-info">
+            <span class="font-mono">{{ pagination.page }}</span>
+            <span class="text-muted">/</span>
+            <span class="font-mono">{{ pagination.pages }}</span>
+        </div>
+
+        <button class="pagination-btn" id="nextPage" {% if not pagination.has_next %}disabled{% endif %}>
+            <i data-feather="chevron-right"></i>
+        </button>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Empty State -->
+    <div class="empty-state">
+        <i data-feather="image" class="empty-state-icon"></i>
+        <h2 class="empty-state-title">No Images Yet</h2>
+        <p class="empty-state-description">
+            This dataset doesn't have any images. Start by adding images from Flickr or importing from URLs.
+        </p>
+        {% if permission_level == 'edit' or is_owner %}
+        <div class="empty-state-actions">
+            <button class="btn btn-primary" id="addFromFlickrBtnEmpty">
+                <i data-feather="search"></i>
+                Add from Flickr
+            </button>
+            <button class="btn btn-secondary" id="importUrlsBtnEmpty">
+                <i data-feather="link"></i>
+                Import URLs
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Flickr Search Modal -->
+<div class="modal modal-large" id="flickrModal" role="dialog" aria-labelledby="flickrModalTitle" aria-hidden="true">
+    <div class="modal-overlay" id="flickrModalOverlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="flickrModalTitle">SEARCH FLICKR</h3>
+            <button class="modal-close" id="flickrModalClose" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- Search Form -->
+            <form id="flickrSearchForm">
+                <div class="form-group">
+                    <label for="flickrKeyword" class="form-label">KEYWORD <span class="required">*</span></label>
+                    <input type="text"
+                           id="flickrKeyword"
+                           name="keyword"
+                           class="form-input"
+                           placeholder="e.g., portrait, landscape, nature"
+                           required>
+                </div>
+
+                <!-- Filters -->
+                <div class="filter-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="excludeUsed" name="exclude_used" class="checkbox-input" checked>
+                        <label for="excludeUsed" class="checkbox-label">
+                            Exclude previously used photos
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="licenseFilter" class="form-label">LICENSE</label>
+                        <select id="licenseFilter" name="license_filter" class="form-select">
+                            <option value="">Any License</option>
+                            <option value="cc">Creative Commons Only</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">
+                    <i data-feather="search"></i>
+                    Search
+                </button>
+            </form>
+
+            <!-- Search Results -->
+            <div id="flickrResults" class="flickr-results" style="display: none;">
+                <div class="results-header">
+                    <h4 class="results-title">SEARCH RESULTS</h4>
+                    <div class="results-controls">
+                        <button class="btn btn-ghost btn-sm" id="selectAllBtn">Select All</button>
+                        <button class="btn btn-ghost btn-sm" id="selectNoneBtn">Deselect All</button>
+                    </div>
+                </div>
+
+                <div class="results-grid" id="flickrResultsGrid">
+                    <!-- Results will be injected here -->
+                </div>
+
+                <!-- Load More Button -->
+                <div id="flickrLoadMoreContainer" class="flickr-load-more-container" style="display: none;">
+                    <button id="flickrLoadMoreBtn" class="btn btn-secondary">
+                        <i data-feather="chevron-down"></i>
+                        Load More Results
+                        <span class="page-info">(Page 1 of 1)</span>
+                    </button>
+                </div>
+
+                <div class="results-footer">
+                    <div class="selected-count">
+                        <span class="font-mono" id="selectedCount">0</span> selected
+                    </div>
+                    <button class="btn btn-primary" id="importSelectedBtn" disabled>
+                        <i data-feather="download"></i>
+                        Import Selected
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="flickrLoading" class="loading-state" style="display: none;">
+                <div class="spinner"></div>
+                <p class="loading-text">Searching Flickr...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- URL Import Modal -->
+<div class="modal" id="urlModal" role="dialog" aria-labelledby="urlModalTitle" aria-hidden="true">
+    <div class="modal-overlay" id="urlModalOverlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="urlModalTitle">IMPORT FROM URLS</h3>
+            <button class="modal-close" id="urlModalClose" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <form id="urlImportForm">
+                <div class="form-group">
+                    <label for="urlList" class="form-label">IMAGE URLS <span class="required">*</span></label>
+                    <textarea id="urlList"
+                              name="urls"
+                              class="form-textarea url-textarea"
+                              placeholder="https://example.com/image1.jpg
+https://example.com/image2.jpg
+https://example.com/image3.jpg"
+                              rows="12"
+                              required></textarea>
+                    <span class="form-help-text">
+                        Enter one URL per line. Supported formats: JPG, PNG, WEBP
+                    </span>
+                    <div class="url-validation">
+                        <span class="validation-status" id="urlValidation">
+                            <span class="font-mono" id="validUrlCount">0</span> valid URLs
+                        </span>
+                    </div>
+                </div>
+
+                <!-- URL Preview -->
+                <div id="urlPreview" class="url-preview" style="display: none;">
+                    <h4 class="preview-title">URLS TO IMPORT</h4>
+                    <div class="preview-list" id="urlPreviewList"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="importUrlsSubmitBtn">
+                    <i data-feather="download"></i>
+                    Import All
+                </button>
+            </form>
+
+            <!-- Progress State -->
+            <div id="urlImportProgress" class="import-progress" style="display: none;">
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="urlProgressBar"></div>
+                </div>
+                <p class="progress-text">
+                    Importing <span class="font-mono" id="urlProgressCurrent">0</span> of <span class="font-mono" id="urlProgressTotal">0</span> images...
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Share Modal -->
+{% if is_owner %}
+<div class="modal" id="shareModal" role="dialog" aria-labelledby="shareModalTitle" aria-hidden="true">
+    <div class="modal-overlay" id="shareModalOverlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="shareModalTitle">SHARE DATASET</h3>
+            <button class="modal-close" id="shareModalClose" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <!-- Current Users -->
+            <div class="share-section">
+                <h4 class="share-section-title">CURRENT ACCESS</h4>
+                <div class="share-users-list" id="shareUsersList">
+                    <!-- Users will be injected here -->
+                    <div class="empty-state-small">
+                        <i data-feather="users"></i>
+                        <p>No users have been granted access yet</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add User -->
+            <div class="share-section">
+                <h4 class="share-section-title">GRANT ACCESS</h4>
+                <form id="grantAccessForm">
+                    <div class="form-row-inline">
+                        <div class="form-group form-group-flex">
+                            <input type="email"
+                                   id="userEmail"
+                                   name="email"
+                                   class="form-input"
+                                   placeholder="user@example.com"
+                                   required>
+                        </div>
+                        <div class="form-group">
+                            <select id="permissionLevel" name="permission" class="form-select">
+                                <option value="view">View</option>
+                                <option value="edit">Edit</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i data-feather="user-plus"></i>
+                            Grant
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Image Preview Modal -->
+<div class="modal modal-image" id="imageModal" role="dialog" aria-labelledby="imageModalTitle" aria-hidden="true">
+    <div class="modal-overlay" id="imageModalOverlay"></div>
+    <div class="modal-image-content">
+        <button class="modal-close modal-close-image" id="imageModalClose" aria-label="Close Modal">
+            <i data-feather="x"></i>
+        </button>
+        <img src="" alt="Full size preview" id="imageModalImg">
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/image_dataset_detail.js"></script>
+{% endblock %}

@@ -1912,4 +1912,282 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 
 ---
 
-*Last Updated: 2026-03-04 (Image Regeneration Feature Implementation)*
+### 2026-03-09 - Image Datasets Feature Implementation
+
+**New Feature Added:**
+- Complete frontend UI for Image Datasets management system
+- Users can create datasets, add images from Flickr, import from URLs, and share with others
+- Responsive design with table layout (desktop) and card layout (mobile/tablet)
+
+**Templates Created:**
+
+**1. `templates/image_datasets.html` - Datasets List Page**
+- Page listing all datasets accessible to the user
+- Table view (desktop) with columns: Name, Description, Images, Status, Access, Created, Actions
+- Card view (mobile/tablet) with stacked layout
+- Create dataset button opens modal
+- Status badges: Active (green), Archived (gray)
+- Access badges: Owner (cyan), Editor (blue), Public (green), Viewer (gray)
+- Action buttons: View Details, Share (owner only), Delete (owner only)
+- Empty state with "Create Your First Dataset" CTA
+
+**2. `templates/image_dataset_detail.html` - Dataset Detail Page**
+- Dataset header with editable title and description (owner only)
+- Dataset stats: Image count, created date, access level badge
+- Action buttons:
+  - Add from Flickr (opens Flickr search modal)
+  - Import URLs (opens URL import modal)
+  - Share (owner only, opens share modal)
+  - Export dropdown (JSON, ZIP)
+  - Delete Dataset (owner only)
+- Filter section: All, Flickr, URL Import with counts
+- Images grid (6 columns desktop, responsive down to 2 on mobile)
+- Image cards with hover overlay (view full size, remove)
+- Source badges: Flickr (purple), URL (cyan)
+- Pagination controls (50 images per page)
+- Breadcrumb navigation
+
+**3. Updated `templates/base.html` - Sidebar Navigation**
+- Added "Image Datasets" link with layers icon
+- Positioned after "Datasets" and before "Tasks"
+- Active state highlights when on Image Datasets pages
+
+**Modals Implemented:**
+
+**Create Dataset Modal**
+- Name input (required, max 200 characters)
+- Description textarea (optional, max 1000 characters)
+- "Make Public" checkbox
+- Form validation with error messages
+- AJAX submission to `/api/image-datasets`
+- Redirects to new dataset detail page on success
+
+**Flickr Search Modal**
+- Keyword input with search form
+- Filters section:
+  - "Exclude previously used photos" checkbox (checked by default)
+  - Minimum quality score slider (0-50, step 5)
+- Search results grid (auto-fill, min 150px columns)
+- Result cards with checkbox, thumbnail, title, score
+- Select All / Deselect All buttons
+- Selected count display
+- "Import Selected" button (disabled when none selected)
+- AJAX search to `/api/image-datasets/<id>/search-flickr`
+- AJAX import to `/api/image-datasets/<id>/import-flickr`
+- Loading state with spinner
+
+**URL Import Modal**
+- Large textarea for URL list (one per line)
+- Real-time URL validation with counter
+- Preview list showing first 10 valid URLs
+- Import progress bar with current/total display
+- AJAX import to `/api/image-datasets/<id>/import-urls`
+- Batch processing with progress updates
+
+**Share Modal (Owner Only)**
+- Current users list with access levels
+- Remove user button for each shared user
+- Grant access form:
+  - Email input
+  - Permission dropdown (View / Edit)
+  - Grant button
+- AJAX to `/api/image-datasets/<id>/permissions`
+
+**Image Preview Modal**
+- Full-screen overlay with backdrop blur
+- Large image display (max 90vw/90vh)
+- Close button (top-right)
+- Click backdrop or Escape to close
+- Sharp corners with cyan border and neon glow
+
+**CSS Files Created:**
+
+**1. `static/css/image_datasets.css` - List Page Styles**
+- Table layout with proper column widths
+- Card layout for mobile/tablet
+- Status and access badge styles
+- Action button styles with hover effects
+- Modal styles (create dataset)
+- Empty state styling
+- Responsive breakpoints at 1024px and 640px
+
+**2. `static/css/image_dataset_detail.css` - Detail Page Styles**
+- Breadcrumb navigation
+- Dataset header with editable title/description
+- Action button group layout
+- Export dropdown menu
+- Filter section with active states
+- Images grid (6 columns, responsive)
+- Image cards with hover overlay
+- Source badge styles (Flickr purple, URL cyan)
+- Pagination controls
+- All modal styles (Flickr, URL import, Share, Image preview)
+- Flickr results grid with checkboxes
+- URL validation and preview
+- Progress bar for import
+- Range slider for quality score
+- Responsive breakpoints at 1024px, 768px, and 640px
+
+**JavaScript Files Created:**
+
+**1. `static/js/image_datasets.js` - List Page Functionality**
+- Create dataset modal open/close
+- Form validation (name required, max 200 chars)
+- AJAX dataset creation with loading state
+- Delete dataset with confirmation dialog
+- Loading state during deletion
+- Smooth row/card removal animation
+- Check if page is empty after deletion (reload to show empty state)
+- Share button redirects to detail page with ?action=share param
+- Toast notifications (success/error/info)
+- Feather icons initialization
+
+**2. `static/js/image_dataset_detail.js` - Detail Page Functionality**
+- Global state management:
+  - Dataset ID, owner status, permission level
+  - Current page, total pages
+  - Current filter (all/flickr/url)
+  - Selected Flickr results set
+- Flickr search modal:
+  - Search form submission with AJAX
+  - Display results grid with checkboxes
+  - Select all/none functionality
+  - Update selected count
+  - Import selected photos with progress
+- URL import modal:
+  - Real-time URL validation
+  - Preview list display
+  - Import with progress bar
+  - Batch processing
+- Share modal:
+  - Load current users
+  - Grant access form
+  - Remove user functionality
+- Image preview modal:
+  - Full-size image display
+  - Close on backdrop click or Escape
+- Image removal:
+  - Confirmation dialog
+  - AJAX delete with fade animation
+  - Update counts after removal
+- Filters:
+  - Toggle filter buttons
+  - Show/hide images based on source type
+  - Update filter counts
+- Pagination:
+  - Next/previous page navigation
+- Export dropdown:
+  - Toggle on button click
+  - Close on outside click
+  - Download JSON or ZIP files
+- Delete dataset:
+  - Confirmation dialog
+  - Redirect to list page on success
+- Inline editing:
+  - Edit title and description (owner only)
+  - Auto-save on blur
+  - AJAX update to backend
+- Toast notifications with slide-in animation
+- Feather icons initialization
+
+**Visual Design:**
+- Consistent with brandbook: Sharp corners, neon accents, charcoal backgrounds
+- Status badges: Active (green glow), Archived (gray)
+- Access badges: Owner (cyan), Editor (blue), Public (green), Viewer (gray)
+- Source badges: Flickr (purple glow), URL (cyan glow)
+- Button hover effects with neon glow
+- Modal overlays with backdrop blur
+- Smooth transitions and animations (0.2s-0.3s ease-out)
+- Responsive grid layouts (6 → 4 → 3 → 2 columns)
+- Mobile-first breakpoints
+
+**Backend API Endpoints Expected:**
+
+**Datasets Management:**
+- `GET /image-datasets` - List all datasets (renders template)
+- `GET /image-datasets/<id>` - Dataset detail page (renders template)
+- `POST /api/image-datasets` - Create new dataset
+- `PUT /api/image-datasets/<id>` - Update dataset (name, description)
+- `DELETE /api/image-datasets/<id>` - Delete dataset
+
+**Flickr Integration:**
+- `POST /api/image-datasets/<id>/search-flickr` - Search Flickr with filters
+  - Body: `{ keyword, exclude_used, min_score }`
+  - Response: `{ success, photos: [{id, url, title, score, license}] }`
+- `POST /api/image-datasets/<id>/import-flickr` - Import selected photos
+  - Body: `{ photo_ids: [id1, id2, ...] }`
+  - Response: `{ success, imported_count, message }`
+
+**URL Import:**
+- `POST /api/image-datasets/<id>/import-urls` - Import images from URLs
+  - Body: `{ urls: [url1, url2, ...] }`
+  - Response: `{ success, imported_count, failed_count, message }`
+
+**Image Management:**
+- `DELETE /api/image-datasets/<id>/images/<image_id>` - Remove image from dataset
+  - Response: `{ success, message }`
+
+**Sharing (Owner Only):**
+- `GET /api/image-datasets/<id>/permissions` - List users with access
+  - Response: `{ success, users: [{email, permission_level}] }`
+- `POST /api/image-datasets/<id>/permissions` - Grant user access
+  - Body: `{ email, permission_level }`
+  - Response: `{ success, message }`
+- `DELETE /api/image-datasets/<id>/permissions/<user_id>` - Revoke access
+  - Response: `{ success, message }`
+
+**Export:**
+- `GET /api/image-datasets/<id>/export/json` - Export dataset as JSON
+- `GET /api/image-datasets/<id>/export/zip` - Download all images as ZIP
+
+**Template Variables:**
+
+**`image_datasets.html`:**
+- `user_name`: Username for header
+- `datasets`: List of dataset objects:
+  - `dataset_id`, `name`, `description`, `status`, `is_public`
+  - `owner_id`, `image_count`, `created_at`
+  - `is_owner` (boolean), `permission_level` (if shared)
+
+**`image_dataset_detail.html`:**
+- `user_name`: Username for header
+- `dataset`: Dataset object (dataset_id, name, description, status, is_public, owner_id, created_at)
+- `images`: Paginated list of image objects:
+  - `id`, `image_url`, `source_type`, `source_id`, `added_at`
+- `pagination`: Pagination object (current_page, total_pages, has_next, has_prev)
+- `is_owner`: Boolean
+- `permission_level`: 'view' or 'edit'
+
+**Accessibility Features:**
+- ARIA labels on all interactive elements
+- `role="dialog"` on modals with proper `aria-labelledby` and `aria-hidden`
+- Keyboard support: Tab navigation, Escape to close modals
+- Focus management: Auto-focus on inputs when modals open
+- Focus indicators: Cyan glow on focus states
+- Alt text on all images
+- Semantic HTML with proper heading hierarchy
+
+**Files Modified/Created:**
+- `/templates/image_datasets.html` - Datasets list page (NEW)
+- `/templates/image_dataset_detail.html` - Dataset detail page (NEW)
+- `/templates/base.html` - Added "Image Datasets" to sidebar navigation
+- `/static/css/image_datasets.css` - List page styles (NEW)
+- `/static/css/image_dataset_detail.css` - Detail page styles (NEW)
+- `/static/js/image_datasets.js` - List page functionality (NEW)
+- `/static/js/image_dataset_detail.js` - Detail page functionality (NEW)
+- `/docs/brandbook.md` - Documented implementation
+
+**Design Rationale:**
+- Separate image datasets from avatar generation datasets for clearer organization
+- Flickr integration provides high-quality stock photos with licensing info
+- URL import supports external image sources
+- Permission system enables collaboration
+- Export functionality supports data portability
+- Inline editing provides quick updates without page reload
+- Filter system helps users find images by source
+- Responsive design ensures usability on all devices
+- Maintains brandbook compliance: Sharp corners, neon accents, proper spacing
+
+---
+
+*Last Updated: 2026-03-09 (Image Datasets Feature Implementation)*

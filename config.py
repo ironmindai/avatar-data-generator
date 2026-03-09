@@ -72,6 +72,9 @@ class Config:
     RUNPOD_GUIDANCE_SCALE = float(os.getenv('RUNPOD_GUIDANCE_SCALE', '7.5'))
     RUNPOD_STEPS = int(os.getenv('RUNPOD_STEPS', '30'))
 
+    # S3 Configuration for Image Datasets
+    S3_IMAGE_DATASETS_BUCKET = os.getenv('S3_IMAGE_DATASETS_BUCKET', 'image-datasets')
+
 
 class DevelopmentConfig(Config):
     """Development-specific configuration."""

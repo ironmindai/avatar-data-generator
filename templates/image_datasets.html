@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% set show_header = true %}
+{% set show_sidebar = true %}
+{% set active_page = 'image-datasets' %}
+
+{% block meta_description %}Image Datasets - Manage collections of images from Flickr and external sources{% endblock %}
+
+{% block title %}Image Datasets - Avatar Data Generator by Galacticos AI{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/image_datasets.css">
+{% endblock %}
+
+{% block content %}
+<div class="content-wrapper">
+    <!-- Hidden CSRF token for AJAX requests -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="page-header-content">
+            <div>
+                <h1 class="page-title">IMAGE DATASETS</h1>
+                <p class="page-description">
+                    Create and manage collections of images from Flickr and external sources
+                </p>
+            </div>
+            <button class="btn btn-primary" id="createDatasetBtn">
+                <i data-feather="plus"></i>
+                Create Dataset
+            </button>
+        </div>
+    </div>
+
+    <!-- Datasets Content -->
+    {% if datasets and datasets|length > 0 %}
+        <!-- Datasets Table (Desktop View) -->
+        <div class="datasets-table-wrapper">
+            <table class="datasets-table">
+                <thead>
+                    <tr>
+                        <th class="th-name">Dataset Name</th>
+                        <th class="th-description">Description</th>
+                        <th class="th-images">Images</th>
+                        <th class="th-status">Status</th>
+                        <th class="th-access">Access</th>
+                        <th class="th-created">Created</th>
+                        <th class="th-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for dataset in datasets %}
+                    <tr class="dataset-row" data-dataset-id="{{ dataset.dataset.dataset_id }}">
+                        <!-- Dataset Name -->
+                        <td class="td-name">
+                            <div class="dataset-name">{{ dataset.dataset.name }}</div>
+                        </td>
+
+                        <!-- Description -->
+                        <td class="td-description">
+                            <div class="dataset-description" title="{{ dataset.dataset.description or 'No description' }}">
+                                {% if dataset.dataset.description %}
+                                    {{ dataset.dataset.description[:60] }}{% if dataset.dataset.description|length > 60 %}...{% endif %}
+                                {% else %}
+                                    <span class="text-muted">No description</span>
+                                {% endif %}
+                            </div>
+                        </td>
+
+                        <!-- Image Count -->
+                        <td class="td-images">
+                            <code class="image-count">{{ dataset.image_count or 0 }}</code>
+                        </td>
+
+                        <!-- Status Badge -->
+                        <td class="td-status">
+                            {% if dataset.dataset.status == 'archived' %}
+                                <span class="status-badge status-archived">
+                                    <i data-feather="archive"></i>
+                                    Archived
+                                </span>
+                            {% else %}
+                                <span class="status-badge status-active">
+                                    <i data-feather="check-circle"></i>
+                                    Active
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Access Badge -->
+                        <td class="td-access">
+                            {% if dataset.access_type == 'owner' %}
+                                <span class="access-badge access-owner">
+                                    <i data-feather="key"></i>
+                                    Owner
+                                </span>
+                            {% elif dataset.access_type == 'edit' %}
+                                <span class="access-badge access-edit">
+                                    <i data-feather="edit-3"></i>
+                                    Editor
+                                </span>
+                            {% elif dataset.dataset.is_public %}
+                                <span class="access-badge access-public">
+                                    <i data-feather="globe"></i>
+                                    Public
+                                </span>
+                            {% else %}
+                                <span class="access-badge access-viewer">
+                                    <i data-feather="eye"></i>
+                                    Viewer
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- Created At -->
+                        <td class="td-created">
+                            <time class="datetime-value" datetime="{{ dataset.dataset.created_at.isoformat() }}">
+                                {{ dataset.dataset.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            </time>
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="td-actions">
+                            <div class="action-buttons">
+                                <a href="/image-datasets/{{ dataset.dataset.dataset_id }}"
+                                   class="btn-action btn-view"
+                                   aria-label="View Details"
+                                   title="View Dataset Details">
+                                    <i data-feather="eye"></i>
+                                    Details
+                                </a>
+                                {% if dataset.access_type == 'owner' %}
+                                <button class="btn-action btn-share"
+                                        data-dataset-id="{{ dataset.dataset.dataset_id }}"
+                                        aria-label="Share Dataset"
+                                        title="Share Dataset">
+                                    <i data-feather="share-2"></i>
+                                    Share
+                                </button>
+                                <button class="btn-action btn-delete"
+                                        data-dataset-id="{{ dataset.dataset.dataset_id }}"
+                                        aria-label="Delete Dataset"
+                                        title="Delete Dataset">
+                                    <i data-feather="trash-2"></i>
+                                    Delete
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Datasets Cards (Mobile View) -->
+        <div class="datasets-cards">
+            {% for dataset in datasets %}
+            <div class="dataset-card" data-dataset-id="{{ dataset.dataset.dataset_id }}">
+                <!-- Card Header -->
+                <div class="dataset-card-header">
+                    <div>
+                        <div class="dataset-name-card">{{ dataset.dataset.name }}</div>
+                        <div class="dataset-meta">
+                            <code class="image-count">{{ dataset.image_count or 0 }} images</code>
+                            <span class="text-muted">•</span>
+                            <time class="datetime-value-small" datetime="{{ dataset.dataset.created_at.isoformat() }}">
+                                {{ dataset.dataset.created_at.strftime('%Y-%m-%d') }}
+                            </time>
+                        </div>
+                    </div>
+
+                    <!-- Status Badge -->
+                    {% if dataset.dataset.status == 'archived' %}
+                        <span class="status-badge status-archived">
+                            <i data-feather="archive"></i>
+                            Archived
+                        </span>
+                    {% else %}
+                        <span class="status-badge status-active">
+                            <i data-feather="check-circle"></i>
+                            Active
+                        </span>
+                    {% endif %}
+                </div>
+
+                <!-- Card Body -->
+                <div class="dataset-card-body">
+                    {% if dataset.dataset.description %}
+                        <div class="dataset-description-card">{{ dataset.dataset.description }}</div>
+                    {% endif %}
+
+                    <!-- Access Badge -->
+                    <div class="access-badge-container">
+                        {% if dataset.access_type == 'owner' %}
+                            <span class="access-badge access-owner">
+                                <i data-feather="key"></i>
+                                Owner
+                            </span>
+                        {% elif dataset.access_type == 'edit' %}
+                            <span class="access-badge access-edit">
+                                <i data-feather="edit-3"></i>
+                                Editor
+                            </span>
+                        {% elif dataset.dataset.is_public %}
+                            <span class="access-badge access-public">
+                                <i data-feather="globe"></i>
+                                Public
+                            </span>
+                        {% else %}
+                            <span class="access-badge access-viewer">
+                                <i data-feather="eye"></i>
+                                Viewer
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="card-actions">
+                        <a href="/image-datasets/{{ dataset.dataset.dataset_id }}" class="btn-action-mobile btn-view-mobile">
+                            <i data-feather="eye"></i>
+                            View Details
+                        </a>
+                        {% if dataset.access_type == 'owner' %}
+                        <button class="btn-action-mobile btn-share-mobile"
+                                data-dataset-id="{{ dataset.dataset.dataset_id }}"
+                                aria-label="Share Dataset">
+                            <i data-feather="share-2"></i>
+                            Share
+                        </button>
+                        <button class="btn-action-mobile btn-delete-mobile"
+                                data-dataset-id="{{ dataset.dataset.dataset_id }}"
+                                aria-label="Delete Dataset">
+                            <i data-feather="trash-2"></i>
+                            Delete
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <!-- Empty State -->
+        <div class="empty-state">
+            <i data-feather="layers" class="empty-state-icon"></i>
+            <h2 class="empty-state-title">No Image Datasets Yet</h2>
+            <p class="empty-state-description">
+                You haven't created any image datasets. Create your first dataset to start collecting images from Flickr and external sources.
+            </p>
+            <button class="btn btn-primary" id="createDatasetBtnEmpty">
+                <i data-feather="plus"></i>
+                Create Your First Dataset
+            </button>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Create Dataset Modal -->
+<div class="modal" id="createDatasetModal" role="dialog" aria-labelledby="createDatasetModalTitle" aria-hidden="true">
+    <div class="modal-overlay" id="createDatasetModalOverlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="createDatasetModalTitle">CREATE NEW DATASET</h3>
+            <button class="modal-close" id="createDatasetModalClose" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <form id="createDatasetForm">
+                <!-- Dataset Name -->
+                <div class="form-group">
+                    <label for="datasetName" class="form-label">DATASET NAME <span class="required">*</span></label>
+                    <input type="text"
+                           id="datasetName"
+                           name="name"
+                           class="form-input"
+                           placeholder="My Image Dataset"
+                           required
+                           maxlength="200">
+                    <span class="form-error-text" id="datasetNameError"></span>
+                </div>
+
+                <!-- Dataset Description -->
+                <div class="form-group">
+                    <label for="datasetDescription" class="form-label">DESCRIPTION</label>
+                    <textarea id="datasetDescription"
+                              name="description"
+                              class="form-textarea"
+                              placeholder="Describe the purpose or content of this dataset..."
+                              rows="4"
+                              maxlength="1000"></textarea>
+                    <span class="form-help-text">Optional - Helps identify the dataset's purpose</span>
+                </div>
+
+                <!-- Make Public Checkbox -->
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox"
+                               id="datasetPublic"
+                               name="is_public"
+                               class="checkbox-input">
+                        <label for="datasetPublic" class="checkbox-label">
+                            <span class="checkbox-label-text">MAKE PUBLIC</span>
+                            <span class="checkbox-label-desc">Allow anyone with the link to view this dataset</span>
+                        </label>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" id="createDatasetCancelBtn">Cancel</button>
+            <button type="submit" form="createDatasetForm" class="btn btn-primary" id="createDatasetSubmitBtn">
+                <i data-feather="plus"></i>
+                Create Dataset
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/js/image_datasets.js"></script>
+{% endblock %}

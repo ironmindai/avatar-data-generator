@@ -19,8 +19,14 @@ The database currently contains the following tables:
 1. **users** - User authentication and management
 2. **settings** - Application configuration key-value store for bio prompts
 3. **config** - Global boolean configuration settings
-4. **generation_tasks** - Avatar generation task tracking and management
-5. **generation_results** - Persona data and avatar image URLs for each generated avatar
+4. **int_config** - Global integer configuration settings
+5. **generation_tasks** - Avatar generation task tracking and management
+6. **generation_results** - Persona data and avatar image URLs for each generated avatar
+7. **workflow_logs** - LLM workflow execution logs for observability and cost tracking
+8. **workflow_node_logs** - Individual node execution logs within LLM workflows
+9. **image_datasets** - User-created image datasets for Flickr/URL imports
+10. **dataset_images** - Images stored within datasets with source metadata
+11. **dataset_permissions** - Sharing permissions for image datasets
 
 ---
 
@@ -214,6 +220,124 @@ Stores persona data and S3 image URLs for generated avatars. Each record represe
 ```json
 ["https://s3.../image1.jpg", "https://s3.../image2.jpg", "https://s3.../image3.jpg", "https://s3.../image4.jpg"]
 ```
+
+---
+
+### image_datasets
+
+Stores user-created image datasets for organizing imported images from Flickr or URLs.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Dataset unique identifier
+- `dataset_id` (String(36), UNIQUE, NOT NULL, Indexed) - UUID for public-facing dataset identification
+- `user_id` (Integer, Foreign Key to `users.id`, NOT NULL, Indexed, CASCADE DELETE) - Dataset owner
+- `name` (String(255), NOT NULL) - Dataset name
+- `description` (Text, NULLABLE) - Optional dataset description
+- `status` (String(50), NOT NULL, Default: 'active', Indexed) - Dataset status: active, archived, deleted
+- `is_public` (Boolean, NOT NULL, Default: FALSE, Indexed) - Whether dataset is publicly accessible
+- `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of dataset creation
+- `updated_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of last update
+
+**Indexes:**
+- `ix_image_datasets_dataset_id` (UNIQUE) on `dataset_id`
+- `ix_image_datasets_user_id` on `user_id`
+- `ix_image_datasets_status` on `status`
+- `ix_image_datasets_is_public` on `is_public`
+
+**Constraints:**
+- Primary Key: `id`
+- Unique: `dataset_id` (via `uq_image_datasets_dataset_id`)
+- Foreign Key: `user_id` references `users.id` (via `fk_image_datasets_user_id`) with CASCADE DELETE
+
+**Relationships:**
+- `user` - Many-to-One relationship with `User` model
+- `User.image_datasets` - One-to-Many backref for accessing user's datasets
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `ImageDataset` class
+
+**Helper Methods:**
+- Auto-generates UUID for `dataset_id` if not provided during initialization
+
+---
+
+### dataset_images
+
+Stores images within datasets, including source information and metadata for Flickr or URL imports.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Image record unique identifier
+- `dataset_id` (Integer, Foreign Key to `image_datasets.id`, NOT NULL, Indexed, CASCADE DELETE) - Parent dataset
+- `image_url` (Text, NOT NULL) - Public URL to the image
+- `source_type` (String(50), NULLABLE, Indexed) - Source of image: 'flickr' or 'url_import'
+- `source_id` (String(255), NULLABLE, Indexed) - Original ID from source (Flickr photo ID or original URL)
+- `source_metadata` (JSONB, NULLABLE) - Source metadata (Flickr tags, owner, license, etc.)
+- `image_hash` (String(64), NULLABLE, Indexed) - SHA256 hash for duplicate detection
+- `added_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp when image was added to dataset
+
+**Indexes:**
+- `ix_dataset_images_dataset_id` on `dataset_id`
+- `ix_dataset_images_source_type` on `source_type`
+- `ix_dataset_images_source_id` on `source_id`
+- `ix_dataset_images_image_hash` on `image_hash`
+
+**Constraints:**
+- Primary Key: `id`
+- Foreign Key: `dataset_id` references `image_datasets.id` (via `fk_dataset_images_dataset_id`) with CASCADE DELETE
+
+**Relationships:**
+- `dataset` - Many-to-One relationship with `ImageDataset` model
+- `ImageDataset.images` - One-to-Many backref for accessing dataset's images (with cascade delete)
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `DatasetImage` class
+
+**Source Metadata Format (Flickr example):**
+```json
+{
+  "flickr_id": "53891234567",
+  "owner": "flickr_user_id",
+  "owner_name": "John Doe",
+  "tags": ["portrait", "outdoor", "nature"],
+  "license": "CC BY 2.0",
+  "date_taken": "2024-01-15",
+  "views": 1234,
+  "url_original": "https://flickr.com/photos/..."
+}
+```
+
+---
+
+### dataset_permissions
+
+Manages sharing permissions for image datasets, allowing users to grant view or edit access to other users.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Permission record unique identifier
+- `dataset_id` (Integer, Foreign Key to `image_datasets.id`, NOT NULL, Indexed, CASCADE DELETE) - Dataset being shared
+- `user_id` (Integer, Foreign Key to `users.id`, NOT NULL, Indexed, CASCADE DELETE) - User receiving permission
+- `permission_level` (String(50), NOT NULL) - Permission level: 'view' or 'edit'
+- `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp when permission was granted
+
+**Indexes:**
+- `ix_dataset_permissions_dataset_id` on `dataset_id`
+- `ix_dataset_permissions_user_id` on `user_id`
+
+**Constraints:**
+- Primary Key: `id`
+- Unique: (`dataset_id`, `user_id`) (via `uq_dataset_permissions_dataset_user`) - prevents duplicate permissions
+- Foreign Key: `dataset_id` references `image_datasets.id` (via `fk_dataset_permissions_dataset_id`) with CASCADE DELETE
+- Foreign Key: `user_id` references `users.id` (via `fk_dataset_permissions_user_id`) with CASCADE DELETE
+
+**Relationships:**
+- `dataset` - Many-to-One relationship with `ImageDataset` model
+- `user` - Many-to-One relationship with `User` model
+- `ImageDataset.permissions` - One-to-Many backref for accessing dataset's permissions (with cascade delete)
+- `User.dataset_permissions` - One-to-Many backref for accessing user's permissions
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `DatasetPermission` class
+
+**Permission Levels:**
+- `view` - Read-only access to dataset (can view images but not modify)
+- `edit` - Full access to dataset (can add/remove images and modify dataset properties)
 
 ---
 
@@ -633,6 +757,67 @@ Adds a new boolean configuration flag to control the visibility of base images i
 - Uses ON CONFLICT DO NOTHING to prevent duplicate key errors on re-run
 - **Downgrade Warning**: Rolling back this migration will delete the `show_base_images` config setting
 
+**Status**: APPLIED
+
+---
+
+### Migration: 562b42df8d87 - create_image_datasets_tables
+**Date**: 2026-03-09 11:08:47
+**Parent**: a5b7c9d1e3f5
+
+**Changes:**
+- Created `image_datasets` table for user-created image datasets
+- Created `dataset_images` table for images within datasets
+- Created `dataset_permissions` table for dataset sharing permissions
+- Added indexes on all foreign keys and frequently queried fields
+- Configured CASCADE DELETE on all foreign keys for automatic cleanup
+
+**Tables Created:**
+
+1. **image_datasets**:
+   - Stores dataset metadata (name, description, status, visibility)
+   - Each dataset has a unique UUID (`dataset_id`) for public identification
+   - Owned by a user via `user_id` foreign key with CASCADE DELETE
+   - Supports public/private datasets via `is_public` flag
+   - Status field for lifecycle management (active, archived, deleted)
+
+2. **dataset_images**:
+   - Stores individual images within a dataset
+   - Links to parent dataset with CASCADE DELETE
+   - Tracks image source (`source_type`: 'flickr' or 'url_import')
+   - Stores source metadata as JSONB (tags, license, owner info)
+   - Includes `image_hash` (SHA256) for duplicate detection
+   - Maintains original source ID for traceability
+
+3. **dataset_permissions**:
+   - Manages dataset sharing between users
+   - Links to both dataset and user with CASCADE DELETE
+   - Permission levels: 'view' (read-only) or 'edit' (full access)
+   - Unique constraint prevents duplicate permissions for same dataset+user
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/562b42df8d87_create_image_datasets_tables.py`
+
+**Purpose:**
+Implements the Image Datasets feature, allowing users to:
+- Create and organize collections of images from Flickr or URL imports
+- Import images with full source metadata preservation
+- Share datasets with other users (view or edit permissions)
+- Track image sources and detect duplicates via hashing
+- Manage dataset lifecycle (active, archived, deleted)
+
+**Indexes Created:**
+- `image_datasets`: dataset_id (unique), user_id, status, is_public
+- `dataset_images`: dataset_id, source_type, source_id, image_hash
+- `dataset_permissions`: dataset_id, user_id
+
+**Safety Notes:**
+- Non-destructive operation (creating new tables only)
+- Fully reversible via downgrade function
+- CASCADE DELETE ensures automatic cleanup when users or datasets are deleted
+- Unique constraints prevent data integrity issues
+- JSONB type used for flexible metadata storage
+- **Downgrade Warning**: Rolling back this migration will permanently delete all image datasets, dataset images, and dataset permissions
+
 **Status**: APPLIED (Current HEAD)
 
 ---
@@ -695,12 +880,15 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: a5b7c9d1e3f5 (add_show_base_images_config) - APPLIED (HEAD)
-**Total Tables**: 5
-**Total Migrations**: 15 (2 reverted/deleted)
+**Latest Migration**: 562b42df8d87 (create_image_datasets_tables) - APPLIED (HEAD)
+**Total Tables**: 11
+**Total Migrations**: 16 (2 reverted/deleted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
+- NEW `image_datasets` table - user-created image datasets with UUID identifiers, status management, and public/private visibility
+- NEW `dataset_images` table - images within datasets with source tracking (Flickr/URL), JSONB metadata, and SHA256 hashing for duplicates
+- NEW `dataset_permissions` table - dataset sharing with view/edit permission levels
 - NEW `config.show_base_images` (TRUE) - controls visibility of base images in dataset detail view
 - REMOVED `generation_results.base_image_size` - no longer needed as dimensions are randomized in code
 - NEW `generation_results.image_ideas_history` (JSONB array) - tracks image ideas/prompts to prevent duplicates in future generations

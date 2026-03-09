@@ -554,3 +554,108 @@ class WorkflowNodeLog(db.Model):
         duration = f'{self.execution_time_ms}ms' if self.execution_time_ms else 'running'
         tokens = f'{self.total_tokens}tok' if self.total_tokens else 'N/A'
         return f'<WorkflowNodeLog {self.node_name} order={self.node_order} status={self.status} {duration} {tokens}>'
+
+
+class ImageDataset(db.Model):
+    """
+    ImageDataset model for storing user-created image datasets.
+
+    Attributes:
+        id: Primary key
+        dataset_id: Unique UUID identifier for public-facing dataset identification (36 chars)
+        user_id: Foreign key to users table (owner of dataset)
+        name: Dataset name
+        description: Optional dataset description
+        status: Dataset status (active, archived, deleted)
+        is_public: Whether dataset is publicly accessible
+        created_at: Timestamp of dataset creation
+        updated_at: Timestamp of last update
+    """
+    __tablename__ = 'image_datasets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    dataset_id = db.Column(db.String(36), unique=True, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    name = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(50), nullable=False, default='active', index=True)
+    is_public = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'), onupdate=datetime.utcnow)
+
+    # Relationships
+    user = db.relationship('User', backref=db.backref('image_datasets', lazy='dynamic'))
+
+    def __init__(self, **kwargs):
+        """Initialize ImageDataset with auto-generated dataset_id if not provided."""
+        if 'dataset_id' not in kwargs:
+            kwargs['dataset_id'] = str(uuid.uuid4())
+        super(ImageDataset, self).__init__(**kwargs)
+
+    def __repr__(self):
+        return f'<ImageDataset {self.dataset_id} name="{self.name}" status={self.status} public={self.is_public}>'
+
+
+class DatasetImage(db.Model):
+    """
+    DatasetImage model for storing images within a dataset.
+
+    Attributes:
+        id: Primary key
+        dataset_id: Foreign key to image_datasets table
+        image_url: Public URL to the image
+        source_type: Source of image (e.g., 'flickr', 'url_import')
+        source_id: Original ID from source (e.g., Flickr photo ID, original URL)
+        source_metadata: JSONB metadata from source (tags, owner, license, etc.)
+        image_hash: SHA256 hash of image for duplicate detection
+        added_at: Timestamp when image was added to dataset
+    """
+    __tablename__ = 'dataset_images'
+
+    id = db.Column(db.Integer, primary_key=True)
+    dataset_id = db.Column(db.Integer, db.ForeignKey('image_datasets.id', ondelete='CASCADE'), nullable=False, index=True)
+    image_url = db.Column(db.Text, nullable=False)
+    source_type = db.Column(db.String(50), nullable=True, index=True)
+    source_id = db.Column(db.String(255), nullable=True, index=True)
+    source_metadata = db.Column(db.JSON, nullable=True)
+    image_hash = db.Column(db.String(64), nullable=True, index=True)
+    added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+
+    # Relationship
+    dataset = db.relationship('ImageDataset', backref=db.backref('images', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        source_info = f' from {self.source_type}' if self.source_type else ''
+        return f'<DatasetImage id={self.id} dataset_id={self.dataset_id}{source_info}>'
+
+
+class DatasetPermission(db.Model):
+    """
+    DatasetPermission model for managing dataset sharing permissions.
+
+    Attributes:
+        id: Primary key
+        dataset_id: Foreign key to image_datasets table
+        user_id: Foreign key to users table (user being granted permission)
+        permission_level: Level of permission ('view', 'edit')
+        created_at: Timestamp when permission was granted
+    """
+    __tablename__ = 'dataset_permissions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    dataset_id = db.Column(db.Integer, db.ForeignKey('image_datasets.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    permission_level = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+
+    # Relationships
+    dataset = db.relationship('ImageDataset', backref=db.backref('permissions', lazy='dynamic', cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('dataset_permissions', lazy='dynamic'))
+
+    # Unique constraint on dataset_id + user_id
+    __table_args__ = (
+        db.UniqueConstraint('dataset_id', 'user_id', name='uq_dataset_permissions_dataset_user'),
+    )
+
+    def __repr__(self):
+        return f'<DatasetPermission dataset_id={self.dataset_id} user_id={self.user_id} level={self.permission_level}>'

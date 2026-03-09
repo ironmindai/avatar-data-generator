@@ -2,14 +2,14 @@
 Avatar Data Generator - Flask Application
 Main application file with authentication and routing.
 """
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file, Response, current_app
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
-from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult, WorkflowLog, WorkflowNodeLog
+from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult, WorkflowLog, WorkflowNodeLog, ImageDataset, DatasetImage, DatasetPermission
 import os
 import atexit
 import logging
@@ -21,9 +21,13 @@ import tempfile
 import shutil
 import time
 import asyncio
+import json
+import uuid
 from datetime import datetime
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import func
 import httpx
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Global lock for image regeneration (prevents concurrent regeneration of same image)
 REGENERATION_LOCKS = {}
@@ -2116,6 +2120,1125 @@ def create_app():
         """User registration page (placeholder)."""
         flash('Registration is currently disabled. Please contact your administrator.', 'info')
         return redirect(url_for('login'))
+
+    # ========================================================================
+    # IMAGE DATASETS FEATURE ROUTES
+    # ========================================================================
+
+    def _has_dataset_access(dataset, user_id, required_level='view'):
+        """
+        Check if user has access to a dataset.
+
+        Args:
+            dataset: ImageDataset object
+            user_id: User ID to check
+            required_level: 'view' or 'edit'
+
+        Returns:
+            bool: True if user has access
+        """
+        # Owner always has full access
+        if dataset.user_id == user_id:
+            return True
+
+        # Public datasets are viewable by all
+        if dataset.is_public and required_level == 'view':
+            return True
+
+        # Check for explicit permission
+        permission = DatasetPermission.query.filter_by(
+            dataset_id=dataset.id,
+            user_id=user_id
+        ).first()
+
+        if permission:
+            if required_level == 'view':
+                return True  # Any permission level grants view access
+            elif required_level == 'edit':
+                return permission.permission_level == 'edit'
+
+        return False
+
+    def _get_dataset_or_404(dataset_id, user_id, required_level='view'):
+        """
+        Get dataset by UUID and verify user has access.
+
+        Args:
+            dataset_id: Dataset UUID string
+            user_id: User ID to check access
+            required_level: 'view' or 'edit'
+
+        Returns:
+            ImageDataset object
+
+        Raises:
+            404 if not found, 403 if no access
+        """
+        dataset = ImageDataset.query.filter_by(dataset_id=dataset_id).first()
+
+        if not dataset:
+            flash('Dataset not found.', 'error')
+            return None
+
+        if not _has_dataset_access(dataset, user_id, required_level):
+            flash('You do not have permission to access this dataset.', 'error')
+            return None
+
+        return dataset
+
+    @app.route('/image-datasets')
+    @login_required
+    def image_datasets():
+        """List all datasets accessible to the user."""
+        try:
+            user_name = current_user.email.split('@')[0]
+
+            # Query owned datasets
+            owned_datasets = ImageDataset.query.filter_by(
+                user_id=current_user.id,
+                status='active'
+            ).all()
+
+            # Query shared datasets (via permissions)
+            shared_dataset_ids = db.session.query(DatasetPermission.dataset_id).filter_by(
+                user_id=current_user.id
+            ).subquery()
+
+            shared_datasets = ImageDataset.query.filter(
+                ImageDataset.id.in_(shared_dataset_ids),
+                ImageDataset.status == 'active'
+            ).all()
+
+            # Query public datasets (not owned by user)
+            public_datasets = ImageDataset.query.filter(
+                ImageDataset.is_public == True,
+                ImageDataset.user_id != current_user.id,
+                ImageDataset.status == 'active'
+            ).all()
+
+            # Combine and add image counts
+            all_datasets = []
+
+            for dataset in owned_datasets:
+                image_count = DatasetImage.query.filter_by(dataset_id=dataset.id).count()
+                dataset.is_owner = True
+                dataset.permission_level = 'edit'
+                all_datasets.append({
+                    'dataset': dataset,
+                    'image_count': image_count,
+                    'access_type': 'owner'
+                })
+
+            for dataset in shared_datasets:
+                image_count = DatasetImage.query.filter_by(dataset_id=dataset.id).count()
+                permission = DatasetPermission.query.filter_by(
+                    dataset_id=dataset.id,
+                    user_id=current_user.id
+                ).first()
+                dataset.is_owner = False
+                dataset.permission_level = permission.permission_level
+                all_datasets.append({
+                    'dataset': dataset,
+                    'image_count': image_count,
+                    'access_type': f'shared ({permission.permission_level})'
+                })
+
+            for dataset in public_datasets:
+                image_count = DatasetImage.query.filter_by(dataset_id=dataset.id).count()
+                dataset.is_owner = False
+                dataset.permission_level = 'view'
+                all_datasets.append({
+                    'dataset': dataset,
+                    'image_count': image_count,
+                    'access_type': 'public'
+                })
+
+            logging.info(f"User {current_user.email} viewing datasets: "
+                        f"{len(owned_datasets)} owned, {len(shared_datasets)} shared, "
+                        f"{len(public_datasets)} public")
+
+            return render_template(
+                'image_datasets.html',
+                user_name=user_name,
+                datasets=all_datasets
+            )
+
+        except Exception as e:
+            logging.error(f"Error loading image datasets: {e}", exc_info=True)
+            logging.error(f"Error type: {type(e).__name__}")
+            logging.error(f"Error details: {str(e)}")
+            flash('Error loading datasets. Please try again.', 'error')
+            return redirect(url_for('dashboard'))
+
+    @app.route('/api/image-datasets', methods=['POST'])
+    @login_required
+    def create_dataset():
+        """Create a new image dataset."""
+        try:
+            data = request.get_json()
+
+            # Validate input
+            name = data.get('name', '').strip()
+            if not name:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset name is required'
+                }), 400
+
+            description = (data.get('description') or '').strip()
+            is_public = data.get('is_public', False)
+
+            # Create dataset
+            dataset = ImageDataset(
+                user_id=current_user.id,
+                name=name,
+                description=description if description else None,
+                is_public=is_public,
+                status='active'
+            )
+
+            db.session.add(dataset)
+            db.session.commit()
+
+            logging.info(f"User {current_user.email} created dataset: {dataset.dataset_id} ({name})")
+
+            return jsonify({
+                'success': True,
+                'dataset_id': dataset.dataset_id,
+                'message': 'Dataset created successfully'
+            }), 201
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error creating dataset: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to create dataset'
+            }), 500
+
+    @app.route('/image-datasets/<dataset_id>')
+    @login_required
+    def image_dataset_detail(dataset_id):
+        """View dataset details with paginated images."""
+        try:
+            user_name = current_user.email.split('@')[0]
+
+            # Get dataset and verify access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='view')
+            if not dataset:
+                return redirect(url_for('image_datasets'))
+
+            # Get pagination parameters
+            page = request.args.get('page', 1, type=int)
+            per_page = 50
+            source_type_filter = request.args.get('source_type', None)
+
+            # Build query for images
+            images_query = DatasetImage.query.filter_by(dataset_id=dataset.id)
+
+            # Apply source type filter if provided
+            if source_type_filter:
+                images_query = images_query.filter_by(source_type=source_type_filter)
+
+            # Get paginated images
+            images_pagination = images_query.order_by(DatasetImage.added_at.desc()).paginate(
+                page=page,
+                per_page=per_page,
+                error_out=False
+            )
+
+            # Get total image count
+            total_images = DatasetImage.query.filter_by(dataset_id=dataset.id).count()
+
+            # Get unique source types for filter dropdown
+            source_types = db.session.query(DatasetImage.source_type).filter_by(
+                dataset_id=dataset.id
+            ).distinct().all()
+            source_types = [st[0] for st in source_types if st[0]]
+
+            # Check if user is owner or has edit access
+            is_owner = dataset.user_id == current_user.id
+
+            # Determine permission level
+            if is_owner:
+                permission_level = 'edit'
+            else:
+                permission = DatasetPermission.query.filter_by(
+                    dataset_id=dataset.id,
+                    user_id=current_user.id
+                ).first()
+                permission_level = permission.permission_level if permission else 'view'
+
+            logging.info(f"User {current_user.email} viewing dataset {dataset_id} "
+                        f"(page {page}, filter: {source_type_filter})")
+
+            return render_template(
+                'image_dataset_detail.html',
+                user_name=user_name,
+                dataset=dataset,
+                images=images_pagination.items,
+                pagination=images_pagination,
+                total_images=total_images,
+                source_types=source_types,
+                source_type_filter=source_type_filter,
+                is_owner=is_owner,
+                permission_level=permission_level
+            )
+
+        except Exception as e:
+            logging.error(f"Error loading dataset detail: {e}", exc_info=True)
+            flash('Error loading dataset. Please try again.', 'error')
+            return redirect(url_for('image_datasets'))
+
+    @app.route('/api/image-datasets/<dataset_id>', methods=['PUT'])
+    @login_required
+    def update_dataset(dataset_id):
+        """Update dataset metadata."""
+        try:
+            # Get dataset and verify ownership
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            # Only owner can update
+            if dataset.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Only the owner can update dataset settings'
+                }), 403
+
+            data = request.get_json()
+
+            # Update fields
+            if 'name' in data:
+                name = data['name'].strip()
+                if not name:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Dataset name cannot be empty'
+                    }), 400
+                dataset.name = name
+
+            if 'description' in data:
+                dataset.description = data['description'].strip() or None
+
+            if 'is_public' in data:
+                dataset.is_public = bool(data['is_public'])
+
+            dataset.updated_at = datetime.utcnow()
+            db.session.commit()
+
+            logging.info(f"User {current_user.email} updated dataset {dataset_id}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Dataset updated successfully'
+            }), 200
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error updating dataset: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to update dataset'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>', methods=['DELETE'])
+    @login_required
+    def delete_image_dataset(dataset_id):
+        """Delete a dataset and all its images."""
+        try:
+            # Get dataset and verify ownership
+            dataset = ImageDataset.query.filter_by(dataset_id=dataset_id).first()
+
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found'
+                }), 404
+
+            # Only owner can delete
+            if dataset.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Only the owner can delete this dataset'
+                }), 403
+
+            # Get all images for S3 deletion
+            images = DatasetImage.query.filter_by(dataset_id=dataset.id).all()
+            deleted_count = 0
+
+            # Delete images from S3
+            from services.image_utils import delete_s3_url
+
+            for image in images:
+                try:
+                    delete_s3_url(image.image_url)
+                    deleted_count += 1
+                except Exception as e:
+                    logging.warning(f"Failed to delete S3 image {image.image_url}: {e}")
+
+            # Delete database records (CASCADE will handle images and permissions)
+            db.session.delete(dataset)
+            db.session.commit()
+
+            logging.info(f"User {current_user.email} deleted dataset {dataset_id} "
+                        f"({deleted_count} S3 images deleted)")
+
+            return jsonify({
+                'success': True,
+                'deleted_images': deleted_count,
+                'message': f'Dataset deleted successfully ({deleted_count} images removed)'
+            }), 200
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error deleting dataset: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to delete dataset'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/search-flickr', methods=['POST'])
+    @login_required
+    def search_flickr(dataset_id):
+        """Search Flickr for images with simple filtering."""
+        try:
+            # Get dataset and verify edit access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            data = request.get_json()
+
+            keyword = data.get('keyword', '').strip()
+            if not keyword:
+                return jsonify({
+                    'success': False,
+                    'message': 'Keyword is required'
+                }), 400
+
+            page = data.get('page', 1)
+            per_page = min(int(data.get('per_page', 50)), 100)  # Cap at 100
+            exclude_used = data.get('exclude_used', True)
+            license_filter = data.get('license_filter')  # 'cc' or None
+
+            # Search Flickr
+            from services import flickr_service
+
+            results = flickr_service.search_photos(
+                keyword=keyword,
+                per_page=per_page,
+                page=page,
+                exclude_used=exclude_used,
+                license_filter=license_filter
+            )
+
+            # Format photos for response (remove internal Flickr fields)
+            formatted_photos = []
+            for photo in results['photos']:
+                formatted_photos.append({
+                    'id': photo.get('id'),
+                    'url': photo.get('url_m') or photo.get('url_l') or photo.get('url_o'),
+                    'url_o': photo.get('url_o'),
+                    'url_l': photo.get('url_l'),
+                    'url_m': photo.get('url_m'),
+                    'title': photo.get('title', ''),
+                    'tags': photo.get('tags', ''),
+                    'owner_name': photo.get('ownername', ''),
+                    'license': photo.get('license_name', 'Unknown'),
+                    'date_taken': photo.get('datetaken', ''),
+                    'views': photo.get('views', 0)
+                })
+
+            logging.info(f"User {current_user.email} searched Flickr in dataset {dataset_id}: "
+                        f"'{keyword}' - {len(formatted_photos)} results")
+
+            return jsonify({
+                'success': True,
+                'photos': formatted_photos,
+                'total': results['total'],
+                'page': results['page'],
+                'pages': results['pages']
+            }), 200
+
+        except Exception as e:
+            logging.error(f"Error searching Flickr: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'Flickr search failed: {str(e)}'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/import-flickr', methods=['POST'])
+    @login_required
+    def import_flickr(dataset_id):
+        """Import selected Flickr photos into dataset."""
+        try:
+            # Get dataset and verify edit access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            data = request.get_json()
+            photos = data.get('photos', [])
+
+            if not photos:
+                return jsonify({
+                    'success': False,
+                    'message': 'No photos provided'
+                }), 400
+
+            from services import flickr_service
+            from services.image_utils import upload_dataset_image_to_s3, compute_image_hash
+
+            imported_count = 0
+            failed_count = 0
+
+            logging.info(f"Starting Flickr import for dataset {dataset_id}: {len(photos)} photos provided from frontend (no API calls needed)")
+
+            # Prepare for batch download using photo data from frontend (no API calls needed)
+            photo_data_list = []
+            for photo in photos:
+                try:
+                    photo_id = photo.get('id')
+
+                    if not photo_id:
+                        logging.warning("Photo missing ID, skipping")
+                        failed_count += 1
+                        continue
+
+                    # Check if already imported
+                    existing = DatasetImage.query.filter_by(
+                        dataset_id=dataset.id,
+                        source_type='flickr',
+                        source_id=photo_id
+                    ).first()
+
+                    if existing:
+                        logging.debug(f"Photo {photo_id} already in dataset, skipping")
+                        continue
+
+                    # Use photo data directly from frontend (already has all metadata and URLs from search)
+                    photo_data_list.append({
+                        'id': photo_id,
+                        'info': photo,  # Full photo object from search
+                        'url_o': photo.get('url_o'),
+                        'url_l': photo.get('url_l'),
+                        'url_m': photo.get('url_m')
+                    })
+
+                except Exception as e:
+                    logging.error(f"Failed to prepare photo data: {e}")
+                    failed_count += 1
+
+            # Helper function for parallel S3 upload processing
+            def _process_flickr_image(result, dataset_id, app):
+                """Process a single Flickr download result: compute hash, upload to S3.
+
+                Args:
+                    result: Download result dictionary
+                    dataset_id: Dataset ID
+                    app: Flask application instance for app context
+
+                Returns:
+                    tuple: (success: bool, image_data: dict or None, error: str or None)
+                """
+                with app.app_context():
+                    try:
+                        if not result['success']:
+                            return False, None, result.get('error', 'Download failed')
+
+                        photo_id = result['photo_id']
+                        image_bytes = result['image_bytes']
+                        metadata = result['metadata']
+
+                        # Compute hash
+                        image_hash = compute_image_hash(image_bytes)
+
+                        # Check for duplicate hash (read-only query, safe in thread)
+                        existing_hash = DatasetImage.query.filter_by(
+                            dataset_id=dataset_id,
+                            image_hash=image_hash
+                        ).first()
+
+                        if existing_hash:
+                            return False, None, f"Duplicate hash detected for photo {photo_id}"
+
+                        # Upload to S3
+                        object_key, public_url = upload_dataset_image_to_s3(
+                            image_bytes=image_bytes,
+                            dataset_id=dataset_id,
+                            source_id=f"flickr_{photo_id}",
+                            file_extension='jpg'
+                        )
+
+                        # Prepare database record data (don't create object yet)
+                        # Note: metadata comes from formatted search results, so field names are already normalized
+                        image_data = {
+                            'dataset_id': dataset_id,
+                            'image_url': public_url,
+                            'source_type': 'flickr',
+                            'source_id': photo_id,
+                            'source_metadata': {
+                                'title': metadata.get('title', ''),
+                                'tags': metadata.get('tags', ''),
+                                'owner_name': metadata.get('owner_name', ''),  # Already formatted from search
+                                'license': metadata.get('license', ''),  # Already formatted from search
+                                'date_taken': metadata.get('date_taken', ''),  # Already formatted from search
+                                'views': metadata.get('views', 0),
+                                'score': metadata.get('_score', 0)
+                            },
+                            'image_hash': image_hash
+                        }
+
+                        return True, image_data, None
+
+                    except Exception as e:
+                        return False, None, f"Processing error for {result.get('photo_id', 'unknown')}: {str(e)}"
+
+            # Batch download photos
+            if photo_data_list:
+                download_results = flickr_service.batch_download_photos(
+                    photo_data_list,
+                    max_workers=3
+                )
+
+                # Process each download result in parallel with ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    # Submit all tasks - pass current_app instance for app context
+                    futures = {
+                        executor.submit(_process_flickr_image, result, dataset.id, current_app._get_current_object()): result
+                        for result in download_results
+                    }
+
+                    # Collect results as they complete
+                    for future in as_completed(futures):
+                        try:
+                            success, image_data, error = future.result()
+
+                            if success:
+                                # Create database record and add to session
+                                dataset_image = DatasetImage(**image_data)
+                                db.session.add(dataset_image)
+                                imported_count += 1
+                            else:
+                                failed_count += 1
+                                if error:
+                                    logging.error(f"Failed to process image: {error}")
+
+                        except Exception as e:
+                            failed_count += 1
+                            logging.error(f"Error in parallel processing: {e}", exc_info=True)
+
+                # Commit all successful imports
+                db.session.commit()
+
+            logging.info(f"User {current_user.email} imported Flickr photos to dataset {dataset_id}: "
+                        f"{imported_count} imported, {failed_count} failed")
+
+            return jsonify({
+                'success': True,
+                'imported_count': imported_count,
+                'failed_count': failed_count,
+                'message': f'Import complete: {imported_count} imported, {failed_count} failed'
+            }), 200
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error importing Flickr photos: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'Import failed: {str(e)}'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/import-urls', methods=['POST'])
+    @login_required
+    def import_urls(dataset_id):
+        """Import images from external URLs."""
+        try:
+            # Get dataset and verify edit access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            data = request.get_json()
+            urls = data.get('urls', [])
+
+            if not urls:
+                return jsonify({
+                    'success': False,
+                    'message': 'No URLs provided'
+                }), 400
+
+            # Import using url_import_service
+            from services import url_import_service
+
+            result = url_import_service.batch_import_urls(
+                urls=urls,
+                dataset_id=dataset.id,
+                app=current_app,
+                max_workers=5
+            )
+
+            logging.info(f"User {current_user.email} imported URLs to dataset {dataset_id}: "
+                        f"{result['imported']} imported, {result['failed']} failed")
+
+            return jsonify({
+                'success': True,
+                'imported_count': result['imported'],
+                'failed_count': result['failed'],
+                'failed_urls': result.get('failed_urls', []),
+                'message': f"Import complete: {result['imported']} imported, {result['failed']} failed"
+            }), 200
+
+        except Exception as e:
+            logging.error(f"Error importing URLs: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'Import failed: {str(e)}'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/images/<int:image_id>', methods=['DELETE'])
+    @login_required
+    def delete_dataset_image(dataset_id, image_id):
+        """Remove an image from a dataset."""
+        try:
+            # Get dataset and verify edit access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            # Get image
+            image = DatasetImage.query.filter_by(
+                id=image_id,
+                dataset_id=dataset.id
+            ).first()
+
+            if not image:
+                return jsonify({
+                    'success': False,
+                    'message': 'Image not found'
+                }), 404
+
+            # Delete from S3
+            from services.image_utils import delete_s3_url
+
+            try:
+                delete_s3_url(image.image_url)
+            except Exception as e:
+                logging.warning(f"Failed to delete S3 image {image.image_url}: {e}")
+
+            # Delete from database
+            db.session.delete(image)
+            db.session.commit()
+
+            logging.info(f"User {current_user.email} deleted image {image_id} from dataset {dataset_id}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Image deleted successfully'
+            }), 200
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error deleting image: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to delete image'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/permissions', methods=['GET'])
+    @login_required
+    def get_permissions(dataset_id):
+        """Get list of users with access to dataset."""
+        try:
+            # Get dataset and verify ownership
+            dataset = ImageDataset.query.filter_by(dataset_id=dataset_id).first()
+
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found'
+                }), 404
+
+            # Only owner can view permissions
+            if dataset.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Only the owner can view permissions'
+                }), 403
+
+            # Get permissions with user data
+            permissions = db.session.query(
+                DatasetPermission, User
+            ).join(
+                User, DatasetPermission.user_id == User.id
+            ).filter(
+                DatasetPermission.dataset_id == dataset.id
+            ).all()
+
+            permissions_list = []
+            for permission, user in permissions:
+                permissions_list.append({
+                    'user_id': user.id,
+                    'email': user.email,
+                    'permission_level': permission.permission_level,
+                    'created_at': permission.created_at.isoformat()
+                })
+
+            return jsonify({
+                'success': True,
+                'permissions': permissions_list
+            }), 200
+
+        except Exception as e:
+            logging.error(f"Error getting permissions: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to get permissions'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/permissions', methods=['POST'])
+    @login_required
+    def grant_permission(dataset_id):
+        """Grant access to a user."""
+        try:
+            # Get dataset and verify ownership
+            dataset = ImageDataset.query.filter_by(dataset_id=dataset_id).first()
+
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found'
+                }), 404
+
+            # Only owner can grant permissions
+            if dataset.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Only the owner can grant permissions'
+                }), 403
+
+            data = request.get_json()
+
+            user_email = data.get('user_email', '').strip()
+            permission_level = data.get('permission_level', 'view')
+
+            if not user_email:
+                return jsonify({
+                    'success': False,
+                    'message': 'User email is required'
+                }), 400
+
+            if permission_level not in ['view', 'edit']:
+                return jsonify({
+                    'success': False,
+                    'message': 'Permission level must be "view" or "edit"'
+                }), 400
+
+            # Look up user
+            user = User.query.filter_by(email=user_email).first()
+            if not user:
+                return jsonify({
+                    'success': False,
+                    'message': f'User not found: {user_email}'
+                }), 404
+
+            # Don't allow granting permission to self
+            if user.id == current_user.id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Cannot grant permission to yourself'
+                }), 400
+
+            # Check if permission already exists
+            existing = DatasetPermission.query.filter_by(
+                dataset_id=dataset.id,
+                user_id=user.id
+            ).first()
+
+            if existing:
+                # Update existing permission
+                existing.permission_level = permission_level
+                message = f'Updated permission for {user_email} to {permission_level}'
+            else:
+                # Create new permission
+                permission = DatasetPermission(
+                    dataset_id=dataset.id,
+                    user_id=user.id,
+                    permission_level=permission_level
+                )
+                db.session.add(permission)
+                message = f'Granted {permission_level} access to {user_email}'
+
+            db.session.commit()
+
+            logging.info(f"User {current_user.email} granted {permission_level} permission "
+                        f"to {user_email} for dataset {dataset_id}")
+
+            return jsonify({
+                'success': True,
+                'message': message
+            }), 200
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error granting permission: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to grant permission'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/permissions/<int:user_id>', methods=['DELETE'])
+    @login_required
+    def revoke_permission(dataset_id, user_id):
+        """Revoke a user's access to dataset."""
+        try:
+            # Get dataset and verify ownership
+            dataset = ImageDataset.query.filter_by(dataset_id=dataset_id).first()
+
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found'
+                }), 404
+
+            # Only owner can revoke permissions
+            if dataset.user_id != current_user.id:
+                return jsonify({
+                    'success': False,
+                    'message': 'Only the owner can revoke permissions'
+                }), 403
+
+            # Get permission
+            permission = DatasetPermission.query.filter_by(
+                dataset_id=dataset.id,
+                user_id=user_id
+            ).first()
+
+            if not permission:
+                return jsonify({
+                    'success': False,
+                    'message': 'Permission not found'
+                }), 404
+
+            # Delete permission
+            db.session.delete(permission)
+            db.session.commit()
+
+            logging.info(f"User {current_user.email} revoked permission for user {user_id} "
+                        f"from dataset {dataset_id}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Permission revoked successfully'
+            }), 200
+
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error revoking permission: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Failed to revoke permission'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/export/json')
+    @login_required
+    def export_image_dataset_json(dataset_id):
+        """Export dataset as JSON."""
+        try:
+            # Get dataset and verify access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='view')
+            if not dataset:
+                flash('Dataset not found or access denied.', 'error')
+                return redirect(url_for('image_datasets'))
+
+            # Get all images
+            images = DatasetImage.query.filter_by(dataset_id=dataset.id).all()
+
+            # Build export data
+            export_data = {
+                'dataset': {
+                    'dataset_id': dataset.dataset_id,
+                    'name': dataset.name,
+                    'description': dataset.description,
+                    'is_public': dataset.is_public,
+                    'created_at': dataset.created_at.isoformat(),
+                    'updated_at': dataset.updated_at.isoformat(),
+                    'image_count': len(images)
+                },
+                'images': []
+            }
+
+            for image in images:
+                export_data['images'].append({
+                    'image_url': image.image_url,
+                    'source_type': image.source_type,
+                    'source_id': image.source_id,
+                    'source_metadata': image.source_metadata,
+                    'image_hash': image.image_hash,
+                    'added_at': image.added_at.isoformat()
+                })
+
+            # Create JSON response
+            json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
+
+            # Create filename
+            filename = f"{dataset.name.replace(' ', '_')}_export.json"
+
+            logging.info(f"User {current_user.email} exported dataset {dataset_id} as JSON")
+
+            # Return as downloadable file
+            return Response(
+                json_str,
+                mimetype='application/json',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{filename}"'
+                }
+            )
+
+        except Exception as e:
+            logging.error(f"Error exporting JSON: {e}", exc_info=True)
+            flash('Failed to export dataset.', 'error')
+            return redirect(url_for('image_dataset_detail', dataset_id=dataset_id))
+
+    @app.route('/api/image-datasets/<dataset_id>/export/zip')
+    @login_required
+    def export_image_dataset_zip(dataset_id):
+        """Export dataset as ZIP with images and metadata."""
+        try:
+            # Get dataset and verify access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='view')
+            if not dataset:
+                flash('Dataset not found or access denied.', 'error')
+                return redirect(url_for('image_datasets'))
+
+            # Get all images
+            images = DatasetImage.query.filter_by(dataset_id=dataset.id).all()
+
+            if not images:
+                flash('Dataset has no images to export.', 'error')
+                return redirect(url_for('image_dataset_detail', dataset_id=dataset_id))
+
+            # Create temporary directory for download
+            temp_dir = tempfile.mkdtemp(prefix='dataset_export_')
+
+            try:
+                # Create images subdirectory
+                images_dir = os.path.join(temp_dir, 'images')
+                os.makedirs(images_dir)
+
+                # Build metadata
+                export_data = {
+                    'dataset': {
+                        'dataset_id': dataset.dataset_id,
+                        'name': dataset.name,
+                        'description': dataset.description,
+                        'is_public': dataset.is_public,
+                        'created_at': dataset.created_at.isoformat(),
+                        'updated_at': dataset.updated_at.isoformat(),
+                        'image_count': len(images)
+                    },
+                    'images': []
+                }
+
+                # Download images
+                for idx, image in enumerate(images):
+                    try:
+                        # Determine file extension from URL
+                        url_parts = image.image_url.split('.')
+                        ext = url_parts[-1] if len(url_parts) > 1 else 'jpg'
+
+                        # Create filename
+                        image_filename = f"image_{idx:04d}.{ext}"
+                        image_path = os.path.join(images_dir, image_filename)
+
+                        # Download image
+                        response = requests.get(image.image_url, timeout=30)
+                        response.raise_for_status()
+
+                        # Save to file
+                        with open(image_path, 'wb') as f:
+                            f.write(response.content)
+
+                        # Add to metadata
+                        export_data['images'].append({
+                            'filename': image_filename,
+                            'original_url': image.image_url,
+                            'source_type': image.source_type,
+                            'source_id': image.source_id,
+                            'source_metadata': image.source_metadata,
+                            'image_hash': image.image_hash,
+                            'added_at': image.added_at.isoformat()
+                        })
+
+                    except Exception as e:
+                        logging.warning(f"Failed to download image {image.image_url}: {e}")
+                        continue
+
+                # Write metadata JSON
+                metadata_path = os.path.join(temp_dir, 'data.json')
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(export_data, f, indent=2, ensure_ascii=False)
+
+                # Create ZIP file
+                zip_path = os.path.join(temp_dir, 'export.zip')
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    # Add metadata
+                    zipf.write(metadata_path, 'data.json')
+
+                    # Add images
+                    for root, dirs, files in os.walk(images_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.join('images', file)
+                            zipf.write(file_path, arcname)
+
+                # Create filename
+                filename = f"{dataset.name.replace(' ', '_')}_export.zip"
+
+                logging.info(f"User {current_user.email} exported dataset {dataset_id} as ZIP "
+                            f"({len(export_data['images'])} images)")
+
+                # Send file and clean up after
+                return send_file(
+                    zip_path,
+                    mimetype='application/zip',
+                    as_attachment=True,
+                    download_name=filename
+                )
+
+            finally:
+                # Clean up temporary directory after a delay
+                # (Flask will serve the file first)
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    logging.warning(f"Failed to clean up temp directory {temp_dir}: {e}")
+
+        except Exception as e:
+            logging.error(f"Error exporting ZIP: {e}", exc_info=True)
+            flash('Failed to export dataset.', 'error')
+            return redirect(url_for('image_dataset_detail', dataset_id=dataset_id))
+
+    # ========================================================================
+    # END IMAGE DATASETS FEATURE ROUTES
+    # ========================================================================
 
     # Error handlers
     @app.errorhandler(404)

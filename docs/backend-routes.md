@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-04 (Added image regeneration endpoints)*
+> *Last Updated: 2026-03-09 (Added Image Datasets feature routes)*
 
 ## Application Information
 
@@ -1052,6 +1052,587 @@ You can send any combination of settings in a single request:
 - Old image URL stored before modification
 - S3 deletion is best-effort (non-blocking)
 - Logs success and warnings appropriately
+
+---
+
+## Image Datasets Feature Routes
+
+The Image Datasets feature allows users to create, manage, and share collections of images imported from Flickr or external URLs.
+
+### GET `/image-datasets`
+**Description**: List all datasets accessible to the user
+**Authentication**: Required
+**Template**: `templates/image_datasets.html`
+
+**Template Variables**:
+- `user_name`: String - Username (extracted from email)
+- `datasets`: List of dicts with structure:
+  ```python
+  {
+    'dataset': ImageDataset object,
+    'image_count': Integer - Number of images in dataset,
+    'access_type': String - 'owner', 'shared (view/edit)', or 'public'
+  }
+  ```
+
+**Implementation**:
+Lists datasets in three categories:
+1. Owned datasets (user is owner)
+2. Shared datasets (via DatasetPermission)
+3. Public datasets (is_public=True, not owned)
+
+**Security**:
+- Shows only active datasets (status='active')
+- Includes image counts for each dataset
+- Proper access control via permissions
+
+---
+
+### POST `/api/image-datasets`
+**Description**: Create a new image dataset
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Request Body**:
+```json
+{
+  "name": "Dataset Name",
+  "description": "Optional description",
+  "is_public": false
+}
+```
+
+**Required Fields**:
+- `name`: String - Dataset name (cannot be empty)
+
+**Optional Fields**:
+- `description`: String - Dataset description
+- `is_public`: Boolean - Make dataset publicly accessible (default: false)
+
+**Success Response (201)**:
+```json
+{
+  "success": true,
+  "dataset_id": "uuid-string",
+  "message": "Dataset created successfully"
+}
+```
+
+**Error Response (400)**:
+```json
+{
+  "success": false,
+  "message": "Dataset name is required"
+}
+```
+
+**Implementation**:
+- Auto-generates UUID for dataset_id
+- Sets status to 'active'
+- Associates with current user as owner
+
+---
+
+### GET `/image-datasets/<dataset_id>`
+**Description**: View dataset details with paginated images
+**Authentication**: Required
+**Template**: `templates/image_dataset_detail.html`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Query Parameters**:
+- `page`: Integer (default: 1) - Page number
+- `source_type`: String (optional) - Filter by source type (e.g., 'flickr', 'url_import')
+
+**Template Variables**:
+- `user_name`: String - Username
+- `dataset`: ImageDataset object
+- `images`: List - Paginated DatasetImage objects (50 per page)
+- `pagination`: Flask-SQLAlchemy pagination object
+- `total_images`: Integer - Total image count
+- `source_types`: List - Unique source types for filtering
+- `source_type_filter`: String - Current filter value
+- `is_owner`: Boolean - True if user owns dataset
+- `has_edit_access`: Boolean - True if user can edit
+
+**Access Control**:
+- Owner: Full access
+- Shared with edit permission: Can view and edit
+- Shared with view permission: Can only view
+- Public datasets: Anyone can view
+- Returns 404/403 if no access
+
+---
+
+### PUT `/api/image-datasets/<dataset_id>`
+**Description**: Update dataset metadata
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Request Body** (all fields optional):
+```json
+{
+  "name": "Updated Name",
+  "description": "Updated description",
+  "is_public": true
+}
+```
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "message": "Dataset updated successfully"
+}
+```
+
+**Error Response (403)**:
+```json
+{
+  "success": false,
+  "message": "Only the owner can update dataset settings"
+}
+```
+
+**Security**:
+- Only owner can update
+- Name cannot be empty if provided
+- Updates updated_at timestamp
+
+---
+
+### DELETE `/api/image-datasets/<dataset_id>`
+**Description**: Delete dataset and all its images
+**Authentication**: Required
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "deleted_images": 25,
+  "message": "Dataset deleted successfully (25 images removed)"
+}
+```
+
+**Workflow**:
+1. Verify ownership
+2. Delete all images from S3 (using delete_s3_url)
+3. Delete database records (CASCADE handles images and permissions)
+4. Return deletion statistics
+
+**Security**:
+- Only owner can delete
+- Logs S3 deletion failures as warnings (continues deletion)
+- Database transaction ensures consistency
+
+---
+
+### POST `/api/image-datasets/<dataset_id>/search-flickr`
+**Description**: Search Flickr for images with simple filtering
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Request Body**:
+```json
+{
+  "keyword": "search term",
+  "page": 1,
+  "per_page": 50,
+  "exclude_used": true,
+  "license_filter": "cc"
+}
+```
+
+**Required Fields**:
+- `keyword`: String - Search keyword/phrase
+
+**Optional Fields**:
+- `page`: Integer (default: 1) - Page number
+- `per_page`: Integer (default: 50, max: 100) - Results per page
+- `exclude_used`: Boolean (default: true) - Exclude already-imported photos
+- `license_filter`: String (optional) - License filter ('cc' for Creative Commons only, null for any)
+
+**License Filter Options**:
+- `'cc'`: Creative Commons licenses only (CC BY, CC BY-SA, CC BY-NC, etc.)
+- `null` or omitted: All licenses (includes All Rights Reserved)
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "photos": [
+    {
+      "id": "flickr_photo_id",
+      "url_o": "https://...",
+      "url_l": "https://...",
+      "url_m": "https://...",
+      "title": "Photo Title",
+      "tags": "tag1 tag2 tag3",
+      "owner_name": "photographer",
+      "license": "CC BY 2.0",
+      "date_taken": "2020-05-15 14:30:00",
+      "views": 1234
+    }
+  ],
+  "total": 500,
+  "page": 1,
+  "pages": 10
+}
+```
+
+**Implementation**:
+- Simple keyword search without scoring
+- Photos returned as-is from Flickr API
+- License filtering for Creative Commons vs. all licenses
+- Excludes already-used photos if enabled
+
+**Security**:
+- Requires edit access to dataset
+- Uses flickr_service for search
+- Rate-limited via Flickr API
+
+---
+
+### POST `/api/image-datasets/<dataset_id>/import-flickr`
+**Description**: Import selected Flickr photos into dataset (optimized - no API calls during import)
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Request Body**:
+```json
+{
+  "photos": [
+    {
+      "id": "53819404623",
+      "url": "https://live.staticflickr.com/...",
+      "url_o": "https://live.staticflickr.com/original.jpg",
+      "url_l": "https://live.staticflickr.com/large.jpg",
+      "url_m": "https://live.staticflickr.com/medium.jpg",
+      "title": "Coffee Shop Interior",
+      "tags": ["coffee", "interior", "design"],
+      "owner_name": "photographer",
+      "license": "CC BY 2.0",
+      "date_taken": "2024-01-15",
+      "views": 1234
+    }
+  ]
+}
+```
+
+**Required Fields**:
+- `photos`: Array of objects - Full photo data from search results (includes all metadata and URLs)
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "imported_count": 8,
+  "failed_count": 2,
+  "message": "Import complete: 8 imported, 2 failed"
+}
+```
+
+**Workflow** (Optimized):
+1. Verify edit access
+2. Use photo data from frontend (already cached from search - **no API calls**)
+3. Batch download images from URLs (concurrent, max 3 workers)
+4. Compute image hash for duplicate detection
+5. Upload to S3 (bucket: image-datasets) in parallel (max 5 workers)
+6. Insert DatasetImage records with metadata
+
+**Performance Optimization**:
+- **No Flickr API calls during import** (uses cached data from search)
+- Previously: 2 API calls per image × 1 second rate limit = 2 seconds/image
+- Now: Direct download from URLs = ~0.2 seconds/image
+- **10x faster** for import operations
+
+**Duplicate Handling**:
+- Skips if same photo_id already in dataset
+- Skips if image hash matches existing image
+
+**Source Metadata Stored**:
+- title, tags, owner_name
+- license, date_taken, views
+
+**Security**:
+- Requires edit access
+- No rate limiting needed (no API calls)
+- Validates all downloads
+
+---
+
+### POST `/api/image-datasets/<dataset_id>/import-urls`
+**Description**: Import images from external URLs
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Request Body**:
+```json
+{
+  "urls": [
+    "https://example.com/image1.jpg",
+    "https://example.com/image2.png"
+  ]
+}
+```
+
+**Required Fields**:
+- `urls`: Array of strings - Image URLs to import
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "imported": 8,
+  "failed": 2,
+  "failed_urls": [
+    {
+      "url": "https://example.com/broken.jpg",
+      "error": "HTTP error 404: Not Found"
+    }
+  ],
+  "message": "Import complete: 8 imported, 2 failed"
+}
+```
+
+**Workflow**:
+1. Verify edit access
+2. Validate each URL (HEAD request, Content-Type check)
+3. Batch download images (concurrent, max 5 workers)
+4. Compute hash for duplicate detection
+5. Upload to S3
+6. Insert DatasetImage records
+
+**URL Validation**:
+- Must start with http:// or https://
+- Content-Type must be image/*
+- Max file size: 50 MB
+- 30-second timeout per download
+
+**Security**:
+- Requires edit access
+- URL validation prevents abuse
+- Size limits prevent resource exhaustion
+
+---
+
+### DELETE `/api/image-datasets/<dataset_id>/images/<int:image_id>`
+**Description**: Remove an image from a dataset
+**Authentication**: Required
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+- `image_id`: Integer - DatasetImage ID
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "message": "Image deleted successfully"
+}
+```
+
+**Workflow**:
+1. Verify edit access to dataset
+2. Verify image belongs to dataset
+3. Delete from S3
+4. Delete DatasetImage record
+
+**Security**:
+- Requires edit access
+- Validates image belongs to dataset
+- Logs S3 deletion failures
+
+---
+
+### GET `/api/image-datasets/<dataset_id>/permissions`
+**Description**: List users with access to dataset
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "permissions": [
+    {
+      "user_id": 1,
+      "email": "user@example.com",
+      "permission_level": "view",
+      "created_at": "2026-03-09T12:00:00"
+    }
+  ]
+}
+```
+
+**Security**:
+- Only owner can view permissions
+- Joins with User table for email display
+
+---
+
+### POST `/api/image-datasets/<dataset_id>/permissions`
+**Description**: Grant access to a user
+**Authentication**: Required
+**Content-Type**: `application/json`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Request Body**:
+```json
+{
+  "user_email": "user@example.com",
+  "permission_level": "view"
+}
+```
+
+**Required Fields**:
+- `user_email`: String - Email of user to grant access
+- `permission_level`: String - 'view' or 'edit'
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "message": "Granted view access to user@example.com"
+}
+```
+
+**Behavior**:
+- Creates new permission or updates existing
+- Cannot grant permission to self
+- User must exist in system
+
+**Security**:
+- Only owner can grant permissions
+- Validates permission_level values
+
+---
+
+### DELETE `/api/image-datasets/<dataset_id>/permissions/<int:user_id>`
+**Description**: Revoke user's access to dataset
+**Authentication**: Required
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+- `user_id`: Integer - User ID to revoke
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "message": "Permission revoked successfully"
+}
+```
+
+**Security**:
+- Only owner can revoke permissions
+- Validates permission exists
+
+---
+
+### GET `/image-datasets/<dataset_id>/export/json`
+**Description**: Export dataset metadata and image URLs as JSON
+**Authentication**: Required
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Response**:
+- Content-Type: `application/json`
+- Content-Disposition: `attachment; filename="{dataset_name}_export.json"`
+
+**Export Structure**:
+```json
+{
+  "dataset": {
+    "dataset_id": "uuid",
+    "name": "Dataset Name",
+    "description": "Description",
+    "is_public": false,
+    "created_at": "2026-03-09T12:00:00",
+    "updated_at": "2026-03-09T12:00:00",
+    "image_count": 25
+  },
+  "images": [
+    {
+      "image_url": "https://s3.../image.jpg",
+      "source_type": "flickr",
+      "source_id": "flickr_photo_id",
+      "source_metadata": {...},
+      "image_hash": "sha256_hash",
+      "added_at": "2026-03-09T12:00:00"
+    }
+  ]
+}
+```
+
+**Security**:
+- Requires view access
+- Includes all metadata
+
+---
+
+### GET `/image-datasets/<dataset_id>/export/zip`
+**Description**: Export dataset as ZIP with images and metadata
+**Authentication**: Required
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Response**:
+- Content-Type: `application/zip`
+- Content-Disposition: `attachment; filename="{dataset_name}_export.zip"`
+
+**ZIP Contents**:
+```
+{dataset_name}_export.zip/
+├── data.json          # Dataset and image metadata
+└── images/
+    ├── image_0000.jpg
+    ├── image_0001.png
+    └── ...
+```
+
+**Workflow**:
+1. Verify access
+2. Create temporary directory
+3. Download all images from S3
+4. Create data.json with metadata
+5. Create ZIP with images/ folder and data.json
+6. Stream ZIP to user
+7. Clean up temporary files
+
+**Implementation**:
+- Uses tempfile for temporary storage
+- 30-second timeout per S3 download
+- Gracefully handles download failures (logs and continues)
+- Cleans up temp directory after send
+
+**Security**:
+- Requires view access
+- Validates all URLs
+- Proper error handling
 
 ---
 
