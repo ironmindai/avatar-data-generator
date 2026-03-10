@@ -665,17 +665,19 @@ class DatasetPermission(db.Model):
 
 class DatasetImageUsage(db.Model):
     """
-    DatasetImageUsage model for tracking which scene images have been used in generation tasks.
+    DatasetImageUsage model for tracking which scene images have been used by which personas.
 
     This table enables:
     - Prioritizing least-used images globally across all tasks
-    - Avoiding repetition within a single task
-    - Cycling through images when all have been used
+    - Avoiding repetition within a single persona (no duplicates per persona)
+    - Allowing image reuse across different personas in the same task
+    - Cycling through images when all have been used by a persona
 
     Attributes:
         id: Primary key
         dataset_image_id: Foreign key to dataset_images table (the scene image that was used)
         task_id: Foreign key to generation_tasks table (the task that used this image)
+        persona_result_id: Foreign key to generation_results table (the persona that used this image)
         used_at: Timestamp when this image was used
     """
     __tablename__ = 'dataset_image_usage'
@@ -683,16 +685,18 @@ class DatasetImageUsage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     dataset_image_id = db.Column(db.Integer, db.ForeignKey('dataset_images.id', ondelete='CASCADE'), nullable=False, index=True)
     task_id = db.Column(db.Integer, db.ForeignKey('generation_tasks.id', ondelete='CASCADE'), nullable=False, index=True)
+    persona_result_id = db.Column(db.Integer, db.ForeignKey('generation_results.id', ondelete='CASCADE'), nullable=True, index=True)
     used_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
 
     # Relationships
     dataset_image = db.relationship('DatasetImage', backref=db.backref('usage_records', lazy='dynamic', cascade='all, delete-orphan'))
     task = db.relationship('GenerationTask', backref=db.backref('image_usage_records', lazy='dynamic', cascade='all, delete-orphan'))
+    persona_result = db.relationship('GenerationResult', backref=db.backref('image_usage_records', lazy='dynamic', cascade='all, delete-orphan'))
 
-    # Unique constraint on dataset_image_id + task_id to prevent double-counting
+    # Unique constraint on dataset_image_id + task_id + persona_result_id to prevent duplicates per persona
     __table_args__ = (
-        db.UniqueConstraint('dataset_image_id', 'task_id', name='uq_dataset_image_usage_image_task'),
+        db.UniqueConstraint('dataset_image_id', 'task_id', 'persona_result_id', name='uq_dataset_image_task_persona'),
     )
 
     def __repr__(self):
-        return f'<DatasetImageUsage dataset_image_id={self.dataset_image_id} task_id={self.task_id} used_at={self.used_at}>'
+        return f'<DatasetImageUsage dataset_image_id={self.dataset_image_id} task_id={self.task_id} persona_result_id={self.persona_result_id} used_at={self.used_at}>'

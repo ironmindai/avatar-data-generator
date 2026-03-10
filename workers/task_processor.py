@@ -45,7 +45,7 @@ from services.flowise_service import generate_image_prompt
 from services.image_generation import generate_base_image  # Still used for base image
 from services.openrouter_scene_service import generate_scene_image_openrouter  # NEW: OpenRouter Nano Banana 2 for scene-based images
 from services.image_utils import upload_to_s3, generate_presigned_url
-from services.image_set_service import get_next_scene_image, mark_image_used
+from services.image_set_service import get_next_scene_image, mark_image_used, assign_scene_images_for_persona
 from utils.image_cropper import remove_white_borders
 from utils.image_style_randomizer import randomize_image_style
 
@@ -877,6 +877,21 @@ async def process_persona_images(
         logger.info(f"{result.base_image_url}")
         logger.info("=" * 80)
 
+        # Pre-assign all scene images for this persona (prevents race condition)
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Pre-assigning {images_per_persona} scene images...")
+        try:
+            assigned_scenes = assign_scene_images_for_persona(
+                task.image_set_ids,
+                task_db_id,
+                result.id,  # Pass persona result ID
+                images_per_persona
+            )
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Pre-assigned {len(assigned_scenes)} scene images: {[img_id for _, img_id in assigned_scenes]}")
+        except Exception as e:
+            error_msg = f"Failed to pre-assign scene images: {str(e)}"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
         # Fetch post-processing settings (apply consistently to all images)
         crop_white_borders_enabled = Config.get_value('crop_white_borders', False)
         randomize_image_style_enabled = Config.get_value('randomize_image_style', False)
@@ -906,12 +921,12 @@ async def process_persona_images(
             return False, error_msg
 
         # Generate each image individually with OpenRouter Nano Banana 2 (SCENE-BASED WORKFLOW)
-        async def generate_single_image(image_index: int) -> str:
+        async def generate_single_image(image_index: int, assigned_scene: Tuple[str, int]) -> str:
             """
             Generate a single image using OpenRouter Nano Banana 2 with dual-reference workflow.
 
             NEW SCENE-BASED WORKFLOW:
-            1. Get next scene image from image sets (least-used globally)
+            1. Use pre-assigned scene image (no race condition)
             2. Generate image using dual-reference: scene + base face
             3. Mark scene as used for this task
             4. Apply post-processing
@@ -919,6 +934,7 @@ async def process_persona_images(
 
             Args:
                 image_index: Image index (0-indexed)
+                assigned_scene: Pre-assigned (scene_url, dataset_image_id) tuple
 
             Returns:
                 S3 image URL
@@ -926,9 +942,9 @@ async def process_persona_images(
             logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Starting scene-based generation...")
 
             try:
-                # Get next scene image (least-used globally, not used in this task yet)
-                scene_url, dataset_image_id = get_next_scene_image(task.image_set_ids, task_db_id)
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Selected scene image ID {dataset_image_id}")
+                # Use pre-assigned scene (no race condition)
+                scene_url, dataset_image_id = assigned_scene
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Using pre-assigned scene image ID {dataset_image_id}")
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Scene URL: {scene_url[:80]}...")
 
                 # Generate image using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview)
@@ -949,9 +965,9 @@ async def process_persona_images(
 
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Image generated ({len(image_bytes)} bytes)")
 
-                # Mark this scene image as used
-                mark_image_used(dataset_image_id, task_db_id)
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Marked scene {dataset_image_id} as used")
+                # Mark this scene image as used by this persona
+                mark_image_used(dataset_image_id, task_db_id, result.id)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Marked scene {dataset_image_id} as used by persona {result.id}")
 
                 # Apply post-processing if enabled
                 processed_bytes = image_bytes
@@ -998,9 +1014,9 @@ async def process_persona_images(
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
                 raise Exception(error_msg)
 
-        # Generate all images in parallel
+        # Generate all images in parallel with pre-assigned scenes
         image_tasks = [
-            generate_single_image(i)
+            generate_single_image(i, assigned_scenes[i])
             for i in range(images_per_persona)
         ]
 

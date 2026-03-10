@@ -113,47 +113,167 @@ def get_next_scene_image(image_set_ids: List[int], task_id: int) -> Tuple[str, i
         raise
 
 
-def mark_image_used(dataset_image_id: int, task_id: int) -> None:
+def mark_image_used(dataset_image_id: int, task_id: int, persona_result_id: int) -> None:
     """
-    Record that an image was used in a task.
+    Record that an image was used by a specific persona in a task.
 
     This function creates a usage record in the dataset_image_usage table,
-    which tracks when each image is used in a generation task. This enables:
+    which tracks when each image is used by each persona. This enables:
     - Global usage counting across all tasks
-    - Task-level deduplication to avoid repetition
+    - Persona-level deduplication to avoid repetition within the same persona
+    - Allows image reuse across different personas in the same task
     - Analytics on image utilization
 
     Args:
         dataset_image_id: The dataset image ID (primary key from dataset_images table)
         task_id: The generation task ID (primary key from generation_tasks table)
+        persona_result_id: The GenerationResult ID (persona) using this image
 
     Raises:
-        ValueError: If dataset_image_id or task_id are invalid
+        ValueError: If dataset_image_id, task_id, or persona_result_id are invalid
 
     Example:
-        >>> mark_image_used(123, 42)
-        # Creates usage record for image 123 in task 42
+        >>> mark_image_used(123, 42, 101)
+        # Creates usage record for image 123 used by persona 101 in task 42
     """
     try:
         # Create usage record
         usage_record = DatasetImageUsage(
             dataset_image_id=dataset_image_id,
-            task_id=task_id
+            task_id=task_id,
+            persona_result_id=persona_result_id
         )
 
         db.session.add(usage_record)
         db.session.commit()
 
-        logger.info(f"Marked image {dataset_image_id} as used in task {task_id}")
+        logger.info(f"Marked image {dataset_image_id} as used by persona {persona_result_id} in task {task_id}")
 
     except IntegrityError as e:
-        # Handle duplicate gracefully (UNIQUE constraint on dataset_image_id + task_id)
+        # Handle duplicate gracefully (UNIQUE constraint on dataset_image_id + task_id + persona_result_id)
         db.session.rollback()
-        logger.warning(f"Image {dataset_image_id} already marked as used in task {task_id} (duplicate ignored)")
+        logger.warning(f"Image {dataset_image_id} already marked as used by persona {persona_result_id} in task {task_id} (duplicate ignored)")
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error marking image {dataset_image_id} as used in task {task_id}: {str(e)}")
+        logger.error(f"Error marking image {dataset_image_id} as used by persona {persona_result_id} in task {task_id}: {str(e)}")
+        raise
+
+
+def assign_scene_images_for_persona(image_set_ids: List[int], task_id: int, persona_result_id: int, count: int) -> List[Tuple[str, int]]:
+    """
+    Pre-assign multiple scene images for a persona, ensuring no duplicates.
+
+    This function selects {count} images with these guarantees:
+    1. Prioritizes globally least-used images
+    2. Excludes images already used by THIS SPECIFIC PERSONA (not entire task)
+    3. NO duplicates in the returned list
+    4. Automatically cycles when all images exhausted
+    5. Allows image reuse across different personas in the same task
+
+    Args:
+        image_set_ids: List of image dataset IDs to select from
+        task_id: The generation task ID
+        persona_result_id: The GenerationResult ID (persona) to track usage per-persona
+        count: Number of images to assign
+
+    Returns:
+        List of (image_url, dataset_image_id) tuples
+
+    Raises:
+        ValueError: If no images available in the specified image sets
+
+    Example:
+        >>> assigned = assign_scene_images_for_persona([1, 2, 3], 42, 101, 4)
+        >>> print(f"Pre-assigned {len(assigned)} scene images")
+    """
+    try:
+        logger.info(f"Pre-assigning {count} scene images for task {task_id} persona {persona_result_id} from image sets {image_set_ids}")
+
+        # First, try to get unused images (NOT yet used by THIS SPECIFIC PERSONA)
+        # Ordered by global usage count (least used first), then random
+        unused_images = db.session.query(
+            DatasetImage.id,
+            DatasetImage.image_url,
+            func.count(DatasetImageUsage.id).label('usage_count')
+        ).join(
+            ImageDataset, DatasetImage.dataset_id == ImageDataset.id
+        ).outerjoin(
+            DatasetImageUsage, DatasetImage.id == DatasetImageUsage.dataset_image_id
+        ).filter(
+            ImageDataset.id.in_(image_set_ids)
+        ).filter(
+            ~DatasetImage.id.in_(
+                db.session.query(DatasetImageUsage.dataset_image_id).filter(
+                    DatasetImageUsage.task_id == task_id,
+                    DatasetImageUsage.persona_result_id == persona_result_id
+                )
+            )
+        ).group_by(
+            DatasetImage.id,
+            DatasetImage.image_url
+        ).order_by(
+            func.count(DatasetImageUsage.id).asc(),
+            func.random()
+        ).limit(count).all()
+
+        # Check if we got enough images
+        if len(unused_images) >= count:
+            result = [(img.image_url, img.id) for img in unused_images]
+            logger.info(f"Pre-assigned {len(result)} unused images for task {task_id} persona {persona_result_id} (global usage: {unused_images[0].usage_count} to {unused_images[-1].usage_count})")
+            return result
+
+        # If we didn't get enough unused images, we need to cycle
+        # Get remaining count from ALL images (including already used by this persona)
+        remaining_count = count - len(unused_images)
+        logger.info(f"Only {len(unused_images)} unused images available for persona {persona_result_id}, need {remaining_count} more. Cycling...")
+
+        # Query ALL images, prioritizing globally least-used
+        # Exclude the images we already selected above to avoid duplicates
+        already_selected_ids = [img.id for img in unused_images]
+
+        additional_images = db.session.query(
+            DatasetImage.id,
+            DatasetImage.image_url,
+            func.count(DatasetImageUsage.id).label('usage_count')
+        ).join(
+            ImageDataset, DatasetImage.dataset_id == ImageDataset.id
+        ).outerjoin(
+            DatasetImageUsage, DatasetImage.id == DatasetImageUsage.dataset_image_id
+        ).filter(
+            ImageDataset.id.in_(image_set_ids)
+        ).filter(
+            ~DatasetImage.id.in_(already_selected_ids)  # Exclude already selected to prevent duplicates
+        ).group_by(
+            DatasetImage.id,
+            DatasetImage.image_url
+        ).order_by(
+            func.count(DatasetImageUsage.id).asc(),
+            func.random()
+        ).limit(remaining_count).all()
+
+        if not additional_images:
+            error_msg = f"No additional images available in image sets {image_set_ids} after selecting {len(unused_images)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Combine both sets
+        all_selected = list(unused_images) + list(additional_images)
+        result = [(img.image_url, img.id) for img in all_selected]
+
+        logger.info(f"Pre-assigned {len(result)} images for task {task_id} persona {persona_result_id} ({len(unused_images)} unused + {len(additional_images)} cycled)")
+
+        # Sanity check: ensure no duplicates
+        image_ids = [img_id for _, img_id in result]
+        if len(image_ids) != len(set(image_ids)):
+            error_msg = f"CRITICAL: Duplicate image IDs detected in pre-assignment: {image_ids}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Error pre-assigning scene images for task {task_id}: {str(e)}")
         raise
 
 
