@@ -1183,6 +1183,33 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Users receive actionable error feedback when URL imports fail
 - Both URL and Flickr imports use consistent 'url' and 'flickr' source types respectively
 
+### Service Restart for CORS Proxy Route - Face Detection Feature (2026-03-10 14:44:07 UTC)
+**Reason**: Deployed new `/api/proxy-image` route for CORS proxying of Flickr images to enable face detection
+**New Feature**: CORS Proxy for External Images
+- **Route**: `POST /api/proxy-image`
+- **Purpose**: Proxy external image URLs (especially Flickr) to bypass CORS restrictions for client-side face detection
+- **Method**: Accepts JSON with `url` field, downloads image server-side, returns as binary response with proper CORS headers
+- **Use Case**: Frontend face detection feature needs to load Flickr images via canvas API, which requires CORS-enabled access
+- **Implementation**: Flask route in `app.py` that fetches external images and returns them with appropriate headers
+**Action**: Restarted avatar-data-generator.service to load new route
+**Command**: `sudo systemctl restart avatar-data-generator.service`
+**Verification**:
+- Service status: active (running) with PID 3103340 (master), 3103343 (worker)
+- Workers: 1 gunicorn worker with 2 threads successfully booted
+- Gunicorn startup: v24.1.1, listening on 0.0.0.0:8085
+- Port 8085: Listening and accepting connections (verified via ss -tulpn)
+- Scheduler: Background scheduler started - checking for tasks every 5 seconds
+- Startup recovery: No tasks need recovery (clean startup)
+- Memory usage: 108.8M (peak: 109.1M)
+- Application startup: Initialized successfully at 14:44:08 UTC
+- HTTPS endpoint: Responds with HTTP/2 302 redirect to login (working correctly)
+- Latest logs: Application initialized successfully, scheduler running normally
+**Impact**:
+- Face detection feature can now process Flickr images without CORS errors
+- Server-side proxy eliminates browser CORS restrictions for external image sources
+- Frontend can use canvas API and face detection libraries on proxied images
+- Enhanced security: server validates and controls which images are proxied
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)

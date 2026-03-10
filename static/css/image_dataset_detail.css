@@ -694,6 +694,7 @@
 .results-controls {
   display: flex;
   gap: var(--spacing-2);
+  flex-wrap: wrap;
 }
 
 .btn-sm {
@@ -745,6 +746,85 @@
   width: 100%;
   cursor: pointer;
   transition: all var(--transition-base);
+}
+
+/* Face detection badge - positioned at top right */
+.face-count-badge {
+  position: absolute;
+  top: var(--spacing-2);
+  right: var(--spacing-2);
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--spacing-1);
+  border-radius: 0; /* Sharp corners per brandbook */
+  background-color: rgba(0, 217, 255, 0.95);
+  color: var(--color-bg-primary);
+  font-size: var(--font-size-tiny);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-family-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  box-shadow: 0 0 10px rgba(0, 217, 255, 0.6), 0 0 20px rgba(0, 217, 255, 0.3);
+  border: 2px solid var(--color-bg-primary);
+  cursor: help;
+  transition: all var(--transition-base);
+}
+
+/* Tooltip styling for detection badge */
+.face-count-badge[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + var(--spacing-2));
+  right: 0;
+  padding: var(--spacing-2) var(--spacing-3);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  border: 1px solid var(--color-accent-cyan);
+  border-radius: 0; /* Sharp corners per brandbook */
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.4), 0 0 30px rgba(0, 217, 255, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-base);
+  z-index: 10;
+}
+
+.face-count-badge[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+.face-count-badge:hover {
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.8), 0 0 30px rgba(0, 217, 255, 0.5);
+  transform: scale(1.05);
+}
+
+/* Face detection status indicator */
+.face-detection-status {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-accent-cyan);
+  color: var(--color-accent-cyan);
+  font-size: var(--font-size-small);
+  font-family: var(--font-family-mono);
+}
+
+.face-detection-status i {
+  animation: spin 1s linear infinite;
+  width: 16px;
+  height: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .result-image-wrapper:hover {

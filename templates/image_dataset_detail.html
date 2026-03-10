@@ -279,7 +279,15 @@
                     <div class="results-controls">
                         <button class="btn btn-ghost btn-sm" id="selectAllBtn">Select All</button>
                         <button class="btn btn-ghost btn-sm" id="selectNoneBtn">Deselect All</button>
+                        <button class="btn btn-ghost btn-sm" id="selectAllWithFacesBtn">Select All with People</button>
+                        <button class="btn btn-ghost btn-sm" id="selectNoneWithFacesBtn">Select None with People</button>
                     </div>
+                </div>
+
+                <!-- Face Detection Status -->
+                <div id="faceDetectionStatus" class="face-detection-status" style="display: none;">
+                    <i data-feather="loader"></i>
+                    <span id="faceDetectionStatusText">Detecting faces...</span>
                 </div>
 
                 <div class="results-grid" id="flickrResultsGrid">
@@ -443,5 +451,10 @@ https://example.com/image3.jpg"
 {% endblock %}
 
 {% block extra_js %}
+<!-- MediaPipe Face Detection -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
+<!-- TensorFlow.js and COCO-SSD for person detection -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 <script src="/static/js/image_dataset_detail.js"></script>
 {% endblock %}

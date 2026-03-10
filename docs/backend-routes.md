@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-10 (Updated /generate endpoint with image-set selection validation)*
+> *Last Updated: 2026-03-10 (Added /api/proxy-image CORS proxy endpoint)*
 
 ## Application Information
 
@@ -1351,6 +1351,98 @@ Lists datasets in three categories:
 - Requires edit access to dataset
 - Uses flickr_service for search
 - Rate-limited via Flickr API
+
+---
+
+### GET `/api/proxy-image`
+**Description**: CORS proxy for external images (Flickr thumbnails) to enable face detection
+**Authentication**: Required
+**Content-Type**: Image binary (JPEG, PNG, etc.)
+
+**Query Parameters**:
+- `url`: String (required) - URL-encoded image URL to proxy
+
+**Purpose**:
+Proxies image requests from allowed domains to enable canvas/WebGL access for MediaPipe face detection. Flickr images served from external domains (staticflickr.com) trigger cross-origin restrictions that prevent browser APIs from accessing pixel data. This proxy fetches the image server-side and serves it with proper CORS headers.
+
+**Allowed Domains**:
+- flickr.com (including subdomains)
+- staticflickr.com (including subdomains)
+
+**Success Response (200)**:
+- Content-Type: Matches original image (e.g., image/jpeg, image/png)
+- Headers:
+  - `Access-Control-Allow-Origin: *` - Allows canvas/WebGL access
+  - `Access-Control-Allow-Methods: GET`
+  - `Access-Control-Allow-Headers: Content-Type`
+  - `Cache-Control: public, max-age=3600` - 1 hour browser cache
+- Body: Image binary data
+
+**Error Responses**:
+- **400**: Missing or invalid URL parameter
+  ```json
+  {
+    "success": false,
+    "message": "Missing url parameter"
+  }
+  ```
+- **400**: Domain not allowed
+  ```json
+  {
+    "success": false,
+    "message": "Domain not allowed: example.com"
+  }
+  ```
+- **404**: Image fetch failed
+  ```json
+  {
+    "success": false,
+    "message": "Failed to fetch image"
+  }
+  ```
+- **500**: Server error
+  ```json
+  {
+    "success": false,
+    "message": "Internal server error"
+  }
+  ```
+
+**Security**:
+- Requires authentication (@login_required)
+- Whitelist of allowed domains (Flickr only)
+- URL validation and domain checking
+- 10-second timeout for external requests
+- Prevents SSRF attacks via domain whitelist
+
+**Usage Example**:
+```javascript
+// Frontend JavaScript
+const flickrUrl = 'https://live.staticflickr.com/65535/123456789_abc.jpg';
+const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(flickrUrl)}`;
+
+// Use proxy URL for face detection
+const img = new Image();
+img.crossOrigin = 'anonymous';  // Not needed with proxy, but safe to include
+img.src = proxyUrl;
+```
+
+**Implementation Notes**:
+- Uses `urllib.parse.unquote()` to decode potentially double-encoded URLs
+- Supports subdomain wildcards (*.flickr.com, *.staticflickr.com)
+- Streams image response with original Content-Type
+- Logs denied domain requests as warnings
+- Logs fetch errors for debugging
+
+**Performance**:
+- 1-hour browser cache reduces server load
+- 10-second timeout prevents hung requests
+- Streaming response (no in-memory buffering)
+
+**Common Issues**:
+- **CORS errors on thumbnails**: Use this proxy to resolve
+- **MediaPipe SecurityError**: Proxy fixes cross-origin data access
+- **403 Forbidden**: External domain may block server IPs (rare)
 
 ---
 

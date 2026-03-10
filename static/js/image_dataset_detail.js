@@ -28,6 +28,17 @@
       totalPages: 1,
       hasMore: false,
       isLoadingMore: false
+    },
+    faceDetection: {
+      detector: null,
+      isInitialized: false,
+      isProcessing: false,
+      processedCount: 0,
+      totalCount: 0
+    },
+    personDetection: {
+      model: null,
+      isInitialized: false
     }
   };
 
@@ -130,6 +141,8 @@
     // Select all/none buttons
     const selectAllBtn = document.getElementById('selectAllBtn');
     const selectNoneBtn = document.getElementById('selectNoneBtn');
+    const selectAllWithFacesBtn = document.getElementById('selectAllWithFacesBtn');
+    const selectNoneWithFacesBtn = document.getElementById('selectNoneWithFacesBtn');
 
     if (selectAllBtn) {
       selectAllBtn.addEventListener('click', selectAllFlickrResults);
@@ -137,6 +150,14 @@
 
     if (selectNoneBtn) {
       selectNoneBtn.addEventListener('click', deselectAllFlickrResults);
+    }
+
+    if (selectAllWithFacesBtn) {
+      selectAllWithFacesBtn.addEventListener('click', selectAllFlickrResultsWithFaces);
+    }
+
+    if (selectNoneWithFacesBtn) {
+      selectNoneWithFacesBtn.addEventListener('click', deselectAllFlickrResultsWithFaces);
     }
 
     // Import selected button
@@ -307,6 +328,9 @@
     results.style.display = 'block';
     updateSelectedCount();
     feather.replace();
+
+    // Trigger face detection after displaying results
+    detectFacesInFlickrResults();
   }
 
   function appendFlickrResults(photos) {
@@ -321,6 +345,9 @@
 
     updateSelectedCount();
     feather.replace();
+
+    // Trigger face detection for newly appended results
+    detectFacesInFlickrResults();
   }
 
   function createFlickrResultItem(photo, index, container) {
@@ -408,6 +435,340 @@
     });
 
     container.appendChild(resultItem);
+  }
+
+  // ========================================
+  // FACE DETECTION FUNCTIONALITY
+  // ========================================
+
+  /**
+   * Initialize MediaPipe Face Detection
+   * Lazy initialization - only loads when first needed
+   */
+  async function initializeFaceDetection() {
+    if (state.faceDetection.isInitialized) return true;
+
+    try {
+      // Check if MediaPipe FaceDetection is available
+      if (typeof FaceDetection === 'undefined') {
+        console.error('MediaPipe Face Detection library not loaded');
+        return false;
+      }
+
+      // Create face detector with short-range model (better for close-up photos)
+      state.faceDetection.detector = new FaceDetection({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+        }
+      });
+
+      // Configure detection options
+      state.faceDetection.detector.setOptions({
+        model: 'short', // Use short-range model for better accuracy
+        minDetectionConfidence: 0.3 // Lower threshold to detect more faces
+      });
+
+      // Initialize the detector
+      await state.faceDetection.detector.initialize();
+      state.faceDetection.isInitialized = true;
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize face detection:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Initialize TensorFlow.js COCO-SSD model for person detection
+   * Lazy initialization - only loads when first needed
+   */
+  async function initializePersonDetection() {
+    if (state.personDetection.isInitialized) return true;
+
+    try {
+      // Check if TensorFlow.js and COCO-SSD are loaded
+      if (typeof cocoSsd === 'undefined') {
+        console.error('COCO-SSD library not loaded');
+        return false;
+      }
+
+      // Load the COCO-SSD model
+      state.personDetection.model = await cocoSsd.load();
+      state.personDetection.isInitialized = true;
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize person detection:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Detect people in a single image using COCO-SSD
+   * Returns the number of people detected
+   * Uses proxy endpoint to avoid CORS issues with Flickr images
+   */
+  async function detectPeopleInImage(imageUrl) {
+    if (!state.personDetection.isInitialized) {
+      await initializePersonDetection();
+    }
+
+    if (!state.personDetection.model) return 0;
+
+    try {
+      // Create proxied URL to avoid CORS issues
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+
+      // Create new image element with proxy URL
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = proxyUrl;
+
+      // Wait for image to load
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('Failed to load image'));
+      });
+
+      // Detect objects in the image
+      const predictions = await state.personDetection.model.detect(img);
+
+      // Count only 'person' class detections
+      const personCount = predictions.filter(p => p.class === 'person').length;
+      return personCount;
+    } catch (error) {
+      console.error('Error detecting people:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Detect faces in a single image
+   * Returns the number of faces detected
+   * Uses proxy endpoint to avoid CORS issues with Flickr images
+   */
+  async function detectFacesInImage(imageUrl) {
+    if (!state.faceDetection.isInitialized) {
+      await initializeFaceDetection();
+    }
+
+    if (!state.faceDetection.detector) return 0;
+
+    try {
+      // Create proxied URL to avoid CORS issues
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+
+      // Create new image element with proxy URL
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = proxyUrl;
+
+      // Wait for image to load
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('Failed to load image'));
+      });
+
+      // Detect faces in the loaded image using callback-based API
+      return new Promise((resolve) => {
+        state.faceDetection.detector.onResults((results) => {
+          const faceCount = results.detections ? results.detections.length : 0;
+          resolve(faceCount);
+        });
+        state.faceDetection.detector.send({ image: img });
+      });
+    } catch (error) {
+      console.error('Error detecting faces:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Process face detection for all Flickr results in batches
+   */
+  async function detectFacesInFlickrResults() {
+    // Prevent multiple simultaneous detection runs
+    if (state.faceDetection.isProcessing) return;
+
+    state.faceDetection.isProcessing = true;
+
+    // Show detection status
+    const statusElement = document.getElementById('faceDetectionStatus');
+    const statusText = document.getElementById('faceDetectionStatusText');
+    if (statusElement) {
+      statusElement.style.display = 'flex';
+      feather.replace();
+    }
+
+    try {
+      // Initialize both face and person detection in parallel
+      const [faceInitialized, personInitialized] = await Promise.all([
+        initializeFaceDetection(),
+        initializePersonDetection()
+      ]);
+
+      if (!faceInitialized && !personInitialized) {
+        if (statusElement) statusElement.style.display = 'none';
+        state.faceDetection.isProcessing = false;
+        return;
+      }
+
+      // Get all result items that don't have face/person count yet
+      const resultsGrid = document.getElementById('flickrResultsGrid');
+      if (!resultsGrid) {
+        state.faceDetection.isProcessing = false;
+        return;
+      }
+
+      const resultItems = Array.from(resultsGrid.querySelectorAll('.result-item'));
+      const itemsToProcess = resultItems.filter(item => {
+        const photoData = JSON.parse(item.dataset.photo);
+        return photoData.faceCount === undefined || photoData.personCount === undefined;
+      });
+
+      if (itemsToProcess.length === 0) {
+        if (statusElement) statusElement.style.display = 'none';
+        state.faceDetection.isProcessing = false;
+        return;
+      }
+
+      state.faceDetection.totalCount = itemsToProcess.length;
+      state.faceDetection.processedCount = 0;
+
+      // Process images in batches of 8-10 for performance
+      const BATCH_SIZE = 10;
+
+      for (let i = 0; i < itemsToProcess.length; i += BATCH_SIZE) {
+        const batch = itemsToProcess.slice(i, i + BATCH_SIZE);
+
+        // Process batch in parallel
+        await Promise.all(batch.map(async (item) => {
+          const photoData = JSON.parse(item.dataset.photo);
+
+          // Detect both faces and people in parallel
+          const [faceCount, personCount] = await Promise.all([
+            faceInitialized ? detectFacesInImage(photoData.url) : Promise.resolve(0),
+            personInitialized ? detectPeopleInImage(photoData.url) : Promise.resolve(0)
+          ]);
+
+          // Update photo data with both counts
+          photoData.faceCount = faceCount;
+          photoData.personCount = personCount;
+          item.dataset.photo = JSON.stringify(photoData);
+
+          // Update the photo in state
+          const photoInState = state.flickrSearch.results.find(p => p.id === photoData.id);
+          if (photoInState) {
+            photoInState.faceCount = faceCount;
+            photoInState.personCount = personCount;
+          }
+
+          // Add badge if faces or people detected
+          const totalDetections = faceCount + personCount;
+          if (totalDetections > 0) {
+            addDetectionBadge(item, faceCount, personCount);
+          }
+
+          // Update progress
+          state.faceDetection.processedCount++;
+          if (statusText) {
+            statusText.textContent = `Detecting people in ${state.faceDetection.processedCount}/${state.faceDetection.totalCount} images...`;
+          }
+        }));
+      }
+
+      // Hide status after completion
+      if (statusElement) {
+        statusElement.style.display = 'none';
+      }
+
+    } catch (error) {
+      console.error('Error in face detection process:', error);
+      if (statusElement) statusElement.style.display = 'none';
+    } finally {
+      state.faceDetection.isProcessing = false;
+    }
+  }
+
+  /**
+   * Add detection badge to result item showing faces and people count
+   */
+  function addDetectionBadge(resultItem, faceCount, personCount) {
+    const imageWrapper = resultItem.querySelector('.result-image-wrapper');
+    if (!imageWrapper) return;
+
+    // Check if badge already exists
+    if (imageWrapper.querySelector('.face-count-badge')) return;
+
+    const totalDetections = faceCount + personCount;
+
+    // Build tooltip breakdown
+    const tooltipParts = [];
+    if (faceCount > 0) {
+      tooltipParts.push(`${faceCount} face${faceCount !== 1 ? 's' : ''}`);
+    }
+    if (personCount > 0) {
+      tooltipParts.push(`${personCount} person${personCount !== 1 ? 's' : ''}`);
+    }
+    const tooltipText = tooltipParts.join(', ');
+
+    const badge = document.createElement('div');
+    badge.className = 'face-count-badge';
+    badge.textContent = totalDetections;
+    badge.setAttribute('data-tooltip', tooltipText);
+
+    imageWrapper.appendChild(badge);
+  }
+
+  /**
+   * Select all Flickr results that have people (faces or person detections)
+   */
+  function selectAllFlickrResultsWithFaces() {
+    state.flickrSearch.results.forEach((photo) => {
+      const hasFaces = photo.faceCount && photo.faceCount > 0;
+      const hasPeople = photo.personCount && photo.personCount > 0;
+
+      if (hasFaces || hasPeople) {
+        state.selectedFlickrResults.add(photo.id);
+
+        // Update UI
+        const checkbox = document.querySelector(`input[data-photo-id="${photo.id}"]`);
+        if (checkbox) {
+          checkbox.checked = true;
+          const resultItem = checkbox.closest('.result-item');
+          if (resultItem) {
+            resultItem.classList.add('selected');
+          }
+        }
+      }
+    });
+
+    updateSelectedCount();
+  }
+
+  /**
+   * Deselect all Flickr results that have people (faces or person detections)
+   */
+  function deselectAllFlickrResultsWithFaces() {
+    state.flickrSearch.results.forEach((photo) => {
+      const hasFaces = photo.faceCount && photo.faceCount > 0;
+      const hasPeople = photo.personCount && photo.personCount > 0;
+
+      if (hasFaces || hasPeople) {
+        state.selectedFlickrResults.delete(photo.id);
+
+        // Update UI
+        const checkbox = document.querySelector(`input[data-photo-id="${photo.id}"]`);
+        if (checkbox) {
+          checkbox.checked = false;
+          const resultItem = checkbox.closest('.result-item');
+          if (resultItem) {
+            resultItem.classList.remove('selected');
+          }
+        }
+      }
+    });
+
+    updateSelectedCount();
   }
 
   async function loadMoreFlickrResults() {

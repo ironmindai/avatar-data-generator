@@ -24,6 +24,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse, unquote
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func
 import httpx
@@ -2683,6 +2684,94 @@ def create_app():
             return jsonify({
                 'success': False,
                 'message': f'Flickr search failed: {str(e)}'
+            }), 500
+
+    @app.route('/api/proxy-image', methods=['GET'])
+    @login_required
+    def proxy_image():
+        """
+        CORS proxy for external images (Flickr thumbnails).
+
+        Proxies image requests from allowed domains to enable canvas/WebGL access
+        for face detection. Adds proper CORS headers and caching.
+
+        Query Parameters:
+            url: The URL-encoded image URL to fetch
+
+        Returns:
+            Image bytes with CORS headers, or error response
+
+        Security:
+            - Only allows Flickr domains (flickr.com, staticflickr.com)
+            - Requires authentication
+            - Returns 400 for invalid/disallowed domains
+            - Returns 404 if image fetch fails
+        """
+        try:
+            # Get and decode the URL parameter
+            image_url = request.args.get('url')
+            if not image_url:
+                return jsonify({
+                    'success': False,
+                    'message': 'Missing url parameter'
+                }), 400
+
+            # URL might be double-encoded, decode it
+            image_url = unquote(image_url)
+
+            # Parse URL and validate domain
+            parsed_url = urlparse(image_url)
+            allowed_domains = ['flickr.com', 'staticflickr.com']
+
+            # Check if domain ends with any allowed domain (supports subdomains)
+            is_allowed = any(
+                parsed_url.netloc == domain or parsed_url.netloc.endswith('.' + domain)
+                for domain in allowed_domains
+            )
+
+            if not is_allowed:
+                logging.warning(f"Proxy request denied for domain: {parsed_url.netloc}")
+                return jsonify({
+                    'success': False,
+                    'message': f'Domain not allowed: {parsed_url.netloc}'
+                }), 400
+
+            # Fetch the image
+            logging.debug(f"Proxying image from: {image_url}")
+            response = requests.get(image_url, timeout=10, stream=True)
+            response.raise_for_status()
+
+            # Get content type from original response
+            content_type = response.headers.get('Content-Type', 'image/jpeg')
+
+            # Create response with image bytes
+            img_response = Response(
+                response.content,
+                mimetype=content_type
+            )
+
+            # Add CORS headers to allow canvas/WebGL access
+            img_response.headers['Access-Control-Allow-Origin'] = '*'
+            img_response.headers['Access-Control-Allow-Methods'] = 'GET'
+            img_response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
+            # Add caching headers (1 hour cache)
+            img_response.headers['Cache-Control'] = 'public, max-age=3600'
+
+            return img_response
+
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Failed to fetch proxied image: {e}")
+            return jsonify({
+                'success': False,
+                'message': 'Failed to fetch image'
+            }), 404
+
+        except Exception as e:
+            logging.error(f"Error in image proxy: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': 'Internal server error'
             }), 500
 
     @app.route('/api/image-datasets/<dataset_id>/import-flickr', methods=['POST'])
