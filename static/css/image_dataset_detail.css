@@ -266,6 +266,13 @@
   border-radius: var(--radius-none);
 }
 
+.selection-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-left: auto;
+}
+
 /* ========================================
    IMAGES GRID
    ======================================== */
@@ -290,6 +297,12 @@
   box-shadow: 0 0 20px rgba(0, 217, 255, 0.15);
 }
 
+.image-card.selected {
+  border-color: var(--color-accent-cyan);
+  border-width: 2px;
+  box-shadow: 0 0 30px rgba(0, 217, 255, 0.4);
+}
+
 .image-card.hidden {
   display: none;
 }
@@ -299,6 +312,7 @@
   aspect-ratio: 1 / 1;
   background-color: var(--color-bg-secondary);
   overflow: hidden;
+  cursor: pointer;
 }
 
 .image-thumbnail {
@@ -465,6 +479,165 @@
 
 .usage-high:hover {
   box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);
+}
+
+/* ========================================
+   IMAGE SELECTION CHECKBOX
+   ======================================== */
+
+.image-checkbox-wrapper {
+  position: absolute;
+  top: var(--spacing-2);
+  left: var(--spacing-2);
+  z-index: 10;
+  width: 28px;
+  height: 28px;
+}
+
+.image-checkbox {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  z-index: 2;
+  margin: 0;
+}
+
+.checkbox-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  background-color: rgba(15, 15, 15, 0.6);
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-none);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: all var(--transition-base);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.checkbox-indicator svg {
+  width: 16px;
+  height: 16px;
+  color: var(--color-accent-cyan);
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all var(--transition-base);
+}
+
+/* Hover states */
+.image-checkbox-wrapper:hover .checkbox-indicator {
+  opacity: 1;
+  background-color: rgba(15, 15, 15, 0.8);
+  border-color: var(--color-accent-cyan);
+}
+
+/* Checked state */
+.image-checkbox:checked + .checkbox-indicator {
+  opacity: 1;
+  background-color: var(--color-accent-cyan);
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 20px rgba(0, 217, 255, 0.5);
+}
+
+.image-checkbox:checked + .checkbox-indicator svg {
+  opacity: 1;
+  transform: scale(1);
+  color: var(--color-bg-secondary);
+}
+
+/* ========================================
+   BULK DELETE TOOLBAR
+   ======================================== */
+
+.bulk-delete-toolbar {
+  position: fixed;
+  bottom: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  opacity: 0;
+  transition: all 0.3s ease-out;
+  pointer-events: none;
+}
+
+.bulk-delete-toolbar.active {
+  bottom: var(--spacing-8);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.bulk-delete-content {
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-accent-cyan);
+  border-radius: var(--radius-none);
+  padding: var(--spacing-4) var(--spacing-6);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-6);
+  box-shadow: 0 0 40px rgba(0, 217, 255, 0.3), 0 8px 24px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+}
+
+.bulk-delete-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+}
+
+.bulk-delete-info svg {
+  width: 20px;
+  height: 20px;
+  color: var(--color-accent-cyan);
+}
+
+.selected-count-text {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.btn-danger {
+  background-color: var(--color-error);
+  color: var(--color-text-primary);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-none);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: 0 0 20px rgba(255, 68, 102, 0.3);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.btn-danger:hover {
+  background-color: #cc3355;
+  box-shadow: 0 0 30px rgba(255, 68, 102, 0.6), 0 0 60px rgba(255, 68, 102, 0.3);
+  transform: translateY(-1px);
+}
+
+.btn-danger:active {
+  transform: translateY(0);
+  box-shadow: 0 0 15px rgba(255, 68, 102, 0.4);
+}
+
+.btn-danger svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ========================================
@@ -1243,6 +1416,25 @@
 
   .filter-btn {
     flex: 1;
+  }
+
+  .selection-controls {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .selection-controls .btn {
+    flex: 1;
+  }
+
+  .bulk-delete-content {
+    flex-direction: column;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3) var(--spacing-4);
+  }
+
+  .bulk-delete-toolbar.active {
+    bottom: var(--spacing-4);
   }
 
   .content-wrapper {

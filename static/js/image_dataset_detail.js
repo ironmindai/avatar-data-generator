@@ -18,6 +18,7 @@
     currentPage: 1,
     totalPages: 1,
     currentFilter: 'all',
+    selectedImages: new Set(),
     selectedFlickrResults: new Set(),
     flickrSearch: {
       keyword: '',
@@ -69,7 +70,14 @@
     flickrModal: document.getElementById('flickrModal'),
     urlModal: document.getElementById('urlModal'),
     shareModal: document.getElementById('shareModal'),
-    imageModal: document.getElementById('imageModal')
+    imageModal: document.getElementById('imageModal'),
+
+    // Bulk selection
+    selectAllImagesBtn: document.getElementById('selectAllImagesBtn'),
+    deselectAllImagesBtn: document.getElementById('deselectAllImagesBtn'),
+    bulkDeleteToolbar: document.getElementById('bulkDeleteToolbar'),
+    bulkSelectedCount: document.getElementById('bulkSelectedCount'),
+    bulkDeleteBtn: document.getElementById('bulkDeleteBtn')
   };
 
   // ========================================
@@ -78,6 +86,7 @@
 
   document.addEventListener('DOMContentLoaded', function() {
     loadInitialState();
+    initializeImageSelection();
     initializeFlickrModal();
     initializeUrlModal();
     initializeShareModal();
@@ -1405,6 +1414,210 @@
       }
     });
   }
+
+  // ========================================
+  // IMAGE SELECTION & BULK DELETE
+  // ========================================
+
+  function initializeImageSelection() {
+    if (state.permissionLevel !== 'edit' && !state.isOwner) return;
+
+    // Select all / Deselect all buttons
+    if (elements.selectAllImagesBtn) {
+      elements.selectAllImagesBtn.addEventListener('click', selectAllImages);
+    }
+
+    if (elements.deselectAllImagesBtn) {
+      elements.deselectAllImagesBtn.addEventListener('click', deselectAllImages);
+    }
+
+    // Bulk delete button
+    if (elements.bulkDeleteBtn) {
+      elements.bulkDeleteBtn.addEventListener('click', handleBulkDelete);
+    }
+
+    // Image card click handlers
+    initializeImageCardSelectors();
+  }
+
+  function initializeImageCardSelectors() {
+    const imageCards = document.querySelectorAll('.image-card');
+
+    imageCards.forEach(card => {
+      const checkbox = card.querySelector('.image-checkbox');
+      const container = card.querySelector('.image-container');
+
+      if (!checkbox || !container) return;
+
+      // Checkbox change event
+      checkbox.addEventListener('change', function(e) {
+        e.stopPropagation();
+        handleImageSelection(card, checkbox.checked);
+      });
+
+      // Click on thumbnail to toggle (but not on action buttons)
+      container.addEventListener('click', function(e) {
+        // Ignore clicks on action buttons
+        if (e.target.closest('.image-action-btn')) {
+          return;
+        }
+
+        // Ignore clicks on checkbox itself (it has its own handler)
+        if (e.target.closest('.image-checkbox-wrapper')) {
+          return;
+        }
+
+        // Toggle checkbox
+        checkbox.checked = !checkbox.checked;
+        handleImageSelection(card, checkbox.checked);
+      });
+    });
+  }
+
+  function handleImageSelection(card, isSelected) {
+    const imageId = card.getAttribute('data-image-id');
+
+    if (isSelected) {
+      state.selectedImages.add(imageId);
+      card.classList.add('selected');
+    } else {
+      state.selectedImages.delete(imageId);
+      card.classList.remove('selected');
+    }
+
+    updateBulkDeleteToolbar();
+  }
+
+  function updateBulkDeleteToolbar() {
+    const count = state.selectedImages.size;
+
+    if (elements.bulkSelectedCount) {
+      elements.bulkSelectedCount.textContent = count;
+    }
+
+    if (elements.bulkDeleteToolbar) {
+      if (count > 0) {
+        elements.bulkDeleteToolbar.classList.add('active');
+      } else {
+        elements.bulkDeleteToolbar.classList.remove('active');
+      }
+    }
+  }
+
+  function selectAllImages() {
+    const imageCards = document.querySelectorAll('.image-card:not(.hidden)');
+
+    imageCards.forEach(card => {
+      const checkbox = card.querySelector('.image-checkbox');
+      if (checkbox) {
+        checkbox.checked = true;
+        const imageId = card.getAttribute('data-image-id');
+        state.selectedImages.add(imageId);
+        card.classList.add('selected');
+      }
+    });
+
+    updateBulkDeleteToolbar();
+  }
+
+  function deselectAllImages() {
+    const imageCards = document.querySelectorAll('.image-card');
+
+    imageCards.forEach(card => {
+      const checkbox = card.querySelector('.image-checkbox');
+      if (checkbox) {
+        checkbox.checked = false;
+        card.classList.remove('selected');
+      }
+    });
+
+    state.selectedImages.clear();
+    updateBulkDeleteToolbar();
+  }
+
+  async function handleBulkDelete() {
+    const count = state.selectedImages.size;
+
+    if (count === 0) {
+      showToast('No images selected', 'error');
+      return;
+    }
+
+    // Confirmation dialog
+    const confirmed = confirm(`Are you sure you want to delete ${count} selected image${count > 1 ? 's' : ''}? This action cannot be undone.`);
+
+    if (!confirmed) return;
+
+    // Disable button and show loading
+    if (elements.bulkDeleteBtn) {
+      elements.bulkDeleteBtn.disabled = true;
+      elements.bulkDeleteBtn.innerHTML = '<i data-feather="loader"></i> Deleting...';
+      feather.replace();
+    }
+
+    // Get CSRF token
+    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
+
+    // Convert Set to Array for iteration
+    const imageIds = Array.from(state.selectedImages);
+    let successCount = 0;
+    let errorCount = 0;
+
+    // Delete images one by one
+    for (const imageId of imageIds) {
+      try {
+        const response = await fetch(`/api/image-datasets/${state.datasetId}/images/${imageId}`, {
+          method: 'DELETE',
+          headers: {
+            'X-CSRFToken': csrfToken
+          }
+        });
+
+        if (response.ok) {
+          successCount++;
+          // Remove image card from DOM
+          const card = document.querySelector(`.image-card[data-image-id="${imageId}"]`);
+          if (card) {
+            card.remove();
+          }
+        } else {
+          errorCount++;
+        }
+      } catch (error) {
+        console.error('Error deleting image:', imageId, error);
+        errorCount++;
+      }
+    }
+
+    // Clear selection
+    state.selectedImages.clear();
+    updateBulkDeleteToolbar();
+
+    // Re-enable button
+    if (elements.bulkDeleteBtn) {
+      elements.bulkDeleteBtn.disabled = false;
+      elements.bulkDeleteBtn.innerHTML = '<i data-feather="trash-2"></i> Delete Selected';
+      feather.replace();
+    }
+
+    // Update counts
+    updateFilterCounts();
+    updateImageCount();
+
+    // Show result
+    if (errorCount === 0) {
+      showToast(`Successfully deleted ${successCount} image${successCount > 1 ? 's' : ''}`, 'success');
+    } else {
+      showToast(`Deleted ${successCount} image${successCount > 1 ? 's' : ''}, ${errorCount} failed`, 'warning');
+    }
+
+    // Re-initialize selectors for remaining images
+    initializeImageCardSelectors();
+  }
+
+  // ========================================
+  // FILTER MANAGEMENT
+  // ========================================
 
   function updateFilterCounts() {
     const imageCards = document.querySelectorAll('.image-card');

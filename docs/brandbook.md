@@ -287,6 +287,64 @@ Small inline hints that appear below input fields, often with icons.
 - **Hover:** Color `#00a8cc` (darker cyan)
 - **Transition:** `all 0.2s ease-out`
 
+### Checkboxes (Image Selection Pattern)
+
+Used for selecting images in grid layouts with elegant overlay indicators.
+
+#### Checkbox Wrapper (`.image-checkbox-wrapper`)
+- **Position:** Absolute, top-left corner of image container
+- **Top/Left:** `var(--spacing-2)` (8px from edges)
+- **Size:** `28px × 28px`
+- **Z-Index:** `10` (above image, below overlay)
+
+#### Hidden Checkbox Input (`.image-checkbox`)
+- **Opacity:** `0` (visually hidden)
+- **Position:** Absolute covering wrapper
+- **Cursor:** `pointer`
+- **Purpose:** Native checkbox for accessibility and state management
+
+#### Checkbox Indicator (`.checkbox-indicator`)
+- **Size:** `28px × 28px`
+- **Background (default):** `rgba(15, 15, 15, 0.6)` (semi-transparent dark)
+- **Border:** `2px solid #333333` (border color)
+- **Border Radius:** `0` - SHARP CORNERS
+- **Backdrop Filter:** `blur(4px)` (frosted glass effect)
+- **Opacity (default):** `0.6` (semi-transparent when not hovered)
+- **Opacity (hover):** `1` (fully visible on hover)
+- **Display:** Flex, centered content
+- **Transition:** `all 0.2s ease-out`
+
+#### Checkbox Icon (Check Mark)
+- **Icon:** Feather `check` icon
+- **Size:** `16px × 16px`
+- **Color:** `#00d9ff` (neon cyan)
+- **Opacity (unchecked):** `0` (hidden)
+- **Transform (unchecked):** `scale(0.8)` (slightly smaller)
+- **Opacity (checked):** `1` (visible)
+- **Transform (checked):** `scale(1)` (full size)
+- **Transition:** `all 0.2s ease-out`
+
+#### Hover State
+- **Background:** `rgba(15, 15, 15, 0.8)` (darker)
+- **Border Color:** `#00d9ff` (cyan highlight)
+
+#### Checked State
+- **Background:** `#00d9ff` (neon cyan)
+- **Border Color:** `#00d9ff` (neon cyan)
+- **Box Shadow:** `0 0 20px rgba(0, 217, 255, 0.5)` (neon glow)
+- **Icon Color:** `#0f0f0f` (dark for contrast)
+
+#### Parent Image Card Selection State (`.image-card.selected`)
+- **Border:** `2px solid #00d9ff` (cyan border)
+- **Box Shadow:** `0 0 30px rgba(0, 217, 255, 0.4)` (enhanced glow)
+- **Purpose:** Visual feedback that entire card is selected
+
+#### Click Behavior
+- **Checkbox Click:** Toggles selection
+- **Thumbnail Click:** Toggles selection (entire image area is clickable)
+- **Action Button Click:** Does NOT toggle selection (prevented via event handling)
+- **Philosophy:** Large clickable area improves UX, entire thumbnail becomes selection target
+
 ### Cards (Sharp, Grid-Based)
 
 - **Background:** `#1a1a1a` (charcoal primary)
@@ -450,6 +508,60 @@ Small inline hints that appear below input fields, often with icons.
 - **Position:** Absolute, full coverage
 - **Display:** Flex, centered
 - **Z-index:** `50`
+
+### Floating Action Toolbar (Bulk Actions)
+
+Used for bulk operations like deleting multiple selected items. Appears at bottom-center when items are selected.
+
+#### Toolbar Container (`.bulk-delete-toolbar`)
+- **Position:** `fixed` at bottom of viewport
+- **Bottom (hidden):** `-100px` (below viewport)
+- **Bottom (active):** `var(--spacing-8)` (32px from bottom)
+- **Left:** `50%` with `translateX(-50%)` (centered horizontally)
+- **Z-Index:** `100` (above all content)
+- **Opacity (hidden):** `0`
+- **Opacity (active):** `1`
+- **Transition:** `all 0.3s ease-out` (smooth slide-up animation)
+- **Pointer Events (hidden):** `none` (doesn't block clicks when hidden)
+- **Pointer Events (active):** `all` (interactive when visible)
+
+#### Toolbar Content (`.bulk-delete-content`)
+- **Background:** `#242424` (charcoal elevated)
+- **Border:** `1px solid #00d9ff` (cyan border)
+- **Border Radius:** `0` - SHARP CORNERS
+- **Padding:** `var(--spacing-4) var(--spacing-6)` (16px 24px)
+- **Display:** Flex with gap `var(--spacing-6)` (24px)
+- **Box Shadow:** `0 0 40px rgba(0, 217, 255, 0.3), 0 8px 24px rgba(0, 0, 0, 0.5)` (neon glow + depth shadow)
+- **Backdrop Filter:** `blur(10px)` (frosted glass effect)
+
+#### Bulk Info Section (`.bulk-delete-info`)
+- **Display:** Flex with gap `var(--spacing-3)` (12px)
+- **Color:** `#ffffff` (primary text)
+- **Font Size:** `0.875rem` (14px)
+- **Font Weight:** `500` (medium)
+- **Icon:** Feather `check-circle`, `20px × 20px`, cyan color
+- **Selected Count:** Monospace font (`var(--font-mono)`) for numbers
+
+#### Delete Button (`.btn-danger`)
+- **Background:** `#ff4466` (error red)
+- **Color:** `#ffffff` (primary text)
+- **Border:** `none`
+- **Padding:** `0.75rem 1.5rem` (12px 24px)
+- **Font Size:** `0.875rem` (14px)
+- **Font Weight:** `600` (semibold)
+- **Text Transform:** `uppercase`
+- **Letter Spacing:** `0.05em`
+- **Border Radius:** `0` - SHARP CORNERS
+- **Box Shadow:** `0 0 20px rgba(255, 68, 102, 0.3)` (red glow)
+- **Hover:** Background `#cc3355`, enhanced glow `0 0 30px rgba(255, 68, 102, 0.6)`, `translateY(-1px)`
+- **Active:** `translateY(0)`, reduced glow `0 0 15px rgba(255, 68, 102, 0.4)`
+- **Icon:** Feather `trash-2`, `16px × 16px`
+- **Gap:** `var(--spacing-2)` (8px between icon and text)
+
+#### Animation Behavior
+- **Entry:** Slides up from below viewport with fade-in (0.3s ease-out)
+- **Exit:** Slides down below viewport with fade-out (0.3s ease-out)
+- **Trigger:** Appears when 1+ items selected, hides when selection count reaches 0
 
 ---
 

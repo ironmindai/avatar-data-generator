@@ -135,6 +135,18 @@
                 <span class="filter-count" id="filterCountUrl">0</span>
             </button>
         </div>
+        {% if permission_level == 'edit' or is_owner %}
+        <div class="selection-controls">
+            <button class="btn btn-ghost btn-sm" id="selectAllImagesBtn">
+                <i data-feather="check-square"></i>
+                Select All
+            </button>
+            <button class="btn btn-ghost btn-sm" id="deselectAllImagesBtn">
+                <i data-feather="square"></i>
+                Deselect All
+            </button>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Images Grid -->
@@ -143,6 +155,14 @@
         {% for image in images %}
         <div class="image-card" data-image-id="{{ image.id }}" data-source-type="{{ image.source_type }}">
             <div class="image-container">
+                {% if permission_level == 'edit' or is_owner %}
+                <div class="image-checkbox-wrapper">
+                    <input type="checkbox" class="image-checkbox" data-image-id="{{ image.id }}">
+                    <div class="checkbox-indicator">
+                        <i data-feather="check"></i>
+                    </div>
+                </div>
+                {% endif %}
                 <img src="{{ image.image_url }}"
                      alt="Image {{ loop.index }}"
                      class="image-thumbnail"
@@ -223,6 +243,24 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Bulk Delete Toolbar (Floating) -->
+{% if permission_level == 'edit' or is_owner %}
+<div class="bulk-delete-toolbar" id="bulkDeleteToolbar">
+    <div class="bulk-delete-content">
+        <div class="bulk-delete-info">
+            <i data-feather="check-circle"></i>
+            <span class="selected-count-text">
+                <span class="font-mono" id="bulkSelectedCount">0</span> selected
+            </span>
+        </div>
+        <button class="btn btn-danger" id="bulkDeleteBtn">
+            <i data-feather="trash-2"></i>
+            Delete Selected
+        </button>
+    </div>
+</div>
+{% endif %}
 
 <!-- Flickr Search Modal -->
 <div class="modal modal-large" id="flickrModal" role="dialog" aria-labelledby="flickrModalTitle" aria-hidden="true">
