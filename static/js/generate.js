@@ -60,6 +60,18 @@
         return null;
       }
     }
+
+    // Initialize Select2 for image sets (multi-select with search)
+    const imageSetsSelect = $('#image_set_ids');
+
+    if (imageSetsSelect.length) {
+      imageSetsSelect.select2({
+        placeholder: 'Select one or more image sets...',
+        allowClear: true,
+        closeOnSelect: false,
+        width: '100%'
+      });
+    }
   }
 
   // ========================================
@@ -277,13 +289,18 @@
 
     if (form) {
       form.addEventListener('reset', function() {
-        // Reset Select2
+        // Reset Select2 fields
         const languageSelect = $('#bio_language');
         if (languageSelect.length) {
           languageSelect.val('').trigger('change');
         }
 
-        // Reset number input and slider to default (50)
+        const imageSetsSelect = $('#image_set_ids');
+        if (imageSetsSelect.length) {
+          imageSetsSelect.val(null).trigger('change');
+        }
+
+        // Reset number input and slider to default (10)
         // Reset images slider to default (4)
         setTimeout(function() {
           const numberInput = document.getElementById('number_to_generate');
@@ -291,8 +308,8 @@
           const imagesInput = document.getElementById('images_per_persona');
           const imagesSlider = document.getElementById('images_slider');
 
-          if (numberInput) numberInput.value = 50;
-          if (rangeSlider) rangeSlider.value = 50;
+          if (numberInput) numberInput.value = 10;
+          if (rangeSlider) rangeSlider.value = 10;
           if (imagesInput) imagesInput.value = 4;
           if (imagesSlider) imagesSlider.value = 4;
 

@@ -27,6 +27,7 @@ The database currently contains the following tables:
 9. **image_datasets** - User-created image datasets for Flickr/URL imports
 10. **dataset_images** - Images stored within datasets with source metadata
 11. **dataset_permissions** - Sharing permissions for image datasets
+12. **dataset_image_usage** - Tracks which scene images have been used in generation tasks
 
 ---
 
@@ -136,6 +137,7 @@ Tracks avatar generation tasks submitted by users, including status, configurati
 - `bio_language` (String(100), NOT NULL) - Selected language for generated bios
 - `number_to_generate` (Integer, NOT NULL) - Number of avatars to generate
 - `images_per_persona` (Integer, NOT NULL) - Images per persona (4 or 8)
+- `image_set_ids` (ARRAY of INTEGER, NULLABLE) - Array of image-set IDs selected for scene-based generation
 - `status` (String(50), NOT NULL, Default: 'pending', Indexed) - Task status: pending, generating-data, generating-images, completed, failed
 - `error_log` (Text, NULLABLE) - Error messages if task fails
 - `created_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp of task creation
@@ -338,6 +340,43 @@ Manages sharing permissions for image datasets, allowing users to grant view or 
 **Permission Levels:**
 - `view` - Read-only access to dataset (can view images but not modify)
 - `edit` - Full access to dataset (can add/remove images and modify dataset properties)
+
+---
+
+### dataset_image_usage
+
+Tracks which scene images from image-sets have been used in generation tasks. This enables the system to prioritize least-used images globally, avoid repetition within a task, and cycle through images when all have been used.
+
+**Columns:**
+- `id` (Integer, Primary Key) - Usage record unique identifier
+- `dataset_image_id` (Integer, Foreign Key to `dataset_images.id`, NOT NULL, Indexed, CASCADE DELETE) - Scene image that was used
+- `task_id` (Integer, Foreign Key to `generation_tasks.id`, NOT NULL, Indexed, CASCADE DELETE) - Generation task that used this image
+- `used_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp when this image was used
+
+**Indexes:**
+- `ix_dataset_image_usage_dataset_image_id` on `dataset_image_id`
+- `ix_dataset_image_usage_task_id` on `task_id`
+- `uq_dataset_image_usage_image_task` (UNIQUE) on `(dataset_image_id, task_id)` - prevents double-counting
+
+**Constraints:**
+- Primary Key: `id`
+- Unique: (`dataset_image_id`, `task_id`) (via `uq_dataset_image_usage_image_task`)
+- Foreign Key: `dataset_image_id` references `dataset_images.id` (via `dataset_image_usage_dataset_image_id_fkey`) with CASCADE DELETE
+- Foreign Key: `task_id` references `generation_tasks.id` (via `dataset_image_usage_task_id_fkey`) with CASCADE DELETE
+
+**Relationships:**
+- `dataset_image` - Many-to-One relationship with `DatasetImage` model
+- `task` - Many-to-One relationship with `GenerationTask` model
+- `DatasetImage.usage_records` - One-to-Many backref for accessing image's usage records (with cascade delete)
+- `GenerationTask.image_usage_records` - One-to-Many backref for accessing task's usage records (with cascade delete)
+
+**Model Location**: `/home/niro/galacticos/avatar-data-generator/models.py` - `DatasetImageUsage` class
+
+**Use Cases:**
+- Track global usage count for each scene image to prioritize least-used images
+- Prevent using the same scene image multiple times within a single task
+- Enable fair rotation through all available scene images
+- Support intelligent scene image selection algorithms
 
 ---
 
@@ -818,6 +857,57 @@ Implements the Image Datasets feature, allowing users to:
 - JSONB type used for flexible metadata storage
 - **Downgrade Warning**: Rolling back this migration will permanently delete all image datasets, dataset images, and dataset permissions
 
+**Status**: APPLIED
+
+---
+
+### Migration: 1a0315a32006 - add_image_set_ids_and_dataset_image_usage_tracking
+**Date**: 2026-03-10 07:02:30
+**Parent**: 562b42df8d87
+
+**Changes:**
+- Added `image_set_ids` (ARRAY of INTEGER, NULLABLE) column to `generation_tasks` table
+  - Stores array of image-set IDs selected by user for scene-based generation
+  - Example value: [1, 5, 12] for using image-sets with IDs 1, 5, and 12
+  - Nullable for backward compatibility with existing tasks
+
+- Created `dataset_image_usage` table for tracking scene image usage
+  - Columns: id, dataset_image_id, task_id, used_at
+  - Foreign keys to dataset_images.id and generation_tasks.id (both CASCADE DELETE)
+  - Unique constraint on (dataset_image_id, task_id) to prevent double-counting
+  - Indexed on dataset_image_id and task_id for efficient lookups
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/1a0315a32006_add_image_set_ids_and_dataset_image_.py`
+
+**Purpose:**
+Implements the scene-based image generation feature, enabling:
+- Selection of multiple image-sets for a generation task
+- Tracking which scene images have been used in which tasks
+- Prioritizing least-used images globally across all tasks
+- Avoiding repetition of scene images within a single task
+- Fair rotation through available scene images when all have been used
+
+**Schema Changes Details:**
+
+1. **generation_tasks.image_set_ids**: PostgreSQL ARRAY column stores list of dataset IDs
+   - NULL value means traditional generation (no scene images)
+   - Non-NULL array means scene-based generation using images from specified datasets
+   - Array format: {1,5,12} in PostgreSQL, [1,5,12] in Python
+
+2. **dataset_image_usage table**: Tracking table for scene image usage
+   - Each row represents one use of a scene image in a generation task
+   - Unique constraint ensures each image is only counted once per task
+   - CASCADE DELETE ensures automatic cleanup when images or tasks are deleted
+   - Enables queries like "which images have been used least?" or "which images has this task used?"
+
+**Safety Notes:**
+- Non-destructive operation (adding column and new table only)
+- Fully reversible via downgrade function
+- Backward compatible - existing tasks will have NULL for image_set_ids
+- CASCADE DELETE ensures data integrity when parent records are deleted
+- Unique constraint prevents duplicate usage records
+- **Downgrade Warning**: Rolling back this migration will permanently delete the dataset_image_usage table and all usage tracking data, and remove the image_set_ids column from generation_tasks
+
 **Status**: APPLIED (Current HEAD)
 
 ---
@@ -880,12 +970,14 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 562b42df8d87 (create_image_datasets_tables) - APPLIED (HEAD)
-**Total Tables**: 11
-**Total Migrations**: 16 (2 reverted/deleted)
+**Latest Migration**: 1a0315a32006 (add_image_set_ids_and_dataset_image_usage_tracking) - APPLIED (HEAD)
+**Total Tables**: 12
+**Total Migrations**: 17 (2 reverted/deleted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
+- NEW `dataset_image_usage` table - tracks which scene images have been used in generation tasks for intelligent selection
+- NEW `generation_tasks.image_set_ids` (ARRAY of INTEGER) - stores selected image-set IDs for scene-based generation
 - NEW `image_datasets` table - user-created image datasets with UUID identifiers, status management, and public/private visibility
 - NEW `dataset_images` table - images within datasets with source tracking (Flickr/URL), JSONB metadata, and SHA256 hashing for duplicates
 - NEW `dataset_permissions` table - dataset sharing with view/edit permission levels

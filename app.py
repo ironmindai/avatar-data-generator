@@ -344,7 +344,10 @@ def create_app():
         Avatar generation page.
 
         GET: Display generation form
-        POST: Process avatar generation request (to be implemented)
+        POST: Process avatar generation request with image-set selection
+              Accepts: persona_description, bio_language, number_to_generate,
+                       images_per_persona, image_set_ids[] (array)
+              Validates: image-set ownership, image-set has images, all required fields
         """
         # Language code to name mapping
         LANGUAGE_MAP = {
@@ -466,6 +469,17 @@ def create_app():
             number_to_generate = request.form.get('number_to_generate', '').strip()
             images_per_persona = request.form.get('images_per_persona', '').strip()
 
+            # Get image_set_ids as array (can be sent as multiple params or JSON array)
+            image_set_ids = request.form.getlist('image_set_ids[]')
+            if not image_set_ids and request.is_json:
+                image_set_ids = request.json.get('image_set_ids', [])
+
+            # Convert to integers and filter out empty values
+            try:
+                image_set_ids = [int(id) for id in image_set_ids if id]
+            except (ValueError, TypeError):
+                image_set_ids = []
+
             # Convert language code to full language name
             bio_language = LANGUAGE_MAP.get(bio_language_code, bio_language_code)  # Fallback to code if not found
 
@@ -498,11 +512,56 @@ def create_app():
                 except ValueError:
                     validation_errors.append('Images per persona must be a valid number.')
 
+            # Validation: Require at least 1 image-set
+            if not image_set_ids:
+                validation_errors.append('At least one image set must be selected.')
+
+            # Validation: Check all image-sets exist and belong to user
+            if image_set_ids:
+                valid_sets = ImageDataset.query.filter(
+                    ImageDataset.id.in_(image_set_ids),
+                    ImageDataset.user_id == current_user.id,
+                    ImageDataset.status == 'active'
+                ).all()
+
+                if len(valid_sets) != len(image_set_ids):
+                    validation_errors.append('One or more selected image sets are invalid or do not belong to you.')
+                else:
+                    # Validation: Check each set has at least 1 image
+                    for image_set in valid_sets:
+                        # Use image_set.id (INTEGER PK) not image_set.dataset_id (UUID string)
+                        image_count = DatasetImage.query.filter_by(dataset_id=image_set.id).count()
+                        if image_count == 0:
+                            validation_errors.append(f'Image set "{image_set.name}" has no images. Please add images first.')
+                            break
+
             # If validation errors exist, flash error and re-render form
             if validation_errors:
+                # Get user's active image datasets for re-rendering
+                from sqlalchemy import func
+
+                user_image_datasets = db.session.query(
+                    ImageDataset.id,
+                    ImageDataset.name,
+                    ImageDataset.dataset_id,
+                    func.count(DatasetImage.id).label('image_count')
+                ).outerjoin(
+                    DatasetImage, ImageDataset.id == DatasetImage.dataset_id
+                ).filter(
+                    ImageDataset.user_id == current_user.id,
+                    ImageDataset.status == 'active'
+                ).group_by(
+                    ImageDataset.id,
+                    ImageDataset.name,
+                    ImageDataset.dataset_id
+                ).having(
+                    func.count(DatasetImage.id) > 0
+                ).all()
+
+                user_name = current_user.email.split('@')[0]
                 for error in validation_errors:
                     flash(error, 'error')
-                return render_template('generate.html', user_name=user_name)
+                return render_template('generate.html', user_name=user_name, user_image_datasets=user_image_datasets)
 
             # Create new generation task
             try:
@@ -511,14 +570,15 @@ def create_app():
                     persona_description=persona_description,
                     bio_language=bio_language,
                     number_to_generate=number_to_generate,
-                    images_per_persona=images_per_persona
+                    images_per_persona=images_per_persona,
+                    image_set_ids=image_set_ids
                 )
 
                 db.session.add(new_task)
                 db.session.commit()
 
-                # Flash success message with task ID
-                flash(f'Avatar generation task created successfully! Task ID: {new_task.task_id}', 'success')
+                # Flash success message with task ID and image-set info
+                flash(f'Avatar generation task created successfully! Task ID: {new_task.task_id} with {len(image_set_ids)} image set(s)', 'success')
 
                 # Redirect to history page to view the task
                 return redirect(url_for('history'))
@@ -527,14 +587,60 @@ def create_app():
                 # Rollback on database error
                 db.session.rollback()
 
-                # Log error (in production, use proper logging)
-                print(f"Error creating generation task: {str(e)}")
+                # Log error
+                app.logger.error(f"Error creating generation task: {str(e)}")
 
+                # Get user's active image datasets for re-rendering
+                from sqlalchemy import func
+
+                user_image_datasets = db.session.query(
+                    ImageDataset.id,
+                    ImageDataset.name,
+                    ImageDataset.dataset_id,
+                    func.count(DatasetImage.id).label('image_count')
+                ).outerjoin(
+                    DatasetImage, ImageDataset.id == DatasetImage.dataset_id
+                ).filter(
+                    ImageDataset.user_id == current_user.id,
+                    ImageDataset.status == 'active'
+                ).group_by(
+                    ImageDataset.id,
+                    ImageDataset.name,
+                    ImageDataset.dataset_id
+                ).having(
+                    func.count(DatasetImage.id) > 0
+                ).all()
+
+                user_name = current_user.email.split('@')[0]
                 flash('An error occurred while creating the generation task. Please try again.', 'error')
-                return render_template('generate.html', user_name=user_name)
+                return render_template('generate.html', user_name=user_name, user_image_datasets=user_image_datasets)
 
         # GET request - show generation form
-        return render_template('generate.html', user_name=user_name)
+        # Extract user name from email
+        user_name = current_user.email.split('@')[0]
+
+        # Get user's active image datasets with image counts
+        from sqlalchemy import func
+
+        user_image_datasets = db.session.query(
+            ImageDataset.id,
+            ImageDataset.name,
+            ImageDataset.dataset_id,
+            func.count(DatasetImage.id).label('image_count')
+        ).outerjoin(
+            DatasetImage, ImageDataset.id == DatasetImage.dataset_id
+        ).filter(
+            ImageDataset.user_id == current_user.id,
+            ImageDataset.status == 'active'
+        ).group_by(
+            ImageDataset.id,
+            ImageDataset.name,
+            ImageDataset.dataset_id
+        ).having(
+            func.count(DatasetImage.id) > 0  # Only show sets with images
+        ).all()
+
+        return render_template('generate.html', user_name=user_name, user_image_datasets=user_image_datasets)
 
     @app.route('/datasets')
     @login_required

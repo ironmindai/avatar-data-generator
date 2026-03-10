@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-09 (Added Image Datasets feature routes)*
+> *Last Updated: 2026-03-10 (Updated /generate endpoint with image-set selection validation)*
 
 ## Application Information
 
@@ -113,11 +113,62 @@ All statistics are placeholders (set to 0) pending avatar generation implementat
 
 ---
 
-#### GET `/generate`
-**Description**: Avatar generation page
+#### GET/POST `/generate`
+**Description**: Avatar generation page and task creation endpoint
 **Authentication**: Required
-**Status**: Placeholder - redirects to dashboard with info message
-**Planned**: Form to configure and generate avatar datasets
+**Template**: `templates/generate.html` (GET)
+
+**GET Request**:
+- Displays avatar generation form with language selection
+- Template Variables:
+  - `user_name`: String - Username (extracted from email)
+
+**POST Request**:
+- Creates new generation task with image-set selection
+- Content-Type: `application/x-www-form-urlencoded` or `application/json`
+
+**Form/Request Parameters**:
+- `persona_description` (required): Text - Description of personas to generate
+- `bio_language` (required): String - Language code for bio generation (e.g., 'en', 'es', 'fr')
+- `number_to_generate` (required): Integer - Number of personas to generate (10-300)
+- `images_per_persona` (required): Integer - Number of images per persona (1-20)
+- `image_set_ids[]` (required): Array of integers - IDs of image-sets to use for scene-based generation
+
+**Validation**:
+1. Persona description must not be empty
+2. Bio language must be valid (from LANGUAGE_MAP)
+3. Number to generate must be between 10 and 300
+4. Images per persona must be between 1 and 20
+5. At least one image-set must be selected
+6. All selected image-sets must:
+   - Exist in database
+   - Belong to current user
+   - Have status='active'
+   - Contain at least 1 image
+
+**Success Response**:
+- Redirect to `/history` with flash message
+- Flash category: `success`
+- Message includes task ID and image-set count
+
+**Error Response**:
+- Re-renders form with error messages
+- Flash category: `error`
+- Returns validation errors as flash messages
+
+**Example Error Messages**:
+- "Persona description is required."
+- "Number to generate must be between 10 and 300."
+- "At least one image set must be selected."
+- "One or more selected image sets are invalid or do not belong to you."
+- "Image set \"Beach Photos\" has no images. Please add images first."
+
+**Implementation Notes**:
+- Language code converted to full name using LANGUAGE_MAP (90+ languages)
+- Task ID auto-generated (8-character UUID)
+- Image-set validation includes ownership and content checks
+- Database transaction ensures atomic task creation
+- Error handling with proper rollback on failure
 
 ---
 

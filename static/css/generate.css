@@ -125,6 +125,28 @@
   max-width: 400px; /* Professional width for selects */
 }
 
+/* Form hint text (used for inline help below inputs) */
+.form-hint {
+  display: block;
+  margin-top: var(--spacing-2);
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.inline-link {
+  color: var(--color-accent-cyan);
+  text-decoration: none;
+  transition: all var(--transition-base);
+}
+
+.inline-link:hover {
+  text-decoration: underline;
+  color: var(--color-accent-cyan-dark);
+}
+
 /* Horizontal row for compact form controls */
 .form-row {
   display: grid;
@@ -263,6 +285,73 @@
   letter-spacing: 0.05em !important;
   background: var(--color-bg-secondary) !important;
   margin-top: var(--spacing-1) !important;
+}
+
+/* ========================================
+   SELECT2 MULTI-SELECT (Image Sets)
+   ======================================== */
+
+/* Multi-select container */
+.select2-container--default .select2-selection--multiple {
+  min-height: 120px;
+  border: 1px solid var(--color-border) !important;
+  background: var(--color-bg-secondary) !important;
+  border-radius: var(--radius-none) !important; /* Sharp corners */
+  padding: var(--spacing-2) !important;
+  transition: all var(--transition-base) !important;
+}
+
+.select2-container--default .select2-selection--multiple:hover {
+  border-color: #444444 !important;
+}
+
+.select2-container--default.select2-container--focus .select2-selection--multiple,
+.select2-container--default.select2-container--open .select2-selection--multiple {
+  border-color: var(--color-accent-cyan) !important;
+  box-shadow: 0 0 20px rgba(0, 217, 255, 0.3) !important; /* Neon glow */
+}
+
+/* Multi-select choice tags (selected items) */
+.select2-container--default .select2-selection--multiple .select2-selection__choice {
+  background: var(--color-accent-cyan) !important;
+  border: 1px solid var(--color-accent-cyan) !important;
+  border-radius: var(--radius-none) !important; /* Sharp corners */
+  color: var(--color-bg-primary) !important;
+  padding: var(--spacing-1) var(--spacing-2) !important;
+  font-size: var(--font-size-small) !important;
+  font-weight: var(--font-weight-medium) !important;
+  margin: var(--spacing-1) !important;
+  transition: all var(--transition-base) !important;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice:hover {
+  background: var(--color-accent-cyan-dark) !important;
+  border-color: var(--color-accent-cyan-dark) !important;
+}
+
+/* Remove button (x) for selected items */
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
+  color: var(--color-bg-primary) !important;
+  font-size: var(--font-size-body) !important;
+  font-weight: var(--font-weight-bold) !important;
+  margin-right: var(--spacing-1) !important;
+  transition: color var(--transition-base) !important;
+}
+
+.select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
+  color: var(--color-error) !important;
+}
+
+/* Search field within multi-select */
+.select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field {
+  background: transparent !important;
+  color: var(--color-text-primary) !important;
+  font-size: var(--font-size-body) !important;
+  margin-top: var(--spacing-1) !important;
+}
+
+.select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field::placeholder {
+  color: var(--color-text-placeholder) !important;
 }
 
 /* ========================================

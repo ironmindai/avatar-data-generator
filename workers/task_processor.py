@@ -43,9 +43,9 @@ from sqlalchemy import text
 # Import service modules for image generation
 from services.flowise_service import generate_image_prompt
 from services.image_generation import generate_base_image  # Still used for base image
-from services.image_prompt_chain import get_prompt_chain  # NEW: Local LLM chain for prompts
-from services.seedream_service import generate_image_with_reference  # NEW: SeeDream for images
+from services.openrouter_scene_service import generate_scene_image_openrouter  # NEW: OpenRouter Nano Banana 2 for scene-based images
 from services.image_utils import upload_to_s3, generate_presigned_url
+from services.image_set_service import get_next_scene_image, mark_image_used
 from utils.image_cropper import remove_white_borders
 from utils.image_style_randomizer import randomize_image_style
 
@@ -736,26 +736,26 @@ async def process_persona_images(
     images_per_persona: int
 ) -> Tuple[bool, Optional[str]]:
     """
-    Process image generation for a single persona with multi-batch support.
+    Process image generation for a single persona using scene-based approach.
 
     This function handles the complete image generation workflow with immediate saves:
     1. Check if base image exists (resumption support)
     2. Generate base selfie image using OpenAI (if not exists)
     3. Upload base image to S3 and SAVE IMMEDIATELY
     4. Check if images already exist (resumption support)
-    5. Loop through batches (4, 8, 12, 16, or 20 images = 1-5 batches):
-       - Generate image prompt from person data using Flowise (with prompts_history)
-       - Generate 4-image grid from SAME base image
-       - Split grid into 4 individual images
-       - Apply post-processing (crop, randomize) to all 4 images
-       - Collect images and prompts for next iteration
-    6. Upload ALL images to S3 and SAVE IMMEDIATELY to JSONB array
+    5. For each image (1 to images_per_persona):
+       - Get next scene image from image sets (least-used globally, not used in this task)
+       - Generate image using SeeDream dual-reference (scene + base face)
+       - Mark scene as used for this task
+       - Apply post-processing (crop, JPEG randomization)
+       - Upload to S3
+    6. SAVE ALL images to database IMMEDIATELY
 
     Args:
         task_id_str: Task ID string for logging
         task_db_id: Database ID of GenerationTask
         result: GenerationResult object containing persona data
-        images_per_persona: Number of images to generate (4, 8, 12, 16, or 20)
+        images_per_persona: Number of images to generate (1-20)
 
     Returns:
         Tuple of (success: bool, error_message: Optional[str])
@@ -861,13 +861,19 @@ async def process_persona_images(
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
                 return False, error_msg
 
-        # Step 3: Parallel Individual Image Generation (TWO-STAGE WORKFLOW)
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/3: Starting two-stage parallel image generation ({images_per_persona} images)...")
+        # Step 3: Get task to check image_set_ids configuration
+        task = GenerationTask.query.get(task_db_id)
+        if not task.image_set_ids:
+            error_msg = f"Task {task_db_id} has no image_set_ids configured"
+            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
+            return False, error_msg
+
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Step 3/3: Starting scene-based image generation ({images_per_persona} images)...")
         logger.info("=" * 80)
-        logger.info(f"TWO-STAGE WORKFLOW:")
-        logger.info(f"  Stage 1: Clean image from base-face (no style degradation)")
-        logger.info(f"  Stage 2: Apply random degradation to clean image")
-        logger.info(f"BASE IMAGE S3 URL (used as reference for Stage 1):")
+        logger.info(f"SCENE-BASED WORKFLOW:")
+        logger.info(f"  Using dual-reference OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview): scene image + base face")
+        logger.info(f"  Image sets: {task.image_set_ids}")
+        logger.info(f"BASE IMAGE S3 URL (reference face):")
         logger.info(f"{result.base_image_url}")
         logger.info("=" * 80)
 
@@ -881,57 +887,6 @@ async def process_persona_images(
         logger.info(f"[Task {task_id_str}] [{persona_name}] - randomize_image_style: {randomize_image_style_enabled}")
         logger.info(f"[Task {task_id_str}] [{persona_name}] - obfuscate_exif_metadata: {obfuscate_exif_enabled}")
 
-        person_data = {
-            'firstname': result.firstname,
-            'lastname': result.lastname,
-            'gender': result.gender,
-            'bio_facebook': result.bio_facebook or '',
-            'bio_instagram': result.bio_instagram or '',
-            'bio_x': result.bio_x or '',
-            'bio_tiktok': result.bio_tiktok or '',
-            'ethnicity': result.ethnicity or '',
-            'age': result.age
-        }
-
-        # ===== PHASE 1: Generate ALL Clean Prompts Using Local LLM Chain =====
-        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1: Generating {images_per_persona} CLEAN prompts (no style descriptors)...")
-
-        try:
-            # Get the prompt chain instance
-            prompt_chain = get_prompt_chain()
-
-            # Load existing image ideas history to avoid duplicates
-            existing_history = result.image_ideas_history or []
-            if existing_history:
-                logger.info(f"[Task {task_id_str}] [{persona_name}] Found {len(existing_history)} previous image ideas to avoid")
-                logger.debug(f"[Task {task_id_str}] [{persona_name}] Previous ideas: {existing_history}")
-
-            # Generate all clean prompts at once (chain handles history internally)
-            # Returns: (clean_prompts, image_ideas)
-            # NOTE: These are clean prompts - style degradation happens in Stage 2
-            prompts, new_ideas = await prompt_chain.generate_image_prompts(
-                person_data=person_data,
-                num_images=images_per_persona,
-                prompts_history=existing_history,  # Pass history to avoid duplicates
-                task_id=task_db_id,  # Pass task ID for workflow logging
-                persona_id=result.id  # Pass persona ID for workflow logging
-            )
-
-            if not prompts or len(prompts) != images_per_persona:
-                raise Exception(f"Expected {images_per_persona} prompts, got {len(prompts) if prompts else 0}")
-
-            logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 1 COMPLETE: Generated {len(prompts)} clean prompts with {len(new_ideas)} new ideas")
-            logger.debug(f"[Task {task_id_str}] [{persona_name}] New ideas: {new_ideas}")
-
-        except Exception as e:
-            error_msg = f"LLM prompt chain failed: {str(e)}"
-            logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
-            return False, error_msg
-
-        # ===== PHASE 2: Generate Individual Images with SeeDream (Two-Stage Per Image) =====
-        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2: Two-stage generation of {images_per_persona} images...")
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Each image: Stage 1 (clean) → Stage 2 (degradation)")
-
         # Generate presigned URL for base image (SeeDream needs to download it)
         logger.info(f"[Task {task_id_str}] [{persona_name}] Generating presigned URL for base image...")
         try:
@@ -941,99 +896,75 @@ async def process_persona_images(
             bucket_index = base_image_parts.index(os.getenv('S3_BUCKET_NAME'))
             base_image_key = '/'.join(base_image_parts[bucket_index + 1:])
 
-            # Generate presigned URL (1 hour expiry)
-            base_image_presigned_url = generate_presigned_url(base_image_key, expiration=3600)
-            logger.info(f"[Task {task_id_str}] [{persona_name}] Presigned URL generated: {base_image_presigned_url[:100]}...")
+            # Generate presigned URL (2 hour expiry for all images)
+            base_image_presigned_url = generate_presigned_url(base_image_key, expiration=7200)
+            logger.info(f"[Task {task_id_str}] [{persona_name}] Base image presigned URL generated")
 
         except Exception as e:
             error_msg = f"Failed to generate presigned URL for base image: {str(e)}"
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
 
-        # Generate each image individually with SeeDream (TWO-STAGE WORKFLOW)
-        async def generate_single_image(image_index: int, prompt: str) -> str:
+        # Generate each image individually with OpenRouter Nano Banana 2 (SCENE-BASED WORKFLOW)
+        async def generate_single_image(image_index: int) -> str:
             """
-            Generate a single image using SeeDream with two-stage degradation workflow.
+            Generate a single image using OpenRouter Nano Banana 2 with dual-reference workflow.
 
-            NEW WORKFLOW:
-            Stage 1: Generate clean image from base-face using clean prompt
-            Stage 2: Apply degradation to clean image using random degradation prompt
+            NEW SCENE-BASED WORKFLOW:
+            1. Get next scene image from image sets (least-used globally)
+            2. Generate image using dual-reference: scene + base face
+            3. Mark scene as used for this task
+            4. Apply post-processing
+            5. Upload to S3
 
             Args:
                 image_index: Image index (0-indexed)
-                prompt: Clean image generation prompt (no style descriptors)
 
             Returns:
                 S3 image URL
             """
-            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Starting two-stage generation...")
-
-            # Randomly select SeeDream size (minimum 3.6M pixels required)
-            import random
-            seedream_sizes = [
-                "2560x2560",   # Square
-                "1920x2880",   # Portrait
-                "2880x1920"    # Landscape
-            ]
-            seedream_size = random.choice(seedream_sizes)
-            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Selected orientation: {seedream_size}")
+            logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] Starting scene-based generation...")
 
             try:
-                # STAGE 1: Generate clean image from base-face (no style degradation)
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 1: Generating clean image...")
+                # Get next scene image (least-used globally, not used in this task yet)
+                scene_url, dataset_image_id = get_next_scene_image(task.image_set_ids, task_db_id)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Selected scene image ID {dataset_image_id}")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Scene URL: {scene_url[:80]}...")
 
-                clean_image_bytes = await generate_image_with_reference(
+                # Generate image using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview)
+                # Prompt: exactly as specified
+                prompt = "Replace the subject from image 1 with the subject from image 2"
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview) for scene generation")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Generating with dual-reference...")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Prompt: {prompt}")
+
+                image_bytes = await generate_scene_image_openrouter(
                     prompt=prompt,
-                    base_image_url=base_image_presigned_url,
-                    style_image_url=None,  # NO style image - single reference only
-                    size=seedream_size  # Use randomly selected SeeDream size
+                    scene_image_url=scene_url,  # Image 1 = scene background
+                    person_image_url=base_image_presigned_url,  # Image 2 = person face
+                    size=selected_size  # Use same size as base image
                 )
-                if not clean_image_bytes:
-                    raise Exception("SeeDream Stage 1 returned empty image")
+                if not image_bytes:
+                    raise Exception("OpenRouter Nano Banana 2 returned empty image")
 
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 1 COMPLETE: Clean image generated ({len(clean_image_bytes)} bytes)")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Image generated ({len(image_bytes)} bytes)")
 
-                # Upload clean image to S3 and generate presigned URL for Stage 2
-                clean_object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}_clean.png"
-                _, clean_image_url = upload_to_s3(clean_image_bytes, clean_object_key)
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Clean image uploaded: {clean_image_url}")
-
-                # Generate presigned URL for clean image (for Stage 2 input)
-                clean_image_parts = clean_image_url.split('/')
-                bucket_index = clean_image_parts.index(os.getenv('S3_BUCKET_NAME'))
-                clean_image_key = '/'.join(clean_image_parts[bucket_index + 1:])
-                clean_image_presigned_url = generate_presigned_url(clean_image_key, expiration=3600)
-
-                # STAGE 2: Apply degradation to clean image
-                from services.style_degradation_prompts import get_random_degradation_prompt
-
-                degradation_prompt = get_random_degradation_prompt()
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 2: Applying degradation...")
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Degradation: {degradation_prompt[:80]}...")
-
-                degraded_image_bytes = await generate_image_with_reference(
-                    prompt=degradation_prompt,
-                    base_image_url=clean_image_presigned_url,
-                    style_image_url=None,  # Single reference only
-                    size=seedream_size  # Reuse same size from Stage 1
-                )
-                if not degraded_image_bytes:
-                    raise Exception("SeeDream Stage 2 returned empty image")
-
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] STAGE 2 COMPLETE: Degraded image generated ({len(degraded_image_bytes)} bytes)")
+                # Mark this scene image as used
+                mark_image_used(dataset_image_id, task_db_id)
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Marked scene {dataset_image_id} as used")
 
                 # Apply post-processing if enabled
-                processed_bytes = degraded_image_bytes
+                processed_bytes = image_bytes
 
                 # Conditionally crop white borders
                 if crop_white_borders_enabled:
                     try:
                         processed_bytes = remove_white_borders(processed_bytes, threshold=220, min_border_width=1)
-                        logger.debug(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Cropped borders: {len(degraded_image_bytes)} -> {len(processed_bytes)} bytes")
+                        logger.debug(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Cropped borders: {len(image_bytes)} -> {len(processed_bytes)} bytes")
                     except Exception as e:
                         logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Border cropping failed: {str(e)}")
 
-                # Conditionally apply style randomization
+                # Conditionally apply style randomization (JPEG quality randomization)
                 if randomize_image_style_enabled:
                     try:
                         processed_bytes = randomize_image_style(processed_bytes)
@@ -1050,25 +981,26 @@ async def process_persona_images(
                     except Exception as e:
                         logger.warning(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] EXIF obfuscation failed: {str(e)}")
 
-                # Upload final degraded image to S3 with prompts as metadata
+                # Upload final image to S3 with scene metadata
                 object_key = f"avatars/task_{task_db_id}/persona_{result.id}/image_{image_index}.png"
                 metadata = {
-                    'scene-prompt': prompt[:1024],  # S3 metadata has 2KB limit per value
-                    'degradation-prompt': degradation_prompt[:1024]
+                    'scene-image-url': scene_url[:1024],  # S3 metadata has 2KB limit per value
+                    'base-image-url': result.base_image_url[:1024],
+                    'dataset-image-id': str(dataset_image_id)
                 }
                 _, image_url = upload_to_s3(processed_bytes, object_key, metadata=metadata)
 
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] TWO-STAGE COMPLETE: Uploaded final image: {image_url}")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}/{images_per_persona}] COMPLETE: Uploaded final image: {image_url}")
                 return image_url
 
             except Exception as e:
-                error_msg = f"Two-stage image generation failed for image {image_index + 1}: {str(e)}"
+                error_msg = f"Scene-based image generation failed for image {image_index + 1}: {str(e)}"
                 logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
                 raise Exception(error_msg)
 
         # Generate all images in parallel
         image_tasks = [
-            generate_single_image(i, prompts[i])
+            generate_single_image(i)
             for i in range(images_per_persona)
         ]
 
@@ -1079,24 +1011,18 @@ async def process_persona_images(
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")
             return False, error_msg
 
-        logger.info(f"[Task {task_id_str}] [{persona_name}] PHASE 2 COMPLETE: Generated {len(all_image_urls)} images with SeeDream")
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Generated {len(all_image_urls)} images with scene-based workflow")
 
-        # Step 6: Save ALL images AND image ideas history to database IMMEDIATELY
-        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(all_image_urls)} images and updating history...")
+        # Step 6: Save ALL images to database IMMEDIATELY
+        logger.info(f"[Task {task_id_str}] [{persona_name}] Saving {len(all_image_urls)} images to database...")
 
         try:
             # Save image URLs
             result.images = all_image_urls
             flag_modified(result, 'images')
 
-            # Update image ideas history (append new ideas to existing)
-            updated_history = existing_history + new_ideas
-            result.image_ideas_history = updated_history
-            flag_modified(result, 'image_ideas_history')
-
             db.session.commit()
             logger.info(f"[Task {task_id_str}] [{persona_name}] SAVED {len(all_image_urls)} images to database")
-            logger.info(f"[Task {task_id_str}] [{persona_name}] UPDATED history: {len(existing_history)} → {len(updated_history)} total ideas")
         except Exception as e:
             error_msg = f"Database update failed: {str(e)}"
             logger.error(f"[Task {task_id_str}] [{persona_name}] {error_msg}")

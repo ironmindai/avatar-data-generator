@@ -476,6 +476,36 @@ async def generate_base_image(
             error_detail = {'text': e.response.text}
 
         logger.error(f"OpenAI API HTTP error: {e.response.status_code} - {error_detail}")
+
+        # Try OpenRouter as fallback if configured
+        if os.getenv('USE_OPENROUTER', 'False').lower() in ('true', '1', 'yes'):
+            openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
+            if openrouter_key:
+                logger.warning("OpenAI failed, attempting fallback to OpenRouter GPT-5 Image")
+
+                try:
+                    from services.openrouter_image_service import generate_image_openrouter
+
+                    logger.info("Using OpenRouter as fallback for base image generation")
+                    full_prompt = base_prompt if 'base_prompt' in locals() else prompt
+                    image_bytes = await generate_image_openrouter(
+                        prompt=full_prompt,
+                        size=selected_size
+                    )
+
+                    if image_bytes:
+                        logger.info(f"✓ Successfully generated base image with OpenRouter ({len(image_bytes)} bytes)")
+                        return (image_bytes, selected_size)
+                    else:
+                        logger.error("OpenRouter returned no image")
+
+                except Exception as openrouter_error:
+                    logger.error(f"OpenRouter fallback also failed: {str(openrouter_error)}")
+                    # Fall through to raise original OpenAI error
+            else:
+                logger.warning("USE_OPENROUTER=True but OPENROUTER_API_KEY not configured")
+
+        # If we get here, all methods failed - raise the original error
         raise Exception(f"OpenAI API error: {error_detail}")
 
     except httpx.TimeoutException:
@@ -484,6 +514,36 @@ async def generate_base_image(
 
     except Exception as e:
         logger.error(f"Error generating base image: {str(e)}", exc_info=True)
+
+        # Try OpenRouter as fallback if configured (only for non-timeout errors)
+        if os.getenv('USE_OPENROUTER', 'False').lower() in ('true', '1', 'yes'):
+            openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
+            if openrouter_key and 'timed out' not in str(e).lower():
+                logger.warning("OpenAI failed, attempting fallback to OpenRouter GPT-5 Image")
+
+                try:
+                    from services.openrouter_image_service import generate_image_openrouter
+
+                    logger.info("Using OpenRouter as fallback for base image generation")
+                    full_prompt = base_prompt if 'base_prompt' in locals() else prompt
+                    image_bytes = await generate_image_openrouter(
+                        prompt=full_prompt,
+                        size=selected_size
+                    )
+
+                    if image_bytes:
+                        logger.info(f"✓ Successfully generated base image with OpenRouter ({len(image_bytes)} bytes)")
+                        return (image_bytes, selected_size)
+                    else:
+                        logger.error("OpenRouter returned no image")
+
+                except Exception as openrouter_error:
+                    logger.error(f"OpenRouter fallback also failed: {str(openrouter_error)}")
+                    # Fall through to raise original error
+            else:
+                if not openrouter_key:
+                    logger.warning("USE_OPENROUTER=True but OPENROUTER_API_KEY not configured")
+
         raise Exception(f"Base image generation failed: {str(e)}")
 
 
@@ -719,10 +779,64 @@ async def _generate_openai_from_base(
             error_detail = {'text': e.response.text}
 
         logger.error(f"OpenAI Stage 2 HTTP error: {e.response.status_code} - {error_detail}")
+
+        # Try OpenRouter as fallback if configured
+        if os.getenv('USE_OPENROUTER', 'False').lower() in ('true', '1', 'yes'):
+            openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
+            if openrouter_key:
+                logger.warning("OpenAI failed in Stage 2, attempting fallback to OpenRouter GPT-5 Image")
+
+                try:
+                    from services.openrouter_image_service import generate_image_openrouter
+
+                    logger.info("Using OpenRouter as fallback for Stage 2 generation")
+                    image_bytes = await generate_image_openrouter(
+                        prompt=prompt,
+                        size=selected_size
+                    )
+
+                    if image_bytes:
+                        logger.info(f"✓ Successfully generated Stage 2 image with OpenRouter ({len(image_bytes)} bytes)")
+                        return image_bytes
+                    else:
+                        logger.error("OpenRouter returned no image")
+
+                except Exception as openrouter_error:
+                    logger.error(f"OpenRouter fallback also failed: {str(openrouter_error)}")
+            else:
+                logger.warning("USE_OPENROUTER=True but OPENROUTER_API_KEY not configured")
+
         return None
 
     except Exception as e:
         logger.error(f"Error in OpenAI Stage 2 generation: {str(e)}", exc_info=True)
+
+        # Try OpenRouter as fallback if configured
+        if os.getenv('USE_OPENROUTER', 'False').lower() in ('true', '1', 'yes'):
+            openrouter_key = os.getenv('OPENROUTER_API_KEY', '')
+            if openrouter_key:
+                logger.warning("OpenAI failed in Stage 2, attempting fallback to OpenRouter GPT-5 Image")
+
+                try:
+                    from services.openrouter_image_service import generate_image_openrouter
+
+                    logger.info("Using OpenRouter as fallback for Stage 2 generation")
+                    image_bytes = await generate_image_openrouter(
+                        prompt=prompt,
+                        size=selected_size
+                    )
+
+                    if image_bytes:
+                        logger.info(f"✓ Successfully generated Stage 2 image with OpenRouter ({len(image_bytes)} bytes)")
+                        return image_bytes
+                    else:
+                        logger.error("OpenRouter returned no image")
+
+                except Exception as openrouter_error:
+                    logger.error(f"OpenRouter fallback also failed: {str(openrouter_error)}")
+            else:
+                logger.warning("USE_OPENROUTER=True but OPENROUTER_API_KEY not configured")
+
         return None
 
 

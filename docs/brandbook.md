@@ -235,6 +235,58 @@ Uses a tight, precise 4px base unit system:
 - **Resize:** Vertical only
 - **Line Height:** `1.5`
 
+### Multi-Select Fields (Select2 with Multiple Selection)
+
+Used for selecting multiple options from a searchable dropdown (e.g., image-set selection).
+
+- **Container Background:** `#0f0f0f` (darker charcoal)
+- **Border:** `1px solid #333333`
+- **Border Radius:** `0` - SHARP CORNERS
+- **Min Height:** `120px`
+- **Padding:** `0.5rem` (8px)
+- **Focus:** Border color `#00d9ff`, box shadow `0 0 20px rgba(0, 217, 255, 0.3)` (neon glow)
+- **Hover:** Border color `#444444`
+- **Transition:** `all 0.2s ease-out`
+
+#### Selected Choice Tags
+- **Background:** `#00d9ff` (neon cyan)
+- **Text Color:** `#1a1a1a` (charcoal primary - for contrast)
+- **Border:** `1px solid #00d9ff`
+- **Border Radius:** `0` - SHARP CORNERS
+- **Padding:** `0.25rem 0.5rem` (4px 8px)
+- **Font Size:** `0.75rem` (12px)
+- **Font Weight:** `500` (medium)
+- **Hover:** Background `#00a8cc` (darker cyan)
+- **Remove Button (×):** Color `#1a1a1a`, hover color `#ff4466` (error red)
+
+### Form Helper Text & Hints
+
+#### Form Help Text (`.form-help`)
+Description text that appears below field labels to provide context.
+
+- **Font Size:** `0.875rem` (14px)
+- **Color:** `#999999` (text tertiary)
+- **Line Height:** `1.5`
+- **Margin:** `0` (controlled by form-group gap)
+- **Usage:** Place after `<label>` and before `<input>` to describe field purpose
+
+#### Form Hint Text (`.form-hint`)
+Small inline hints that appear below input fields, often with icons.
+
+- **Font Size:** `0.75rem` (12px)
+- **Color:** `#cccccc` (text secondary)
+- **Display:** Flex with icon
+- **Gap:** `0.25rem` (4px) between icon and text
+- **Margin Top:** `0.5rem` (8px)
+- **Icon Size:** `14px × 14px`
+- **Usage:** Additional tips, warnings, or links related to the input
+
+#### Inline Links (within form hints)
+- **Color:** `#00d9ff` (neon cyan)
+- **Text Decoration:** None (default), underline on hover
+- **Hover:** Color `#00a8cc` (darker cyan)
+- **Transition:** `all 0.2s ease-out`
+
 ### Cards (Sharp, Grid-Based)
 
 - **Background:** `#1a1a1a` (charcoal primary)

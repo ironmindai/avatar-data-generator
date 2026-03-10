@@ -272,6 +272,7 @@ class GenerationTask(db.Model):
         bio_language: Selected language for bios
         number_to_generate: Number of avatars to generate
         images_per_persona: Images per persona (4 or 8)
+        image_set_ids: Array of image-set IDs selected for scene-based generation (nullable)
         status: Task status (pending, generating-data, generating-images, completed, failed)
         error_log: Error messages if task fails
         created_at: Timestamp of task creation
@@ -287,6 +288,7 @@ class GenerationTask(db.Model):
     bio_language = db.Column(db.String(100), nullable=False)
     number_to_generate = db.Column(db.Integer, nullable=False)
     images_per_persona = db.Column(db.Integer, nullable=False)
+    image_set_ids = db.Column(db.ARRAY(db.Integer), nullable=True)
     status = db.Column(db.String(50), nullable=False, default='pending', index=True)
     error_log = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -659,3 +661,38 @@ class DatasetPermission(db.Model):
 
     def __repr__(self):
         return f'<DatasetPermission dataset_id={self.dataset_id} user_id={self.user_id} level={self.permission_level}>'
+
+
+class DatasetImageUsage(db.Model):
+    """
+    DatasetImageUsage model for tracking which scene images have been used in generation tasks.
+
+    This table enables:
+    - Prioritizing least-used images globally across all tasks
+    - Avoiding repetition within a single task
+    - Cycling through images when all have been used
+
+    Attributes:
+        id: Primary key
+        dataset_image_id: Foreign key to dataset_images table (the scene image that was used)
+        task_id: Foreign key to generation_tasks table (the task that used this image)
+        used_at: Timestamp when this image was used
+    """
+    __tablename__ = 'dataset_image_usage'
+
+    id = db.Column(db.Integer, primary_key=True)
+    dataset_image_id = db.Column(db.Integer, db.ForeignKey('dataset_images.id', ondelete='CASCADE'), nullable=False, index=True)
+    task_id = db.Column(db.Integer, db.ForeignKey('generation_tasks.id', ondelete='CASCADE'), nullable=False, index=True)
+    used_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
+
+    # Relationships
+    dataset_image = db.relationship('DatasetImage', backref=db.backref('usage_records', lazy='dynamic', cascade='all, delete-orphan'))
+    task = db.relationship('GenerationTask', backref=db.backref('image_usage_records', lazy='dynamic', cascade='all, delete-orphan'))
+
+    # Unique constraint on dataset_image_id + task_id to prevent double-counting
+    __table_args__ = (
+        db.UniqueConstraint('dataset_image_id', 'task_id', name='uq_dataset_image_usage_image_task'),
+    )
+
+    def __repr__(self):
+        return f'<DatasetImageUsage dataset_image_id={self.dataset_image_id} task_id={self.task_id} used_at={self.used_at}>'

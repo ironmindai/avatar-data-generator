@@ -51,6 +51,38 @@
                     ></textarea>
                 </div>
 
+                <!-- Image Sets Selection Field -->
+                <div class="form-group">
+                    <label for="image_set_ids" class="form-label">
+                        <i data-feather="image" class="form-label-icon"></i>
+                        IMAGE SETS (SCENE BACKGROUNDS)
+                    </label>
+                    <p class="form-help" id="image-sets-help">
+                        Select one or more image sets to use as scene backgrounds for generation. The system will cycle through these images, prioritizing least-used images.
+                    </p>
+                    <select
+                        id="image_set_ids"
+                        name="image_set_ids[]"
+                        class="form-input form-select"
+                        aria-label="Image Sets"
+                        aria-describedby="image-sets-help"
+                        multiple
+                        required
+                    >
+                        <option value="" disabled>Select image sets...</option>
+                        {% for dataset in user_image_datasets %}
+                        <option value="{{ dataset.id }}">
+                            {{ dataset.name }} ({{ dataset.image_count }} images)
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-hint">
+                        <i data-feather="info" style="width: 14px; height: 14px;"></i>
+                        At least one image set must be selected. Don't have any?
+                        <a href="/image-datasets" class="inline-link">Create an image set</a>
+                    </small>
+                </div>
+
                 <!-- Horizontal Row: Bio Language, Number to Generate, Images per Persona -->
                 <div class="form-row">
                     <!-- Bio Language Selector -->
