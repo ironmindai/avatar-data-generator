@@ -284,10 +284,10 @@
                     </div>
                 </div>
 
-                <!-- Face Detection Status -->
+                <!-- Person Detection Status -->
                 <div id="faceDetectionStatus" class="face-detection-status" style="display: none;">
                     <i data-feather="loader"></i>
-                    <span id="faceDetectionStatusText">Detecting faces...</span>
+                    <span id="faceDetectionStatusText">Detecting people...</span>
                 </div>
 
                 <div class="results-grid" id="flickrResultsGrid">
@@ -451,8 +451,6 @@ https://example.com/image3.jpg"
 {% endblock %}
 
 {% block extra_js %}
-<!-- MediaPipe Face Detection -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
 <!-- TensorFlow.js and COCO-SSD for person detection -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>

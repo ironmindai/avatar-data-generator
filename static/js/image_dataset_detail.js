@@ -29,16 +29,12 @@
       hasMore: false,
       isLoadingMore: false
     },
-    faceDetection: {
-      detector: null,
+    personDetection: {
+      model: null,
       isInitialized: false,
       isProcessing: false,
       processedCount: 0,
       totalCount: 0
-    },
-    personDetection: {
-      model: null,
-      isInitialized: false
     }
   };
 
@@ -329,8 +325,8 @@
     updateSelectedCount();
     feather.replace();
 
-    // Trigger face detection after displaying results
-    detectFacesInFlickrResults();
+    // Trigger person detection after displaying results
+    detectPeopleInFlickrResults();
   }
 
   function appendFlickrResults(photos) {
@@ -346,8 +342,8 @@
     updateSelectedCount();
     feather.replace();
 
-    // Trigger face detection for newly appended results
-    detectFacesInFlickrResults();
+    // Trigger person detection for newly appended results
+    detectPeopleInFlickrResults();
   }
 
   function createFlickrResultItem(photo, index, container) {
@@ -438,45 +434,8 @@
   }
 
   // ========================================
-  // FACE DETECTION FUNCTIONALITY
+  // PERSON DETECTION FUNCTIONALITY
   // ========================================
-
-  /**
-   * Initialize MediaPipe Face Detection
-   * Lazy initialization - only loads when first needed
-   */
-  async function initializeFaceDetection() {
-    if (state.faceDetection.isInitialized) return true;
-
-    try {
-      // Check if MediaPipe FaceDetection is available
-      if (typeof FaceDetection === 'undefined') {
-        console.error('MediaPipe Face Detection library not loaded');
-        return false;
-      }
-
-      // Create face detector with short-range model (better for close-up photos)
-      state.faceDetection.detector = new FaceDetection({
-        locateFile: (file) => {
-          return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
-        }
-      });
-
-      // Configure detection options
-      state.faceDetection.detector.setOptions({
-        model: 'short', // Use short-range model for better accuracy
-        minDetectionConfidence: 0.3 // Lower threshold to detect more faces
-      });
-
-      // Initialize the detector
-      await state.faceDetection.detector.initialize();
-      state.faceDetection.isInitialized = true;
-      return true;
-    } catch (error) {
-      console.error('Failed to initialize face detection:', error);
-      return false;
-    }
-  }
 
   /**
    * Initialize TensorFlow.js COCO-SSD model for person detection
@@ -542,54 +501,13 @@
   }
 
   /**
-   * Detect faces in a single image
-   * Returns the number of faces detected
-   * Uses proxy endpoint to avoid CORS issues with Flickr images
+   * Process person detection for all Flickr results in batches
    */
-  async function detectFacesInImage(imageUrl) {
-    if (!state.faceDetection.isInitialized) {
-      await initializeFaceDetection();
-    }
-
-    if (!state.faceDetection.detector) return 0;
-
-    try {
-      // Create proxied URL to avoid CORS issues
-      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
-
-      // Create new image element with proxy URL
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = proxyUrl;
-
-      // Wait for image to load
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error('Failed to load image'));
-      });
-
-      // Detect faces in the loaded image using callback-based API
-      return new Promise((resolve) => {
-        state.faceDetection.detector.onResults((results) => {
-          const faceCount = results.detections ? results.detections.length : 0;
-          resolve(faceCount);
-        });
-        state.faceDetection.detector.send({ image: img });
-      });
-    } catch (error) {
-      console.error('Error detecting faces:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * Process face detection for all Flickr results in batches
-   */
-  async function detectFacesInFlickrResults() {
+  async function detectPeopleInFlickrResults() {
     // Prevent multiple simultaneous detection runs
-    if (state.faceDetection.isProcessing) return;
+    if (state.personDetection.isProcessing) return;
 
-    state.faceDetection.isProcessing = true;
+    state.personDetection.isProcessing = true;
 
     // Show detection status
     const statusElement = document.getElementById('faceDetectionStatus');
@@ -600,39 +518,36 @@
     }
 
     try {
-      // Initialize both face and person detection in parallel
-      const [faceInitialized, personInitialized] = await Promise.all([
-        initializeFaceDetection(),
-        initializePersonDetection()
-      ]);
+      // Initialize person detection
+      const personInitialized = await initializePersonDetection();
 
-      if (!faceInitialized && !personInitialized) {
+      if (!personInitialized) {
         if (statusElement) statusElement.style.display = 'none';
-        state.faceDetection.isProcessing = false;
+        state.personDetection.isProcessing = false;
         return;
       }
 
-      // Get all result items that don't have face/person count yet
+      // Get all result items that don't have person count yet
       const resultsGrid = document.getElementById('flickrResultsGrid');
       if (!resultsGrid) {
-        state.faceDetection.isProcessing = false;
+        state.personDetection.isProcessing = false;
         return;
       }
 
       const resultItems = Array.from(resultsGrid.querySelectorAll('.result-item'));
       const itemsToProcess = resultItems.filter(item => {
         const photoData = JSON.parse(item.dataset.photo);
-        return photoData.faceCount === undefined || photoData.personCount === undefined;
+        return photoData.personCount === undefined;
       });
 
       if (itemsToProcess.length === 0) {
         if (statusElement) statusElement.style.display = 'none';
-        state.faceDetection.isProcessing = false;
+        state.personDetection.isProcessing = false;
         return;
       }
 
-      state.faceDetection.totalCount = itemsToProcess.length;
-      state.faceDetection.processedCount = 0;
+      state.personDetection.totalCount = itemsToProcess.length;
+      state.personDetection.processedCount = 0;
 
       // Process images in batches of 8-10 for performance
       const BATCH_SIZE = 10;
@@ -644,34 +559,28 @@
         await Promise.all(batch.map(async (item) => {
           const photoData = JSON.parse(item.dataset.photo);
 
-          // Detect both faces and people in parallel
-          const [faceCount, personCount] = await Promise.all([
-            faceInitialized ? detectFacesInImage(photoData.url) : Promise.resolve(0),
-            personInitialized ? detectPeopleInImage(photoData.url) : Promise.resolve(0)
-          ]);
+          // Detect people in the image
+          const personCount = await detectPeopleInImage(photoData.url);
 
-          // Update photo data with both counts
-          photoData.faceCount = faceCount;
+          // Update photo data with person count
           photoData.personCount = personCount;
           item.dataset.photo = JSON.stringify(photoData);
 
           // Update the photo in state
           const photoInState = state.flickrSearch.results.find(p => p.id === photoData.id);
           if (photoInState) {
-            photoInState.faceCount = faceCount;
             photoInState.personCount = personCount;
           }
 
-          // Add badge if faces or people detected
-          const totalDetections = faceCount + personCount;
-          if (totalDetections > 0) {
-            addDetectionBadge(item, faceCount, personCount);
+          // Add badge if people detected
+          if (personCount > 0) {
+            addDetectionBadge(item, personCount);
           }
 
           // Update progress
-          state.faceDetection.processedCount++;
+          state.personDetection.processedCount++;
           if (statusText) {
-            statusText.textContent = `Detecting people in ${state.faceDetection.processedCount}/${state.faceDetection.totalCount} images...`;
+            statusText.textContent = `Detecting people in ${state.personDetection.processedCount}/${state.personDetection.totalCount} images...`;
           }
         }));
       }
@@ -682,52 +591,39 @@
       }
 
     } catch (error) {
-      console.error('Error in face detection process:', error);
+      console.error('Error in person detection process:', error);
       if (statusElement) statusElement.style.display = 'none';
     } finally {
-      state.faceDetection.isProcessing = false;
+      state.personDetection.isProcessing = false;
     }
   }
 
   /**
-   * Add detection badge to result item showing faces and people count
+   * Add detection badge to result item as green dot indicator
    */
-  function addDetectionBadge(resultItem, faceCount, personCount) {
+  function addDetectionBadge(resultItem, personCount) {
     const imageWrapper = resultItem.querySelector('.result-image-wrapper');
     if (!imageWrapper) return;
 
     // Check if badge already exists
     if (imageWrapper.querySelector('.face-count-badge')) return;
 
-    const totalDetections = faceCount + personCount;
-
-    // Build tooltip breakdown
-    const tooltipParts = [];
-    if (faceCount > 0) {
-      tooltipParts.push(`${faceCount} face${faceCount !== 1 ? 's' : ''}`);
-    }
-    if (personCount > 0) {
-      tooltipParts.push(`${personCount} person${personCount !== 1 ? 's' : ''}`);
-    }
-    const tooltipText = tooltipParts.join(', ');
-
     const badge = document.createElement('div');
     badge.className = 'face-count-badge';
-    badge.textContent = totalDetections;
-    badge.setAttribute('data-tooltip', tooltipText);
+    // No text content - just a visual indicator dot
+    badge.setAttribute('data-tooltip', `${personCount} person${personCount !== 1 ? 's' : ''} detected`);
 
     imageWrapper.appendChild(badge);
   }
 
   /**
-   * Select all Flickr results that have people (faces or person detections)
+   * Select all Flickr results that have people
    */
   function selectAllFlickrResultsWithFaces() {
     state.flickrSearch.results.forEach((photo) => {
-      const hasFaces = photo.faceCount && photo.faceCount > 0;
       const hasPeople = photo.personCount && photo.personCount > 0;
 
-      if (hasFaces || hasPeople) {
+      if (hasPeople) {
         state.selectedFlickrResults.add(photo.id);
 
         // Update UI
@@ -746,14 +642,13 @@
   }
 
   /**
-   * Deselect all Flickr results that have people (faces or person detections)
+   * Deselect all Flickr results that have people
    */
   function deselectAllFlickrResultsWithFaces() {
     state.flickrSearch.results.forEach((photo) => {
-      const hasFaces = photo.faceCount && photo.faceCount > 0;
       const hasPeople = photo.personCount && photo.personCount > 0;
 
-      if (hasFaces || hasPeople) {
+      if (hasPeople) {
         state.selectedFlickrResults.delete(photo.id);
 
         // Update UI
