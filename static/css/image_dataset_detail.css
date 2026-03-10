@@ -369,7 +369,8 @@
   padding: var(--spacing-2);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
 }
 
 /* ========================================
@@ -403,6 +404,67 @@
   background-color: rgba(0, 217, 255, 0.1);
   border: 1px solid rgba(0, 217, 255, 0.3);
   color: var(--color-accent-cyan);
+}
+
+/* ========================================
+   USAGE BADGES
+   ======================================== */
+
+.usage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-none);
+  font-size: var(--font-size-tiny);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all var(--transition-base);
+}
+
+.usage-badge svg {
+  width: 10px;
+  height: 10px;
+}
+
+.usage-count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-tiny);
+}
+
+/* Usage badge states based on usage count */
+.usage-none {
+  background-color: rgba(102, 102, 102, 0.1);
+  border: 1px solid rgba(102, 102, 102, 0.3);
+  color: var(--color-text-muted);
+}
+
+.usage-normal {
+  background-color: rgba(0, 217, 255, 0.1);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  color: var(--color-accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 217, 255, 0.15);
+}
+
+.usage-high {
+  background-color: rgba(255, 170, 0, 0.1);
+  border: 1px solid rgba(255, 170, 0, 0.4);
+  color: var(--color-warning);
+  box-shadow: 0 0 10px rgba(255, 170, 0, 0.15);
+}
+
+/* Hover effects for usage badges */
+.usage-badge:hover {
+  transform: translateY(-1px);
+}
+
+.usage-normal:hover {
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.3);
+}
+
+.usage-high:hover {
+  box-shadow: 0 0 15px rgba(255, 170, 0, 0.3);
 }
 
 /* ========================================
@@ -674,13 +736,26 @@
   height: 20px;
   border-radius: var(--radius-none);
   accent-color: var(--color-accent-cyan);
-  z-index: 1;
+  z-index: 2;
+  cursor: pointer;
+}
+
+.result-image-wrapper {
+  position: relative;
+  width: 100%;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.result-image-wrapper:hover {
+  opacity: 0.9;
 }
 
 .result-image {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
+  display: block;
 }
 
 .result-info {

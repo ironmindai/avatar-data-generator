@@ -413,6 +413,28 @@ Small inline hints that appear below input fields, often with icons.
 - Background: `#ffaa00`
 - Text: `#0f0f0f`
 
+**Usage Badge (Image Dataset Cards)**
+- Purpose: Display usage count for dataset images
+- Icon: `activity` (Feather icon)
+- States based on usage count:
+  - **Never Used (0 uses)**: Gray muted state
+    - Background: `rgba(102, 102, 102, 0.1)`
+    - Border: `1px solid rgba(102, 102, 102, 0.3)`
+    - Color: `var(--color-text-muted)` (#666666)
+  - **Normal Use (1-4 uses)**: Cyan neon state
+    - Background: `rgba(0, 217, 255, 0.1)`
+    - Border: `1px solid rgba(0, 217, 255, 0.3)`
+    - Color: `var(--color-accent-cyan)` (#00d9ff)
+    - Box Shadow: `0 0 10px rgba(0, 217, 255, 0.15)` (subtle glow)
+  - **Heavy Use (5+ uses)**: Warning amber state
+    - Background: `rgba(255, 170, 0, 0.1)`
+    - Border: `1px solid rgba(255, 170, 0, 0.4)`
+    - Color: `var(--color-warning)` (#ffaa00)
+    - Box Shadow: `0 0 10px rgba(255, 170, 0, 0.15)` (subtle glow)
+- Count Display: Monospace font (`var(--font-mono)`)
+- Hover Effect: `translateY(-1px)` with enhanced glow
+- Positioning: Right side of image card footer, alongside source badge
+
 ### Loading States (Technical)
 
 #### Spinner
@@ -2021,6 +2043,12 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
   - Minimum quality score slider (0-50, step 5)
 - Search results grid (auto-fill, min 150px columns)
 - Result cards with checkbox, thumbnail, title, score
+  - **Enhanced Selection UX:** Entire thumbnail area is clickable to toggle selection (not just checkbox)
+  - Checkbox remains visible in top-left for clear visual feedback
+  - `.result-image-wrapper` wraps the image and provides click handling
+  - Cursor changes to pointer on hover (opacity: 0.9)
+  - Selected state: Cyan border with neon glow `0 0 15px rgba(0, 217, 255, 0.3)`
+  - Smooth transition on all interactive states (`0.2s ease-out`)
 - Select All / Deselect All buttons
 - Selected count display
 - "Import Selected" button (disabled when none selected)

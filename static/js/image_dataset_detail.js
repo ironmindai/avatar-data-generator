@@ -354,10 +354,12 @@
              data-photo-id="${photo.id}"
              data-photo-url="${photo.url}"
              id="photo-${index}">
-      <img src="${photo.url}"
-           alt="${photo.title || 'Flickr photo'}"
-           class="result-image"
-           loading="lazy">
+      <div class="result-image-wrapper">
+        <img src="${photo.url}"
+             alt="${photo.title || 'Flickr photo'}"
+             class="result-image"
+             loading="lazy">
+      </div>
       <div class="result-info">
         ${photo.title ? `<div class="result-title">${photo.title.substring(0, 40)}${photo.title.length > 40 ? '...' : ''}</div>` : ''}
         ${tagsHtml}
@@ -365,17 +367,44 @@
       </div>
     `;
 
-    // Checkbox change handler
     const checkbox = resultItem.querySelector('.result-checkbox');
-    checkbox.addEventListener('change', function() {
-      if (this.checked) {
-        state.selectedFlickrResults.add(photo.id);
-        resultItem.classList.add('selected');
+    const imageWrapper = resultItem.querySelector('.result-image-wrapper');
+
+    // Toggle selection function
+    const toggleSelection = (fromCheckbox = false) => {
+      // If click came from checkbox directly, let it handle naturally
+      if (fromCheckbox) {
+        if (checkbox.checked) {
+          state.selectedFlickrResults.add(photo.id);
+          resultItem.classList.add('selected');
+        } else {
+          state.selectedFlickrResults.delete(photo.id);
+          resultItem.classList.remove('selected');
+        }
       } else {
-        state.selectedFlickrResults.delete(photo.id);
-        resultItem.classList.remove('selected');
+        // Click came from image/wrapper, toggle checkbox programmatically
+        checkbox.checked = !checkbox.checked;
+        if (checkbox.checked) {
+          state.selectedFlickrResults.add(photo.id);
+          resultItem.classList.add('selected');
+        } else {
+          state.selectedFlickrResults.delete(photo.id);
+          resultItem.classList.remove('selected');
+        }
       }
       updateSelectedCount();
+    };
+
+    // Checkbox change handler
+    checkbox.addEventListener('change', function() {
+      toggleSelection(true);
+    });
+
+    // Make image wrapper clickable
+    imageWrapper.addEventListener('click', function(e) {
+      // Prevent triggering if clicking on the checkbox itself
+      if (e.target === checkbox) return;
+      toggleSelection(false);
     });
 
     container.appendChild(resultItem);

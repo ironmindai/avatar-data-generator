@@ -170,6 +170,12 @@
                     URL
                 </span>
                 {% endif %}
+
+                <!-- Usage Count Badge -->
+                <span class="usage-badge {% if image.usage_count == 0 %}usage-none{% elif image.usage_count >= 5 %}usage-high{% else %}usage-normal{% endif %}">
+                    <i data-feather="activity"></i>
+                    <span class="usage-count">{{ image.usage_count }}</span>
+                </span>
             </div>
         </div>
         {% endfor %}

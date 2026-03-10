@@ -9,7 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from config import get_config
-from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult, WorkflowLog, WorkflowNodeLog, ImageDataset, DatasetImage, DatasetPermission
+from models import db, User, Settings, Config, IntConfig, GenerationTask, GenerationResult, WorkflowLog, WorkflowNodeLog, ImageDataset, DatasetImage, DatasetPermission, DatasetImageUsage
 import os
 import atexit
 import logging
@@ -2452,6 +2452,10 @@ def create_app():
                 per_page=per_page,
                 error_out=False
             )
+
+            # Add usage count to each image
+            for image in images_pagination.items:
+                image.usage_count = DatasetImageUsage.query.filter_by(dataset_image_id=image.id).count()
 
             # Get total image count
             total_images = DatasetImage.query.filter_by(dataset_id=dataset.id).count()
