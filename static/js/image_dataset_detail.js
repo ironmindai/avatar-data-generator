@@ -1530,7 +1530,20 @@
         e.preventDefault();
         const button = e.target.closest('[data-action="view"]');
         const imageUrl = button.getAttribute('data-image-url');
-        openImagePreview(imageUrl);
+        const imageId = button.getAttribute('data-image-id');
+        const sourceType = button.getAttribute('data-source-type');
+        const sourceMetadataStr = button.getAttribute('data-source-metadata');
+
+        let sourceMetadata = null;
+        if (sourceMetadataStr) {
+          try {
+            sourceMetadata = JSON.parse(sourceMetadataStr);
+          } catch (e) {
+            console.error('Failed to parse source metadata:', e);
+          }
+        }
+
+        openImagePreview(imageUrl, sourceType, sourceMetadata);
       }
 
       if (e.target.closest('[data-action="remove"]')) {
@@ -1557,14 +1570,86 @@
     });
   }
 
-  function openImagePreview(imageUrl) {
+  function openImagePreview(imageUrl, sourceType, sourceMetadata) {
     const imageModalImg = document.getElementById('imageModalImg');
     if (imageModalImg) {
       imageModalImg.src = imageUrl;
     }
 
+    // Populate metadata panel
+    populateMetadataPanel(sourceType, sourceMetadata);
+
     elements.imageModal.classList.add('active');
     elements.imageModal.setAttribute('aria-hidden', 'false');
+
+    // Reinitialize feather icons for metadata panel
+    if (typeof feather !== 'undefined') {
+      feather.replace();
+    }
+  }
+
+  function populateMetadataPanel(sourceType, metadata) {
+    const metadataPanel = document.getElementById('imageMetadataPanel');
+    const metadataSource = document.getElementById('metadataSource');
+    const metadataTitle = document.getElementById('metadataTitle');
+    const metadataTags = document.getElementById('metadataTags');
+    const metadataTagsList = document.getElementById('metadataTagsList');
+    const metadataLicense = document.getElementById('metadataLicense');
+    const metadataOwner = document.getElementById('metadataOwner');
+
+    if (!metadataPanel) return;
+
+    // Reset all sections
+    metadataTitle.style.display = 'none';
+    metadataTags.style.display = 'none';
+    metadataLicense.style.display = 'none';
+    metadataOwner.style.display = 'none';
+
+    // Populate source badge
+    if (sourceType === 'flickr') {
+      metadataSource.innerHTML = '<span class="source-badge source-flickr"><i data-feather="image"></i> Flickr</span>';
+    } else {
+      metadataSource.innerHTML = '<span class="source-badge source-url"><i data-feather="link"></i> URL</span>';
+    }
+
+    // Only show metadata panel if we have metadata
+    if (!metadata) {
+      metadataPanel.style.display = 'none';
+      return;
+    }
+
+    metadataPanel.style.display = 'block';
+
+    // Populate title
+    if (metadata.title && metadata.title.trim()) {
+      metadataTitle.textContent = metadata.title;
+      metadataTitle.style.display = 'block';
+    }
+
+    // Populate tags
+    if (metadata.tags && metadata.tags.length > 0) {
+      metadataTagsList.innerHTML = '';
+      metadata.tags.forEach(tag => {
+        const tagBadge = document.createElement('span');
+        tagBadge.className = 'tag-badge';
+        tagBadge.textContent = tag;
+        tagBadge.title = tag;
+        metadataTagsList.appendChild(tagBadge);
+      });
+      metadataTags.style.display = 'block';
+    }
+
+    // Populate license
+    if (metadata.license && metadata.license.trim()) {
+      metadataLicense.innerHTML = `<strong>License:</strong> ${metadata.license}`;
+      metadataLicense.style.display = 'block';
+    }
+
+    // Populate owner
+    if (metadata.owner_name && metadata.owner_name.trim()) {
+      metadataOwner.innerHTML = `Photo by <strong>${metadata.owner_name}</strong>`;
+      metadataOwner.style.display = 'block';
+    }
   }
 
   function closeImagePreview() {

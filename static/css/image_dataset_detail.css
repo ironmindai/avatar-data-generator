@@ -1385,6 +1385,180 @@
   box-shadow: 0 0 40px rgba(0, 217, 255, 0.3);
 }
 
+/* Image Metadata Panel */
+.image-metadata-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(15, 15, 15, 0.95) 0%, rgba(15, 15, 15, 0.85) 100%);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--color-accent-cyan);
+  padding: var(--spacing-4);
+  max-height: 40vh;
+  overflow-y: auto;
+  z-index: calc(var(--z-modal) + 1);
+}
+
+.metadata-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.metadata-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.metadata-label {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-tiny);
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Source Badge in Metadata */
+.metadata-source {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.metadata-source .source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-tiny);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-none);
+}
+
+.metadata-source .source-badge svg {
+  width: 12px;
+  height: 12px;
+}
+
+.metadata-source .source-flickr {
+  background: rgba(0, 136, 255, 0.15);
+  color: var(--color-accent-blue);
+  border: 1px solid var(--color-accent-blue);
+}
+
+.metadata-source .source-url {
+  background: rgba(0, 217, 255, 0.15);
+  color: var(--color-accent-cyan);
+  border: 1px solid var(--color-accent-cyan);
+}
+
+/* Title */
+.metadata-title {
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* Tags */
+.metadata-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.metadata-tags-list .tag-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--spacing-1) var(--spacing-2);
+  background: rgba(0, 217, 255, 0.1);
+  color: var(--color-accent-cyan);
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: var(--radius-none);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-tiny);
+  font-weight: 500;
+  text-transform: lowercase;
+  white-space: nowrap;
+  transition: all 0.2s ease-out;
+}
+
+.metadata-tags-list .tag-badge:hover {
+  background: rgba(0, 217, 255, 0.2);
+  border-color: var(--color-accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 217, 255, 0.2);
+}
+
+/* License */
+.metadata-license {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+.metadata-license strong {
+  color: var(--color-accent-cyan);
+  font-weight: 600;
+}
+
+/* Owner */
+.metadata-owner {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+}
+
+.metadata-owner strong {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+/* Custom Scrollbar for Tags */
+.metadata-tags-list::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.metadata-tags-list::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-none);
+}
+
+.metadata-tags-list::-webkit-scrollbar-thumb {
+  background: var(--color-accent-cyan);
+  border-radius: var(--radius-none);
+}
+
+.metadata-tags-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-cyan-dark);
+}
+
+/* Panel Scrollbar */
+.image-metadata-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.image-metadata-panel::-webkit-scrollbar-track {
+  background: rgba(15, 15, 15, 0.5);
+}
+
+.image-metadata-panel::-webkit-scrollbar-thumb {
+  background: var(--color-accent-cyan);
+  border-radius: var(--radius-none);
+}
+
+.image-metadata-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-cyan-dark);
+}
+
 /* ========================================
    EMPTY STATE
    ======================================== */

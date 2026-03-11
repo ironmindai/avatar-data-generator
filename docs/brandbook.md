@@ -1419,6 +1419,97 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 - Caption: Elevated background, border, 12px/16px padding, small monospace text
 - Click backdrop or Escape key to close
 
+**Image Metadata Panel (Image Preview Modal)**
+
+Overlay panel that displays image metadata at the bottom of the image preview modal. Provides detailed information about Flickr images or URL imports.
+
+- **Position:** Absolute, anchored to bottom of modal content
+- **Background:** Linear gradient `rgba(15, 15, 15, 0.95)` to `rgba(15, 15, 15, 0.85)` (top to bottom)
+- **Backdrop Filter:** `blur(10px)` for frosted glass effect
+- **Border Top:** `1px solid #00d9ff` (cyan accent)
+- **Padding:** `var(--spacing-4)` (16px)
+- **Max Height:** `40vh` with vertical scroll
+- **Z-Index:** `var(--z-modal) + 1` (above modal content)
+
+**Metadata Rows:**
+- **Spacing:** `var(--spacing-3)` (12px) gap between rows
+- **Layout:** Flex column with `var(--spacing-2)` (8px) gap
+
+**Metadata Label:**
+- **Font:** Monospace (`var(--font-mono)`)
+- **Size:** `var(--font-size-tiny)` (11px)
+- **Weight:** `600` (semibold)
+- **Color:** `#999999` (tertiary text)
+- **Transform:** Uppercase
+- **Letter Spacing:** `0.1em`
+
+**Source Badge (in metadata):**
+- **Display:** Inline-flex with icon gap
+- **Padding:** `var(--spacing-1) var(--spacing-2)` (4px 8px)
+- **Font:** Monospace, tiny, semibold, uppercase
+- **Border Radius:** `0` - SHARP CORNERS
+- **Flickr variant:** `rgba(0, 136, 255, 0.15)` background, `#0088ff` text/border
+- **URL variant:** `rgba(0, 217, 255, 0.15)` background, `#00d9ff` text/border
+- **Icon Size:** 12px x 12px
+
+**Title:**
+- **Font Size:** `0.875rem` (14px)
+- **Color:** `#ffffff` (primary text)
+- **Weight:** `500` (medium)
+- **Line Height:** `1.4`
+
+**Tags List:**
+- **Display:** Flex wrap with `var(--spacing-2)` (8px) gap
+- **Max Height:** `150px` with vertical scroll
+- **Tag Badge:**
+  - Padding: `var(--spacing-1) var(--spacing-2)` (4px 8px)
+  - Background: `rgba(0, 217, 255, 0.1)`
+  - Border: `1px solid rgba(0, 217, 255, 0.3)`
+  - Color: `#00d9ff` (cyan)
+  - Font: Monospace, tiny (11px), medium weight
+  - Transform: Lowercase
+  - Border Radius: `0` - SHARP CORNERS
+  - **Hover:** Background `rgba(0, 217, 255, 0.2)`, border `#00d9ff`, glow `0 0 10px rgba(0, 217, 255, 0.2)`
+  - **Transition:** `all 0.2s ease-out`
+
+**License & Owner:**
+- **Font Size:** `0.75rem` (12px)
+- **Color:** `#cccccc` (secondary text)
+- **Font Family (license):** Monospace
+- **Strong text:** Cyan (`#00d9ff`) for license, white (`#ffffff`) for owner name
+- **Weight:** `600` for strong elements
+
+**Custom Scrollbars:**
+- **Width:** `6px`
+- **Track:** `#0f0f0f` for tags list, `rgba(15, 15, 15, 0.5)` for panel
+- **Thumb:** `#00d9ff` (cyan)
+- **Thumb Hover:** `#00a8cc` (cyan dark)
+- **Border Radius:** `0` - SHARP CORNERS
+
+**Data Attributes (View Button):**
+- `data-action="view"` - Action identifier
+- `data-image-url` - Full-size image URL
+- `data-image-id` - Image database ID
+- `data-source-type` - "flickr" or "url"
+- `data-source-metadata` - JSON-encoded metadata object
+
+**Metadata Object Structure:**
+```javascript
+{
+  tags: ['tag1', 'tag2', ...],      // Array of tag strings
+  title: 'Image title',              // Optional string
+  license: 'License name',           // Optional string
+  owner_name: 'Photographer name'    // Optional string
+}
+```
+
+**JavaScript Behavior:**
+- Panel hidden if no metadata available
+- All metadata rows hidden by default
+- Each row shown conditionally based on data presence
+- Feather icons reinitialized after panel population
+- Panel scrolls independently if content exceeds max-height
+
 **Error Log Section (Collapsible)**
 - Container: Secondary background, error border (3px left), sharp corners
 - Header: Error red background `rgba(255, 68, 102, 0.1)`, clickable

@@ -168,7 +168,14 @@
                      class="image-thumbnail"
                      loading="lazy">
                 <div class="image-overlay">
-                    <button class="image-action-btn" data-action="view" data-image-url="{{ image.image_url }}">
+                    <button class="image-action-btn"
+                            data-action="view"
+                            data-image-url="{{ image.image_url }}"
+                            data-image-id="{{ image.id }}"
+                            data-source-type="{{ image.source_type }}"
+                            {% if image.source_metadata %}
+                            data-source-metadata="{{ image.source_metadata | tojson | forceescape }}"
+                            {% endif %}>
                         <i data-feather="maximize-2"></i>
                     </button>
                     {% if permission_level == 'edit' or is_owner %}
@@ -548,6 +555,29 @@ https://example.com/image3.jpg"
             <i data-feather="x"></i>
         </button>
         <img src="" alt="Full size preview" id="imageModalImg">
+
+        <!-- Metadata Panel -->
+        <div class="image-metadata-panel" id="imageMetadataPanel" style="display: none;">
+            <div class="metadata-content">
+                <!-- Source Badge -->
+                <div class="metadata-row metadata-source" id="metadataSource"></div>
+
+                <!-- Title -->
+                <div class="metadata-row metadata-title" id="metadataTitle" style="display: none;"></div>
+
+                <!-- Tags -->
+                <div class="metadata-row metadata-tags" id="metadataTags" style="display: none;">
+                    <div class="metadata-label">TAGS</div>
+                    <div class="metadata-tags-list" id="metadataTagsList"></div>
+                </div>
+
+                <!-- License -->
+                <div class="metadata-row metadata-license" id="metadataLicense" style="display: none;"></div>
+
+                <!-- Owner -->
+                <div class="metadata-row metadata-owner" id="metadataOwner" style="display: none;"></div>
+            </div>
+        </div>
     </div>
 </div>
 
