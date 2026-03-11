@@ -2880,6 +2880,15 @@ def create_app():
                             )
 
                             # Prepare database record data
+                            # Handle tags: ensure they're stored as a list
+                            tags = metadata.get('tags', [])
+                            if isinstance(tags, str):
+                                # If tags is a string, convert to list
+                                tags = tags.split() if tags else []
+                            elif not isinstance(tags, list):
+                                # If tags is neither string nor list, default to empty list
+                                tags = []
+
                             image_data = {
                                 'dataset_id': dataset_id,
                                 'image_url': public_url,
@@ -2887,7 +2896,7 @@ def create_app():
                                 'source_id': photo_id,
                                 'source_metadata': {
                                     'title': metadata.get('title', ''),
-                                    'tags': metadata.get('tags', ''),
+                                    'tags': tags,
                                     'owner_name': metadata.get('owner_name', ''),
                                     'license': metadata.get('license', ''),
                                     'date_taken': metadata.get('date_taken', ''),
