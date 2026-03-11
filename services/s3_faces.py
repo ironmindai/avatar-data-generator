@@ -1,11 +1,16 @@
 """
 S3 Faces Service
-Handles random face selection from MinIO S3 bucket for image generation.
+Handles random face selection from MinIO S3 bucket OR image datasets for base image generation.
 
 This module provides functions to:
 1. List available face images from S3 bucket
-2. Select random face images based on gender
-3. Download face images for use in img2img generation
+2. Select random face images based on gender from S3 faces bucket
+3. Select random face images from image datasets (alternative source)
+4. Download face images for use in img2img generation
+
+Configuration:
+- BASE_IMAGE_FACE_SOURCE: 's3_faces' (default) or 'image_datasets'
+- BASE_IMAGE_DATASET_IDS: Comma-separated dataset IDs (when using image_datasets source)
 """
 
 import os
@@ -237,3 +242,210 @@ async def get_random_face_for_generation(
     except Exception as e:
         logger.error(f"Failed to get random face for generation: {e}", exc_info=True)
         raise Exception(f"Random face retrieval failed: {str(e)}")
+
+
+async def get_random_face_from_datasets(
+    dataset_ids: List,  # Can be List[int] or List[str] (UUIDs)
+    gender: Optional[str] = None,
+    gender_lock: bool = False
+) -> Optional[Tuple[str, str, bytes]]:
+    """
+    Get a random face image from specified image datasets for base image generation.
+
+    This is an alternative to S3 faces bucket - uses image datasets instead.
+    Useful when you want to use curated datasets as face sources.
+
+    NOTE: Gender filtering is typically NOT used when sourcing from datasets,
+    as datasets are usually mixed or untagged by gender. Set gender_lock=False.
+
+    Args:
+        dataset_ids: List of dataset IDs (integers) or dataset_ids (UUIDs/strings)
+        gender: Optional gender filter ('m' or 'f') - typically ignored
+        gender_lock: If True, attempts gender filtering (usually False for datasets)
+
+    Returns:
+        Tuple of (dataset_name_id, public_url, image_bytes) or None if no images available
+
+    Raises:
+        Exception: If database or download operations fail
+
+    Example:
+        >>> face_data = await get_random_face_from_datasets([1, 2, 3])
+        >>> if face_data:
+        >>>     identifier, url, image_bytes = face_data
+    """
+    try:
+        from models import db, DatasetImage, ImageDataset
+
+        logger.info(f"Selecting random face from image datasets: {dataset_ids}")
+
+        if gender_lock and gender:
+            logger.warning(
+                f"Gender filtering (gender={gender}, lock={gender_lock}) is typically NOT applicable "
+                f"for image datasets (no gender metadata). Ignoring gender filter."
+            )
+
+        # Query random image from specified datasets
+        # Order by random to get a different image each time
+        from sqlalchemy import func
+
+        # Support both integer IDs and UUID dataset_ids
+        # Check if dataset_ids are integers or UUIDs
+        if dataset_ids and isinstance(dataset_ids[0], str) and len(dataset_ids[0]) > 10:
+            # Looks like UUIDs (strings > 10 chars)
+            logger.info(f"Detected UUID format for dataset IDs, querying by dataset_id column")
+            random_image = db.session.query(
+                DatasetImage.id,
+                DatasetImage.image_url,
+                ImageDataset.name.label('dataset_name')
+            ).join(
+                ImageDataset, DatasetImage.dataset_id == ImageDataset.id
+            ).filter(
+                ImageDataset.dataset_id.in_(dataset_ids)  # Use dataset_id (UUID) column
+            ).order_by(
+                func.random()
+            ).first()
+        else:
+            # Integer IDs
+            logger.info(f"Detected integer format for dataset IDs, querying by id column")
+            random_image = db.session.query(
+                DatasetImage.id,
+                DatasetImage.image_url,
+                ImageDataset.name.label('dataset_name')
+            ).join(
+                ImageDataset, DatasetImage.dataset_id == ImageDataset.id
+            ).filter(
+                ImageDataset.id.in_(dataset_ids)  # Use id (integer) column
+            ).order_by(
+                func.random()
+            ).first()
+
+        if not random_image:
+            logger.warning(f"No images found in datasets: {dataset_ids}")
+            return None
+
+        image_id = random_image.id
+        image_url = random_image.image_url
+        dataset_name = random_image.dataset_name
+
+        logger.info(f"Selected image {image_id} from dataset '{dataset_name}'")
+        logger.info(f"Image URL: {image_url}")
+
+        # Download image
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(image_url)
+            response.raise_for_status()
+
+            image_bytes = response.content
+            logger.info(f"Downloaded dataset face image: {len(image_bytes)} bytes")
+
+        # Return identifier (dataset_name_imageID), URL, and bytes
+        identifier = f"{dataset_name}_{image_id}"
+        return identifier, image_url, image_bytes
+
+    except Exception as e:
+        logger.error(f"Failed to get random face from datasets: {e}", exc_info=True)
+        raise Exception(f"Dataset face retrieval failed: {str(e)}")
+
+
+async def get_random_face_unified(
+    gender: str,
+    gender_lock: bool = True
+) -> Optional[Tuple[str, str, bytes]]:
+    """
+    Unified function to get random face from either S3 faces bucket OR image datasets.
+
+    This function checks the configuration and routes to the appropriate source:
+    - BASE_IMAGE_FACE_SOURCE='s3_faces' → Use S3 faces bucket (default)
+    - BASE_IMAGE_FACE_SOURCE='image_datasets' → Use image datasets
+
+    Configuration via environment or Config table:
+    - BASE_IMAGE_FACE_SOURCE: Source type ('s3_faces' or 'image_datasets')
+    - BASE_IMAGE_DATASET_IDS: Comma-separated dataset IDs (for 'image_datasets' mode)
+
+    Args:
+        gender: Person's gender ('m' or 'f')
+        gender_lock: If True, filter by gender (only works for s3_faces)
+
+    Returns:
+        Tuple of (identifier, public_url, image_bytes) or None if no images available
+
+    Raises:
+        Exception: If configuration is invalid or retrieval fails
+
+    Example:
+        >>> face_data = await get_random_face_unified('m', gender_lock=True)
+        >>> if face_data:
+        >>>     identifier, url, image_bytes = face_data
+    """
+    try:
+        # Check configuration source
+        face_source = os.getenv('BASE_IMAGE_FACE_SOURCE', 's3_faces')
+
+        if face_source == 's3_faces':
+            # Use S3 faces bucket (original behavior)
+            logger.info(f"Using S3 faces bucket as base image source")
+            return await get_random_face_for_generation(gender, gender_lock)
+
+        elif face_source == 'image_datasets':
+            # Use image datasets
+            logger.info(f"Using image datasets as base image source")
+
+            # Get dataset IDs from environment or Config
+            dataset_ids_str = os.getenv('BASE_IMAGE_DATASET_IDS', '')
+
+            # Try Config table if env not set
+            if not dataset_ids_str:
+                try:
+                    from models import IntConfig
+                    config_value = IntConfig.get_value('base_image_dataset_ids', None)
+                    if config_value:
+                        dataset_ids_str = str(config_value)
+                except Exception:
+                    pass
+
+            if not dataset_ids_str:
+                raise ValueError(
+                    "BASE_IMAGE_FACE_SOURCE is 'image_datasets' but BASE_IMAGE_DATASET_IDS is not configured. "
+                    "Set BASE_IMAGE_DATASET_IDS to comma-separated dataset IDs (e.g., '1,2,3')"
+                )
+
+            # Parse dataset IDs - support both integers and UUIDs
+            try:
+                raw_ids = [x.strip() for x in dataset_ids_str.split(',') if x.strip()]
+
+                # Try to parse as integers first
+                try:
+                    dataset_ids = [int(x) for x in raw_ids]
+                    logger.info(f"Parsed dataset IDs as integers: {dataset_ids}")
+                except ValueError:
+                    # Not integers, treat as UUIDs (strings)
+                    dataset_ids = raw_ids
+                    logger.info(f"Parsed dataset IDs as UUIDs: {dataset_ids}")
+
+            except Exception as e:
+                raise ValueError(f"Invalid BASE_IMAGE_DATASET_IDS format: '{dataset_ids_str}'. Error: {e}")
+
+            if not dataset_ids:
+                raise ValueError("BASE_IMAGE_DATASET_IDS is empty. At least one dataset ID is required.")
+
+            logger.info(f"Using dataset identifiers for base images: {dataset_ids}")
+
+            # Gender filtering note
+            if gender_lock:
+                logger.info(
+                    f"Note: Gender lock is enabled (gender={gender}), but image datasets "
+                    f"typically don't have gender metadata. Gender filtering will be skipped."
+                )
+
+            return await get_random_face_from_datasets(dataset_ids, gender, gender_lock)
+
+        else:
+            raise ValueError(
+                f"Invalid BASE_IMAGE_FACE_SOURCE: '{face_source}'. "
+                f"Must be 's3_faces' or 'image_datasets'."
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to get random face (unified): {e}", exc_info=True)
+        raise

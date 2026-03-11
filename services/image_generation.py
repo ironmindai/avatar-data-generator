@@ -202,12 +202,12 @@ async def generate_base_image(
             logger.info(f"Gender Lock: {randomize_face_gender_lock}")
             logger.info("=" * 80)
 
-            # Import S3 faces service
-            from services.s3_faces import get_random_face_for_generation
+            # Import S3 faces service (unified - works with S3 faces or image datasets)
+            from services.s3_faces import get_random_face_unified
 
-            # Get random face image
+            # Get random face image (from S3 faces bucket OR image datasets based on config)
             try:
-                face_data = await get_random_face_for_generation(
+                face_data = await get_random_face_unified(
                     gender=gender,
                     gender_lock=randomize_face_gender_lock
                 )
@@ -241,14 +241,174 @@ async def generate_base_image(
             # Convert gender m/f to male/female for better results
             gender_word = 'male' if gender.lower() == 'm' else 'female'
 
-            # Simple prompt that works incredibly well with ANY seed image
-            simple_prompt = f"based on this face, create a {gender_word} version of a {age} year old, {ethnicity} ethnicity"
+            # Get prompt strategy from environment (default: 'transform_explicit')
+            # Options: 'original', 'transform_explicit', 'convert_preserve', 'remake_nuclear',
+            #          'recreate_balanced', 'two_step', 'negative_positive', 'authentic_repeat',
+            #          'percentage', 'as_if'
+            prompt_strategy = os.getenv('NANO_BANANA_PROMPT_STRATEGY', 'transform_explicit')
+
+            # Get expression normalization setting (neutralize facial expressions from seed)
+            normalize_expression = os.getenv('NANO_BANANA_NORMALIZE_EXPRESSION', 'True').lower() in ('true', '1', 'yes')
+
+            # Expression normalization suffix options
+            expression_style = os.getenv('NANO_BANANA_EXPRESSION_STYLE', 'neutral_natural')
+            # Options: 'neutral_natural', 'slight_smile', 'relaxed', 'candid', 'friendly'
+
+            # Build prompt based on strategy
+            if prompt_strategy == 'original':
+                # Original simple prompt (baseline for comparison)
+                simple_prompt = f"based on this face, create a {gender_word} version of a {age} year old, {ethnicity} ethnicity"
+
+            elif prompt_strategy == 'transform_explicit':
+                # RECOMMENDED: Strong transformation with explicit ethnic override
+                simple_prompt = (
+                    f"Transform this face into a {age} year old {ethnicity} {gender_word}. "
+                    f"Complete ethnic conversion required: {ethnicity} skin tone, {ethnicity} facial features, {ethnicity} bone structure."
+                )
+
+            elif prompt_strategy == 'convert_preserve':
+                # "Convert" verb with explicit preserve/replace instructions
+                simple_prompt = (
+                    f"Convert this person into a {age} year old {ethnicity} {gender_word}. "
+                    f"Preserve only: face shape variation and head structure. "
+                    f"Replace everything else: make skin tone, eyes, nose, lips, and all features authentically {ethnicity}."
+                )
+
+            elif prompt_strategy == 'remake_nuclear':
+                # Nuclear option: complete remake with minimal reference influence
+                simple_prompt = (
+                    f"Remake this face as a completely {ethnicity} person. Age: {age}. Gender: {gender_word}. "
+                    f"All ethnic characteristics must be {ethnicity}, not from the original image. "
+                    f"Use original only for structural diversity."
+                )
+
+            elif prompt_strategy == 'recreate_balanced':
+                # Balanced approach with explicit keep/change instructions
+                simple_prompt = (
+                    f"Recreate this as a {age} year old {ethnicity} {gender_word}. "
+                    f"Keep: general facial structure for variation. "
+                    f"Change: all ethnic features to authentic {ethnicity} - skin, eyes, nose, bone structure."
+                )
+
+            elif prompt_strategy == 'two_step':
+                # Two-step pipeline instruction
+                simple_prompt = (
+                    f"Step 1: Identify the face shape and basic structure. "
+                    f"Step 2: Generate a new {age} year old {ethnicity} {gender_word} using that structure, "
+                    f"with completely {ethnicity} ethnic features and skin tone."
+                )
+
+            elif prompt_strategy == 'negative_positive':
+                # Negative + positive constraints (explicit DO/DON'T)
+                simple_prompt = (
+                    f"Convert this face to {ethnicity} ethnicity. Target: {age} year old {ethnicity} {gender_word}. "
+                    f"DO NOT preserve: ethnic features from source. "
+                    f"DO preserve: face shape outline for variation. "
+                    f"Result must be 100% {ethnicity} in appearance."
+                )
+
+            elif prompt_strategy == 'authentic_repeat':
+                # Repetition of "authentic" for emphasis
+                simple_prompt = (
+                    f"Transform into an authentic {ethnicity} person: {age} year old {gender_word}. "
+                    f"Authentic {ethnicity} skin tone, authentic {ethnicity} facial features. "
+                    f"Use reference only for pose and face shape diversity."
+                )
+
+            elif prompt_strategy == 'percentage':
+                # Percentage-based guidance
+                simple_prompt = (
+                    f"Convert this face: 100% {ethnicity} ethnic features required, 0% preservation of source ethnicity. "
+                    f"Age {age}, {gender_word}. Use source only for structural variation (head shape, face proportions)."
+                )
+
+            elif prompt_strategy == 'as_if':
+                # Natural language "as if" construction
+                simple_prompt = (
+                    f"Transform this person as if they were born {ethnicity}. Age: {age}, Gender: {gender_word}. "
+                    f"Keep the general face structure for diversity, but replace all ethnic characteristics "
+                    f"with authentic {ethnicity} features."
+                )
+
+            else:
+                # Fallback to transform_explicit if unknown strategy
+                logger.warning(f"Unknown prompt strategy '{prompt_strategy}', using 'transform_explicit' as fallback")
+                simple_prompt = (
+                    f"Transform this face into a {age} year old {ethnicity} {gender_word}. "
+                    f"Complete ethnic conversion required: {ethnicity} skin tone, {ethnicity} facial features, {ethnicity} bone structure."
+                )
+
+            # Add expression normalization if enabled
+            if normalize_expression:
+                # Build expression instruction based on style
+                if expression_style == 'neutral_natural':
+                    expression_instruction = (
+                        " Eyes must be OPEN and looking at camera. "
+                        "Neutral, relaxed facial expression with natural slight smile. "
+                        "No extreme emotions (no shouting, crying, laughing). "
+                        "Calm, approachable demeanor."
+                    )
+                elif expression_style == 'slight_smile':
+                    expression_instruction = (
+                        " Eyes OPEN, looking at camera. "
+                        "Slight friendly smile, warm and approachable. "
+                        "Ignore any extreme expressions from reference image."
+                    )
+                elif expression_style == 'relaxed':
+                    expression_instruction = (
+                        " Eyes OPEN. Completely relaxed face, neutral expression. "
+                        "No tension, no extreme emotions from source. "
+                        "Natural, at-ease appearance."
+                    )
+                elif expression_style == 'candid':
+                    expression_instruction = (
+                        " Eyes OPEN. Natural candid expression as if caught in a genuine moment. "
+                        "Not posed, not exaggerated. Replace any extreme expressions from source."
+                    )
+                elif expression_style == 'friendly':
+                    expression_instruction = (
+                        " Eyes OPEN, gentle smile. Friendly, warm expression. "
+                        "Approachable and positive demeanor. "
+                        "Neutralize any negative or extreme expressions from reference."
+                    )
+                else:
+                    # Default to neutral_natural
+                    expression_instruction = (
+                        " Eyes must be OPEN and looking at camera. "
+                        "Neutral, relaxed facial expression. "
+                        "No extreme emotions from source image."
+                    )
+
+                # Append expression instruction to prompt
+                simple_prompt += expression_instruction
+                logger.info(f"Expression normalization enabled: {expression_style}")
+
+            # Add gender-appropriate attire instruction (learned from scene generation)
+            # This prevents preserving wrong-gender clothing from reference image
+            attire_enabled = os.getenv('NANO_BANANA_BASE_ATTIRE_CONTROL', 'True').lower() in ('true', '1', 'yes')
+
+            if attire_enabled:
+                # Build attire instruction using proven scene generation approach
+                # Strong explicit instructions: adapt attire, replace if needed, specify gender
+                attire_instruction = (
+                    f" Clothing: adapt attire to match {gender_word} gender - "
+                    f"replace original clothing if needed. "
+                    f"Casual, everyday clothing appropriate for {gender_word}. "
+                    f"Natural, not stylized or costume."
+                )
+
+                # Append attire instruction to prompt
+                simple_prompt += attire_instruction
+                logger.info(f"Attire control enabled: gender-appropriate {gender_word} clothing")
 
             logger.info(f"Gender: {gender_word}")
             logger.info(f"Age: {age}")
             logger.info(f"Ethnicity: {ethnicity}")
             logger.info(f"Reference face: {public_url}")
-            logger.info(f"Simple prompt: {simple_prompt}")
+            logger.info(f"Prompt Strategy: {prompt_strategy}")
+            logger.info(f"Expression Control: {normalize_expression} ({expression_style if normalize_expression else 'disabled'})")
+            logger.info(f"Attire Control: {attire_enabled} (gender-appropriate)")
+            logger.info(f"Final Nano Banana Prompt: {simple_prompt}")
             logger.info("=" * 80)
 
             try:
@@ -271,6 +431,11 @@ async def generate_base_image(
                 }
 
                 # Prepare request payload with single image reference
+                # Temperature for Nano Banana 2: Gemini 3.1 optimized for default (1.0)
+                # Values < 1.0 may cause degraded performance per Google docs
+                # Get from env or use 1.0 default (Gemini 3 optimized)
+                nano_temp = float(os.getenv('NANO_BANANA_TEMPERATURE', '1.0'))
+
                 payload = {
                     'model': 'google/gemini-3.1-flash-image-preview',
                     'messages': [{
@@ -288,9 +453,13 @@ async def generate_base_image(
                             }
                         ]
                     }],
-                    'modalities': ['image'],
-                    'temperature': 0.7
+                    'modalities': ['image']
                 }
+
+                # Only add temperature if not default (1.0)
+                if nano_temp != 1.0:
+                    payload['temperature'] = nano_temp
+                    logger.info(f"Using custom temperature: {nano_temp} (Gemini 3 default is 1.0)")
 
                 # Call OpenRouter Nano Banana 2
                 MAX_RETRIES = 3

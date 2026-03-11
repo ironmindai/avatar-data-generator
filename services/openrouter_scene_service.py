@@ -97,6 +97,12 @@ async def generate_scene_image_openrouter(
 
         # Prepare request payload with dual image references
         # Gemini expects images as inline data in the content array
+        # Temperature: Gemini 3.1 optimized for default (1.0)
+        # Values < 1.0 may cause degraded performance per Google docs
+        nano_temp = float(os.getenv('NANO_BANANA_TEMPERATURE', '1.0'))
+
+        # CRITICAL: Per Google Gemini docs, label images BEFORE showing them
+        # Format: "image 1" label, then image 1, "image 2" label, then image 2
         payload = {
             'model': OPENROUTER_SCENE_MODEL,
             'messages': [{
@@ -104,7 +110,7 @@ async def generate_scene_image_openrouter(
                 'content': [
                     {
                         'type': 'text',
-                        'text': prompt
+                        'text': 'image 1:'
                     },
                     {
                         'type': 'image_url',
@@ -113,16 +119,28 @@ async def generate_scene_image_openrouter(
                         }
                     },
                     {
+                        'type': 'text',
+                        'text': 'image 2:'
+                    },
+                    {
                         'type': 'image_url',
                         'image_url': {
                             'url': f'data:image/png;base64,{person_base64}'
                         }
+                    },
+                    {
+                        'type': 'text',
+                        'text': prompt
                     }
                 ]
             }],
-            'modalities': ['image'],  # Request image output
-            'temperature': 0.7  # Some randomness for variation
+            'modalities': ['image']  # Request image output
         }
+
+        # Only add temperature if not default (1.0)
+        if nano_temp != 1.0:
+            payload['temperature'] = nano_temp
+            logger.info(f"Using custom temperature: {nano_temp} (Gemini 3 default is 1.0)")
 
         # Attempt generation with retries
         for attempt in range(1, max_retries + 1):

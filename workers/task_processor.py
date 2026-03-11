@@ -948,11 +948,80 @@ async def process_persona_images(
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Scene URL: {scene_url[:80]}...")
 
                 # Generate image using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview)
-                # Prompt: exactly as specified
-                prompt = "Replace the subject from image 1 with the subject from image 2"
+                # Get scene generation prompt strategy from environment
+                scene_prompt_strategy = os.getenv('NANO_BANANA_SCENE_PROMPT_STRATEGY', 'natural_blend')
+
+                # Build scene generation prompt based on strategy
+                if scene_prompt_strategy == 'original':
+                    # Original simple prompt (baseline for comparison)
+                    prompt = "Replace the subject from image 1 with the subject from image 2"
+
+                elif scene_prompt_strategy == 'natural_blend':
+                    # RECOMMENDED: Use "image 1" / "image 2" per Gemini docs (images are labeled before prompt)
+                    gender_full = 'male' if result.gender == 'm' else 'female'
+                    prompt = (
+                        f"Replicate image 1 with {gender_full} face from image 2. "
+                        f"Copy: lighting, colors, shadows, flash, raw quality from image 1. "
+                        f"Apply: {gender_full} casual clothing. "
+                        f"Preserve: face from image 2."
+                    )
+
+                elif scene_prompt_strategy == 'photorealistic_integration':
+                    # Maximum realism emphasis
+                    gender_full = 'male' if result.gender == 'm' else 'female'
+                    prompt = (
+                        f"Replicate image 1 exactly, replace person with {gender_full} face from image 2. "
+                        f"Match: lighting, shadows, colors, raw quality from image 1. "
+                        f"Use: {gender_full} casual attire, age {result.age or 25}. "
+                        f"Keep: face from image 2."
+                    )
+
+                elif scene_prompt_strategy == 'seamless_replace':
+                    # Focus on seamless replacement
+                    gender_full = 'male' if result.gender == 'm' else 'female'
+                    prompt = (
+                        f"Replace person in image 1 with {gender_full} from image 2. "
+                        f"Inherit: lighting, shadows, flash, colors from image 1. "
+                        f"Generate: {gender_full} casual clothing. "
+                        f"Transfer: face from image 2."
+                    )
+
+                elif scene_prompt_strategy == 'blend_adaptive':
+                    # Adaptive blending - concise
+                    gender_full = 'male' if result.gender == 'm' else 'female'
+                    prompt = (
+                        f"Merge {gender_full} face from image 2 into image 1 scene. "
+                        f"Adopt: lighting, shadows, quality from image 1. "
+                        f"Dress: {gender_full} casual. "
+                        f"Retain: facial features from image 2."
+                    )
+
+                elif scene_prompt_strategy == 'environment_aware':
+                    # Environment-aware - minimal
+                    gender_full = 'male' if result.gender == 'm' else 'female'
+                    prompt = (
+                        f"Place {gender_full} face from image 2 into image 1 environment. "
+                        f"Mimic: lighting, shadows, flash from image 1. "
+                        f"Clothe: {gender_full} casual, age {result.age or 25}. "
+                        f"Preserve: face from image 2."
+                    )
+
+                else:
+                    # Fallback to natural_blend
+                    logger.warning(f"Unknown scene prompt strategy '{scene_prompt_strategy}', using 'natural_blend' as fallback")
+                    prompt = (
+                        f"Place the person from image 2 into the scene from image 1. "
+                        f"Seamlessly blend - natural integration, not a cutout. "
+                        f"Match lighting and shadows. "
+                        f"Adapt attire for {result.gender}. "
+                        f"Preserve face, age, ethnicity from image 2. "
+                        f"Must look like a genuine photo, not a composite."
+                    )
+
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview) for scene generation")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Scene Prompt Strategy: {scene_prompt_strategy}")
                 logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Generating with dual-reference...")
-                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Prompt: {prompt}")
+                logger.info(f"[Task {task_id_str}] [{persona_name}] [Image {image_index + 1}] Scene Prompt: {prompt}")
 
                 image_bytes = await generate_scene_image_openrouter(
                     prompt=prompt,
