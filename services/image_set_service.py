@@ -166,15 +166,19 @@ def assign_scene_images_for_persona(image_set_ids: List[int], task_id: int, pers
 
     This function selects {count} images with these guarantees:
     1. Prioritizes globally least-used images
-    2. Excludes images already used by THIS SPECIFIC PERSONA (not entire task)
+    2. Excludes images already used in THIS TASK (task-level deduplication during pre-assignment)
     3. NO duplicates in the returned list
     4. Automatically cycles when all images exhausted
-    5. Allows image reuse across different personas in the same task
+    5. Different personas get different images (maximizes diversity across task)
+
+    NOTE: During pre-assignment phase, we track usage at TASK level to ensure
+    different personas get different images. The persona_result_id is still used
+    to track which persona owns which image for final database recording.
 
     Args:
         image_set_ids: List of image dataset IDs to select from
         task_id: The generation task ID
-        persona_result_id: The GenerationResult ID (persona) to track usage per-persona
+        persona_result_id: The GenerationResult ID (persona) to track final usage
         count: Number of images to assign
 
     Returns:
@@ -190,7 +194,9 @@ def assign_scene_images_for_persona(image_set_ids: List[int], task_id: int, pers
     try:
         logger.info(f"Pre-assigning {count} scene images for task {task_id} persona {persona_result_id} from image sets {image_set_ids}")
 
-        # First, try to get unused images (NOT yet used by THIS SPECIFIC PERSONA)
+        # First, try to get unused images (NOT yet used in THIS TASK)
+        # FIX: Changed from persona-level to task-level deduplication
+        # This ensures different personas get different images instead of all drawing from the same pool
         # Ordered by global usage count (least used first), then random
         unused_images = db.session.query(
             DatasetImage.id,
@@ -205,8 +211,8 @@ def assign_scene_images_for_persona(image_set_ids: List[int], task_id: int, pers
         ).filter(
             ~DatasetImage.id.in_(
                 db.session.query(DatasetImageUsage.dataset_image_id).filter(
-                    DatasetImageUsage.task_id == task_id,
-                    DatasetImageUsage.persona_result_id == persona_result_id
+                    DatasetImageUsage.task_id == task_id
+                    # REMOVED: persona_result_id filter - now tracks at task level during pre-assignment
                 )
             )
         ).group_by(
@@ -224,9 +230,9 @@ def assign_scene_images_for_persona(image_set_ids: List[int], task_id: int, pers
             return result
 
         # If we didn't get enough unused images, we need to cycle
-        # Get remaining count from ALL images (including already used by this persona)
+        # Get remaining count from ALL images (including already used in this task)
         remaining_count = count - len(unused_images)
-        logger.info(f"Only {len(unused_images)} unused images available for persona {persona_result_id}, need {remaining_count} more. Cycling...")
+        logger.info(f"Only {len(unused_images)} unused images available in task {task_id}, need {remaining_count} more. Cycling...")
 
         # Query ALL images, prioritizing globally least-used
         # Exclude the images we already selected above to avoid duplicates
