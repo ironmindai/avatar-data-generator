@@ -179,23 +179,38 @@
                 </div>
             </div>
             <div class="image-footer">
-                {% if image.source_type == 'flickr' %}
-                <span class="source-badge source-flickr">
-                    <i data-feather="image"></i>
-                    Flickr
-                </span>
-                {% else %}
-                <span class="source-badge source-url">
-                    <i data-feather="link"></i>
-                    URL
-                </span>
-                {% endif %}
+                <div class="image-footer-row">
+                    {% if image.source_type == 'flickr' %}
+                    <span class="source-badge source-flickr">
+                        <i data-feather="image"></i>
+                        Flickr
+                    </span>
+                    {% else %}
+                    <span class="source-badge source-url">
+                        <i data-feather="link"></i>
+                        URL
+                    </span>
+                    {% endif %}
 
-                <!-- Usage Count Badge -->
-                <span class="usage-badge {% if image.usage_count == 0 %}usage-none{% elif image.usage_count >= 5 %}usage-high{% else %}usage-normal{% endif %}">
-                    <i data-feather="activity"></i>
-                    <span class="usage-count">{{ image.usage_count }}</span>
-                </span>
+                    <!-- Usage Count Badge -->
+                    <span class="usage-badge {% if image.usage_count == 0 %}usage-none{% elif image.usage_count >= 5 %}usage-high{% else %}usage-normal{% endif %}">
+                        <i data-feather="activity"></i>
+                        <span class="usage-count">{{ image.usage_count }}</span>
+                    </span>
+                </div>
+
+                <!-- Flickr Tags (only for Flickr images with tags) -->
+                {% if image.source_type == 'flickr' and image.source_metadata and image.source_metadata.tags %}
+                <div class="image-tags">
+                    {% set tags = image.source_metadata.tags %}
+                    {% for tag in tags[:3] %}
+                        <span class="tag-badge" title="{{ tag }}">{{ tag[:15] }}{% if tag|length > 15 %}...{% endif %}</span>
+                    {% endfor %}
+                    {% if tags|length > 3 %}
+                        <span class="tag-badge tag-more">+{{ tags|length - 3 }}</span>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
