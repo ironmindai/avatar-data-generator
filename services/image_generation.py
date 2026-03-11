@@ -1,9 +1,10 @@
 """
-OpenAI Image Generation Service
-Handles avatar image generation using OpenAI's gpt-image-1.5 model.
+Avatar Image Generation Service
+Handles avatar image generation using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview)
+and OpenAI DALL-E as fallback.
 
 This module provides two main image generation functions:
-1. generate_base_image: Text-to-image generation from bio
+1. generate_base_image: Image-to-image with Nano Banana 2 (primary) or text-to-image with OpenAI (fallback)
 2. generate_images_from_base: Image-to-image generation creating 4-image grid
 """
 
@@ -11,6 +12,7 @@ import os
 import base64
 import httpx
 import logging
+import asyncio
 from io import BytesIO
 from typing import Optional, Tuple
 from datetime import datetime
@@ -104,25 +106,25 @@ async def generate_base_image(
     age: Optional[int] = None
 ) -> Tuple[Optional[bytes], Optional[str]]:
     """
-    Generate base avatar image from bio using text-to-image or image-to-image generation.
+    Generate base avatar image using OpenRouter Nano Banana 2 or text-to-image generation.
 
-    Creates a selfie-style image with amateur aesthetic based on the person's
-    Facebook bio and gender. Optionally uses a random face from S3 as reference.
+    Creates a selfie-style image based on gender, age, and ethnicity.
+    Optionally uses a random face from S3 as reference with a simple, effective prompt.
 
-    **Two-Stage Pipeline** (if USE_TWO_STAGE_PIPELINE=True and randomize_face=True):
-        Stage 1: S3 Face → RunPod/Flux (simple visual prompt) → Intermediate Face
-        Stage 2: Intermediate Face → OpenAI (bio/persona/ethnicity) → Final Avatar
+    **Image-to-Image Mode** (if randomize_face=True):
+        S3 Random Face → OpenRouter Nano Banana 2 (Gemini 3.1 Flash) → Base Avatar
+        Simple prompt: "based on this face, create a {gender} version of a {age} year old, {ethnicity} ethnicity"
 
-    **Single-Stage** (legacy, if USE_TWO_STAGE_PIPELINE=False):
-        S3 Face → OpenAI (bio/persona/ethnicity) → Final Avatar
+    **Text-to-Image Mode** (if randomize_face=False):
+        OpenAI DALL-E 3 text-to-image → Base Avatar
 
     Args:
-        bio_facebook: Facebook bio text describing the person
-        gender: Gender of the person (for prompt) - 'm' or 'f'
-        randomize_face: If True, use random face from S3 with img2img. If False, use txt2img.
+        bio_facebook: Facebook bio text describing the person (unused in img2img mode)
+        gender: Gender of the person - 'm' or 'f' (converted to 'male'/'female')
+        randomize_face: If True, use random face from S3 with Nano Banana 2. If False, use txt2img.
         randomize_face_gender_lock: If True and randomize_face=True, select face matching gender
-        ethnicity: Optional ethnicity of the person (e.g., 'White', 'Black', 'Asian')
-        age: Optional age of the person (e.g., 23)
+        ethnicity: Ethnicity of the person (e.g., 'Swedish', 'Asian', 'Israeli')
+        age: Age of the person (e.g., 23)
 
     Returns:
         Tuple of (image_bytes, selected_size) or (None, None) if generation fails
@@ -225,197 +227,161 @@ async def generate_base_image(
 
         # Generate image based on mode
         if randomize_face and face_image_bytes:
-            # Check if two-stage pipeline is enabled
-            if USE_TWO_STAGE_PIPELINE:
-                logger.info("=" * 80)
-                logger.info("TWO-STAGE PIPELINE ENABLED")
-                logger.info("Stage 1: RunPod/Flux → Stage 2: OpenAI/DALL-E")
-                logger.info("=" * 80)
+            # NEW SIMPLE APPROACH: Use OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview)
+            # This is the same model we already use successfully for scene generation
+            logger.info("=" * 80)
+            logger.info("USING NANO BANANA 2 FOR BASE IMAGE GENERATION")
+            logger.info("Model: google/gemini-3.1-flash-image-preview (OpenRouter)")
+            logger.info("=" * 80)
 
-                # Import RunPod service
-                from services.runpod_service import generate_runpod_base_face
+            # Import OpenRouter scene service (which has Nano Banana 2)
+            from services.openrouter_scene_service import OPENROUTER_API_KEY, OPENROUTER_API_URL
 
-                try:
-                    # STAGE 1: RunPod/Flux - Generate intermediate base face
-                    intermediate_face_bytes = await generate_runpod_base_face(
-                        reference_face_url=public_url,
-                        gender=gender,
-                        ethnicity=ethnicity,
-                        age=age,
-                        save_debug=SAVE_INTERMEDIATE_IMAGES
-                    )
+            # Build simple, effective prompt
+            # Convert gender m/f to male/female for better results
+            gender_word = 'male' if gender.lower() == 'm' else 'female'
 
-                    if not intermediate_face_bytes:
-                        logger.warning("Stage 1 (RunPod) failed, falling back to single-stage OpenAI")
-                        # Fall through to single-stage pipeline below
-                    else:
-                        # STAGE 2: OpenAI - Use intermediate face for final avatar
-                        logger.info("=" * 80)
-                        logger.info("STAGE 2: OpenAI/DALL-E Final Avatar Generation")
-                        logger.info("=" * 80)
+            # Simple prompt that works incredibly well with ANY seed image
+            simple_prompt = f"based on this face, create a {gender_word} version of a {age} year old, {ethnicity} ethnicity"
 
-                        # Use intermediate face as input for OpenAI
-                        final_image_bytes = await _generate_openai_from_base(
-                            base_image_bytes=intermediate_face_bytes,
-                            bio_facebook=bio_facebook,
-                            gender=gender,
-                            ethnicity=ethnicity,
-                            age=age,
-                            quality_prefix=quality_prefix,
-                            diversity_hint=diversity_hint,
-                            selected_size=selected_size
-                        )
+            logger.info(f"Gender: {gender_word}")
+            logger.info(f"Age: {age}")
+            logger.info(f"Ethnicity: {ethnicity}")
+            logger.info(f"Reference face: {public_url}")
+            logger.info(f"Simple prompt: {simple_prompt}")
+            logger.info("=" * 80)
 
-                        if final_image_bytes:
-                            logger.info("Two-stage pipeline completed successfully!")
-                            return final_image_bytes, selected_size
-                        else:
-                            logger.warning("Stage 2 (OpenAI) failed, falling back to single-stage")
-                            # Fall through to single-stage pipeline below
+            try:
+                # Download reference face and convert to base64
+                download_timeout = httpx.Timeout(60.0, connect=30.0)
+                async with httpx.AsyncClient(timeout=download_timeout) as client:
+                    logger.info("Downloading reference face for base64 encoding...")
+                    face_response = await client.get(public_url)
+                    if face_response.status_code != 200:
+                        raise Exception(f"Failed to download reference face: {face_response.status_code}")
+                    face_base64 = base64.b64encode(face_response.content).decode('utf-8')
+                    logger.info(f"✓ Downloaded and encoded reference face ({len(face_response.content)} bytes)")
 
-                except Exception as e:
-                    logger.error(f"Two-stage pipeline error: {e}")
-                    logger.warning("Falling back to single-stage OpenAI pipeline")
-                    # Fall through to single-stage pipeline below
+                # Prepare request headers
+                headers = {
+                    'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://avatar-data-generator.dev.iron-mind.ai',
+                    'X-Title': 'Avatar Data Generator - Base Image'
+                }
 
-            # MODE: Image-to-Image (img2img) with random face reference (single-stage)
-            # Implement retry logic for moderation blocks
-            MAX_RETRIES = 3
-            current_attempt = 0
-            current_face_url = public_url
-            current_face_bytes = face_image_bytes
+                # Prepare request payload with single image reference
+                payload = {
+                    'model': 'google/gemini-3.1-flash-image-preview',
+                    'messages': [{
+                        'role': 'user',
+                        'content': [
+                            {
+                                'type': 'text',
+                                'text': simple_prompt
+                            },
+                            {
+                                'type': 'image_url',
+                                'image_url': {
+                                    'url': f'data:image/png;base64,{face_base64}'
+                                }
+                            }
+                        ]
+                    }],
+                    'modalities': ['image'],
+                    'temperature': 0.7
+                }
 
-            while current_attempt < MAX_RETRIES:
-                try:
-                    current_attempt += 1
+                # Call OpenRouter Nano Banana 2
+                MAX_RETRIES = 3
+                current_attempt = 0
 
-                    # Use reference face for structural diversity while prompt controls ethnicity
-                    # Low fidelity allows prompt to override reference's ethnicity/skin tone
-                    prompt = (
-                        f"{base_prompt} "
-                        f"Generate a {ethnicity} person with authentic {ethnicity} facial features and skin tone. "
-                        f"Use the reference image for facial structure and proportions variation only."
-                    )
-
-                    logger.info(f"Generating base image for gender '{gender}' using img2img (attempt {current_attempt}/{MAX_RETRIES})")
-                    logger.info("=" * 80)
-                    logger.info("BASE IMAGE GENERATION PROMPT (Image-to-Image with Face Reference):")
-                    logger.info(f"{prompt}")
-                    logger.info(f"Using face: {current_face_url}")
-                    logger.info("=" * 80)
-
-                    # Prepare multipart form data for /images/edits endpoint
-                    image_file = BytesIO(current_face_bytes)
-                    files = [
-                        ('image[]', ('reference_face.png', image_file, 'image/png'))
-                    ]
-
-                    data = {
-                        'prompt': prompt,
-                        'model': IMAGE_MODEL,
-                        'n': 1,
-                        'size': selected_size,  # Use randomized aspect ratio
-                        'input_fidelity': 'low'  # Low fidelity = creative freedom to reinterpret ethnicity from prompt
-                    }
-
-                    headers = {
-                        'Authorization': f'Bearer {OPENAI_API_KEY}'
-                    }
-
-                    # Make async HTTP request to OpenAI img2img endpoint
-                    async with httpx.AsyncClient(timeout=IMAGE_GENERATION_TIMEOUT) as client:
-                        response = await client.post(
-                            f"{OPENAI_API_BASE}/images/edits",
-                            files=files,
-                            data=data,
-                            headers=headers
-                        )
-
-                        # Check for errors
-                        response.raise_for_status()
-                        result = response.json()
-
-                        # Extract base64 image data
-                        if 'data' in result and len(result['data']) > 0:
-                            if 'b64_json' in result['data'][0]:
-                                base64_image = result['data'][0]['b64_json']
-                                image_bytes = base64.b64decode(base64_image)
-
-                                logger.info(f"Successfully generated base image with face reference ({len(image_bytes)} bytes)")
-                                return image_bytes, selected_size
-                            else:
-                                logger.error("Response data missing 'b64_json' field")
-                                raise Exception("Invalid response format: missing b64_json")
-                        else:
-                            logger.error("Response missing 'data' field or data is empty")
-                            raise Exception("Invalid response format: missing data")
-
-                except httpx.HTTPStatusError as e:
-                    error_detail = {}
-                    request_id = None
-
+                while current_attempt < MAX_RETRIES:
                     try:
-                        error_detail = e.response.json()
-                        # Extract request ID if available
-                        request_id = e.response.headers.get('x-request-id') or error_detail.get('request_id')
-                    except Exception:
-                        error_detail = {'text': e.response.text}
+                        current_attempt += 1
+                        logger.info(f"Attempt {current_attempt}/{MAX_RETRIES}: Calling OpenRouter Nano Banana 2...")
 
-                    logger.error(f"OpenAI API HTTP error on attempt {current_attempt}: {e.response.status_code} - {error_detail}")
+                        # Make async HTTP request to OpenRouter
+                        api_timeout = httpx.Timeout(180.0, connect=30.0)
+                        async with httpx.AsyncClient(timeout=api_timeout) as client:
+                            response = await client.post(
+                                OPENROUTER_API_URL,
+                                headers=headers,
+                                json=payload
+                            )
 
-                    # Check if this is a moderation block error
-                    if is_moderation_blocked_error(error_detail):
-                        logger.warning(f"Moderation block detected for face: {current_face_url}")
+                            # Check for HTTP errors
+                            if response.status_code != 200:
+                                error_detail = response.json() if response.text else {'error': 'Unknown error'}
+                                logger.error(f"OpenRouter API HTTP error on attempt {current_attempt}: {response.status_code} - {error_detail}")
 
-                        # Log the flagged image
-                        log_flagged_image(current_face_url, 'moderation_blocked', request_id)
+                                if current_attempt < MAX_RETRIES:
+                                    logger.info(f"Retrying in 3 seconds...")
+                                    await asyncio.sleep(3)
+                                    continue
+                                else:
+                                    raise Exception(f"OpenRouter API error: {response.status_code} - {error_detail}")
 
-                        # If we haven't exhausted retries, get a new random face
+                            # Parse response
+                            result = response.json()
+
+                            # Extract image from response
+                            if 'choices' not in result or len(result['choices']) == 0:
+                                raise Exception("No choices in OpenRouter response")
+
+                            message = result['choices'][0].get('message', {})
+                            images = message.get('images', [])
+
+                            if not images or len(images) == 0:
+                                raise Exception("No images in OpenRouter response")
+
+                            # Get first image
+                            image_data = images[0]
+                            image_url = image_data.get('image_url', {}).get('url', '')
+
+                            if not image_url:
+                                raise Exception("No image URL in OpenRouter response")
+
+                            # Parse base64 data (format: "data:image/png;base64,{base64_string}")
+                            if not image_url.startswith('data:image/'):
+                                raise Exception(f"Unexpected image URL format: {image_url[:100]}")
+
+                            # Extract base64 data
+                            base64_prefix = 'base64,'
+                            base64_start = image_url.find(base64_prefix)
+                            if base64_start == -1:
+                                raise Exception("No base64 data found in image URL")
+
+                            base64_data = image_url[base64_start + len(base64_prefix):]
+
+                            # Decode base64 to bytes
+                            image_bytes = base64.b64decode(base64_data)
+
+                            logger.info(f"Successfully generated base image with Nano Banana 2")
+                            logger.info(f"Image size: {len(image_bytes)} bytes")
+                            return image_bytes, selected_size
+
+                    except httpx.TimeoutException:
+                        logger.error(f"OpenRouter API timeout on attempt {current_attempt}")
                         if current_attempt < MAX_RETRIES:
-                            logger.info(f"Retrying with a new random face (attempt {current_attempt + 1}/{MAX_RETRIES})")
-
-                            # Import S3 faces service
-                            from services.s3_faces import get_random_face_for_generation
-
-                            try:
-                                # Get a NEW random face
-                                new_face_data = await get_random_face_for_generation(
-                                    gender=gender,
-                                    gender_lock=randomize_face_gender_lock
-                                )
-
-                                if not new_face_data:
-                                    logger.error("No face images available for retry. Cannot continue.")
-                                    raise Exception(f"Moderation blocked and no alternative faces available: {error_detail}")
-
-                                s3_key, current_face_url, current_face_bytes = new_face_data
-                                logger.info(f"Selected new random face for retry: {s3_key}")
-                                logger.info(f"New face URL: {current_face_url}")
-
-                                # Continue to next iteration of while loop
-                                continue
-
-                            except Exception as retry_error:
-                                logger.error(f"Failed to get new random face for retry: {retry_error}")
-                                raise Exception(f"Moderation blocked and retry failed: {error_detail}")
+                            logger.info(f"Retrying in 3 seconds...")
+                            await asyncio.sleep(3)
+                            continue
                         else:
-                            # Exhausted retries
-                            logger.error(f"Exhausted all {MAX_RETRIES} retry attempts due to moderation blocks")
-                            raise Exception(f"Image generation failed after {MAX_RETRIES} attempts due to moderation blocks")
+                            raise Exception("OpenRouter API timeout after all retries")
 
-                    else:
-                        # Not a moderation error, propagate immediately
-                        raise Exception(f"OpenAI API error: {error_detail}")
+                    except Exception as e:
+                        logger.error(f"Error on attempt {current_attempt}: {str(e)}")
+                        if current_attempt < MAX_RETRIES:
+                            logger.info(f"Retrying in 3 seconds...")
+                            await asyncio.sleep(3)
+                            continue
+                        else:
+                            raise
 
-                except httpx.TimeoutException:
-                    logger.error(f"Request timed out after {IMAGE_GENERATION_TIMEOUT}s on attempt {current_attempt}")
-                    # Timeout errors should not retry - propagate immediately
-                    raise Exception(f"Image generation timed out after {IMAGE_GENERATION_TIMEOUT}s")
-
-                except Exception as e:
-                    # Any other exception should propagate immediately (not a moderation issue)
-                    logger.error(f"Error in img2img generation on attempt {current_attempt}: {str(e)}")
-                    raise
+            except Exception as e:
+                logger.error(f"Nano Banana 2 base image generation failed: {str(e)}")
+                raise
 
         else:
             # MODE: Text-to-Image (txt2img) - Original behavior
