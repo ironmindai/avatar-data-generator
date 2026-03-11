@@ -2830,13 +2830,7 @@ def create_app():
                             continue
 
                         # Use photo data directly from frontend
-                        photo_data_list.append({
-                            'id': photo_id,
-                            'info': photo,
-                            'url_o': photo.get('url_o'),
-                            'url_l': photo.get('url_l'),
-                            'url_m': photo.get('url_m')
-                        })
+                        photo_data_list.append(photo)
 
                     except Exception as e:
                         logging.error(f"[Job {job_id}] Failed to prepare photo data: {e}")
