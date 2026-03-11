@@ -32,6 +32,11 @@
       hasMore: false,
       isLoadingMore: false
     },
+    flickrImport: {
+      isImporting: false,
+      pollingInterval: null,
+      jobId: null
+    },
     personDetection: {
       model: null,
       isInitialized: false,
@@ -228,6 +233,12 @@
     elements.flickrModal.classList.remove('active');
     elements.flickrModal.setAttribute('aria-hidden', 'true');
 
+    // Clear import polling if active
+    if (state.flickrImport.pollingInterval) {
+      clearInterval(state.flickrImport.pollingInterval);
+      state.flickrImport.pollingInterval = null;
+    }
+
     // Reset search
     const searchForm = document.getElementById('flickrSearchForm');
     const results = document.getElementById('flickrResults');
@@ -250,6 +261,11 @@
       totalPages: 1,
       hasMore: false,
       isLoadingMore: false
+    };
+    state.flickrImport = {
+      isImporting: false,
+      pollingInterval: null,
+      jobId: null
     };
   }
 
@@ -868,6 +884,7 @@
 
   async function handleFlickrImport() {
     if (state.selectedFlickrResults.size === 0) return;
+    if (state.flickrImport.isImporting) return; // Prevent multiple imports
 
     const selectedPhotoIds = Array.from(state.selectedFlickrResults);
     const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
@@ -889,14 +906,17 @@
       return { id: photoId }; // Fallback if data not found
     });
 
-    // Disable button
+    // Disable button and show initial state
     const importBtn = document.getElementById('importSelectedBtn');
     importBtn.disabled = true;
     const originalText = importBtn.innerHTML;
-    importBtn.innerHTML = '<i data-feather="loader"></i> Importing...';
+    importBtn.innerHTML = '<i data-feather="loader"></i> Starting import...';
     feather.replace();
 
+    state.flickrImport.isImporting = true;
+
     try {
+      // Start the import job
       const response = await fetch(`/api/image-datasets/${state.datasetId}/import-flickr`, {
         method: 'POST',
         headers: {
@@ -910,25 +930,136 @@
 
       const result = await response.json();
 
-      if (response.ok && result.success) {
-        showToast(`Successfully imported ${result.imported_count} images`, 'success');
-        closeFlickrModal();
-
-        // Reload page to show new images
-        setTimeout(() => window.location.reload(), 500);
+      if (response.ok && result.success && result.job_id) {
+        // Store job ID and start polling
+        state.flickrImport.jobId = result.job_id;
+        startImportProgressPolling(importBtn, originalText);
       } else {
-        showToast(result.message || 'Failed to import images', 'error');
-        importBtn.disabled = false;
-        importBtn.innerHTML = originalText;
-        feather.replace();
+        // Handle immediate error (job didn't start)
+        showToast(result.message || 'Failed to start import', 'error');
+        resetImportButton(importBtn, originalText);
       }
     } catch (error) {
-      console.error('Error importing from Flickr:', error);
-      showToast('An error occurred while importing images', 'error');
-      importBtn.disabled = false;
-      importBtn.innerHTML = originalText;
-      feather.replace();
+      console.error('Error starting Flickr import:', error);
+      showToast('An error occurred while starting import', 'error');
+      resetImportButton(importBtn, originalText);
     }
+  }
+
+  function startImportProgressPolling(importBtn, originalText) {
+    // Poll every 1.5 seconds
+    state.flickrImport.pollingInterval = setInterval(async () => {
+      try {
+        await pollImportProgress(importBtn, originalText);
+      } catch (error) {
+        console.error('Error polling import progress:', error);
+        // Continue polling despite errors (backend might be temporarily busy)
+      }
+    }, 1500);
+
+    // Also poll immediately
+    pollImportProgress(importBtn, originalText);
+  }
+
+  async function pollImportProgress(importBtn, originalText) {
+    if (!state.flickrImport.jobId) return;
+
+    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
+
+    try {
+      const response = await fetch(
+        `/api/image-datasets/${state.datasetId}/import-flickr/${state.flickrImport.jobId}/progress`,
+        {
+          method: 'GET',
+          headers: {
+            'X-CSRFToken': csrfToken
+          }
+        }
+      );
+
+      const progress = await response.json();
+
+      if (!response.ok) {
+        throw new Error(progress.message || 'Failed to get progress');
+      }
+
+      // Update button text with progress
+      updateImportButtonProgress(importBtn, progress);
+
+      // Check if completed or failed
+      if (progress.status === 'completed') {
+        handleImportComplete(importBtn, originalText, progress);
+      } else if (progress.status === 'failed') {
+        handleImportFailed(importBtn, originalText, progress);
+      }
+    } catch (error) {
+      console.error('Error fetching import progress:', error);
+      // Don't stop polling on network errors - backend might recover
+    }
+  }
+
+  function updateImportButtonProgress(importBtn, progress) {
+    const { current, total, imported, failed } = progress;
+
+    let progressText = '';
+    if (total && total > 0) {
+      progressText = `Importing... ${current}/${total}`;
+      if (imported !== undefined || failed !== undefined) {
+        const parts = [];
+        if (imported > 0) parts.push(`${imported} imported`);
+        if (failed > 0) parts.push(`${failed} failed`);
+        if (parts.length > 0) {
+          progressText += ` (${parts.join(', ')})`;
+        }
+      }
+    } else {
+      progressText = 'Importing...';
+    }
+
+    importBtn.innerHTML = `<i data-feather="loader"></i> ${progressText}`;
+    feather.replace();
+  }
+
+  function handleImportComplete(importBtn, originalText, progress) {
+    // Stop polling
+    if (state.flickrImport.pollingInterval) {
+      clearInterval(state.flickrImport.pollingInterval);
+      state.flickrImport.pollingInterval = null;
+    }
+
+    const importedCount = progress.imported || 0;
+    const failedCount = progress.failed || 0;
+
+    // Show success message
+    let message = `Successfully imported ${importedCount} image${importedCount !== 1 ? 's' : ''}`;
+    if (failedCount > 0) {
+      message += `. ${failedCount} failed`;
+    }
+    showToast(message, 'success');
+
+    // Close modal and reload
+    closeFlickrModal();
+    setTimeout(() => window.location.reload(), 500);
+  }
+
+  function handleImportFailed(importBtn, originalText, progress) {
+    // Stop polling
+    if (state.flickrImport.pollingInterval) {
+      clearInterval(state.flickrImport.pollingInterval);
+      state.flickrImport.pollingInterval = null;
+    }
+
+    const errorMessage = progress.error || 'Import failed';
+    showToast(errorMessage, 'error');
+    resetImportButton(importBtn, originalText);
+  }
+
+  function resetImportButton(importBtn, originalText) {
+    state.flickrImport.isImporting = false;
+    state.flickrImport.jobId = null;
+    importBtn.disabled = false;
+    importBtn.innerHTML = originalText;
+    feather.replace();
   }
 
   // ========================================

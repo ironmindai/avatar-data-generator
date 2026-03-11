@@ -509,6 +509,65 @@ Used for selecting images in grid layouts with elegant overlay indicators.
 - **Display:** Flex, centered
 - **Z-index:** `50`
 
+#### Progress Polling Pattern (Async Background Jobs)
+
+Used for long-running operations that process in the background with real-time progress updates (e.g., Flickr import).
+
+**State Management:**
+- Track job state with flags: `isImporting`, `jobId`, `pollingInterval`
+- Example state structure:
+  ```javascript
+  flickrImport: {
+    isImporting: false,
+    pollingInterval: null,
+    jobId: null
+  }
+  ```
+
+**Workflow:**
+1. **Initiate Job:**
+   - POST request returns immediately with `{success: true, job_id: "uuid"}`
+   - Store `job_id` in state
+   - Disable action button and show initial status
+
+2. **Progress Polling:**
+   - Poll progress endpoint every 1.5 seconds: `GET /api/.../progress`
+   - Update button text with live progress: "Importing... 50/500 (48 imported, 2 failed)"
+   - Continue until status is `completed` or `failed`
+
+3. **UI Updates During Progress:**
+   - Button shows: `<i data-feather="loader"></i> Importing... X/Y (N imported, M failed)`
+   - Use feather `loader` icon (replaced after each update)
+   - Display current/total counts and success/failure stats
+   - Keep button disabled to prevent multiple operations
+
+4. **Completion Handling:**
+   - **Success:** Show toast with summary, close modal, reload page after 500ms
+   - **Failure:** Show error toast with details, re-enable button, allow retry
+   - Always clear polling interval on completion
+
+5. **Cleanup:**
+   - Clear interval when modal closes (prevent memory leaks)
+   - Reset state flags on modal close
+   - Clear interval on navigation away
+
+**Button Text Progression:**
+- Initial: "Import Selected"
+- Starting: "Starting import..."
+- In Progress: "Importing... 50/500 (48 imported, 2 failed)"
+- Success: Toast message + modal close
+- Error: Toast message + button reset
+
+**Error Handling:**
+- Network errors during polling: Continue polling (backend may recover)
+- Missing job_id: Stop polling, show error, reset button
+- HTTP error responses: Show error message, stop polling, reset button
+
+**Accessibility:**
+- Button remains focusable but disabled during operation
+- Screen readers get updated button text
+- Clear visual feedback via icon animation
+
 ### Floating Action Toolbar (Bulk Actions)
 
 Used for bulk operations like deleting multiple selected items. Appears at bottom-center when items are selected.

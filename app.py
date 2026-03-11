@@ -29,9 +29,14 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func
 import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 # Global lock for image regeneration (prevents concurrent regeneration of same image)
 REGENERATION_LOCKS = {}
+
+# Flickr import job tracking (in-memory storage)
+flickr_import_jobs = {}
+flickr_import_jobs_lock = threading.Lock()
 
 
 def create_app():
@@ -2778,10 +2783,199 @@ def create_app():
                 'message': 'Internal server error'
             }), 500
 
+    def _flickr_import_background_worker(job_id, dataset_id, user_id, photos, app_instance):
+        """Background worker function for Flickr import.
+
+        Args:
+            job_id: Unique job identifier
+            dataset_id: Target dataset ID
+            user_id: User ID for access verification
+            photos: List of photo metadata from frontend
+            app_instance: Flask app instance for app context
+        """
+        with app_instance.app_context():
+            try:
+                from services import flickr_service
+                from services.image_utils import upload_dataset_image_to_s3, compute_image_hash
+
+                # Update job status to processing
+                with flickr_import_jobs_lock:
+                    flickr_import_jobs[job_id]['status'] = 'processing'
+
+                imported_count = 0
+                failed_count = 0
+
+                logging.info(f"[Job {job_id}] Starting Flickr import for dataset {dataset_id}: {len(photos)} photos")
+
+                # Prepare for batch download using photo data from frontend
+                photo_data_list = []
+                for photo in photos:
+                    try:
+                        photo_id = photo.get('id')
+
+                        if not photo_id:
+                            logging.warning(f"[Job {job_id}] Photo missing ID, skipping")
+                            failed_count += 1
+                            continue
+
+                        # Check if already imported
+                        existing = DatasetImage.query.filter_by(
+                            dataset_id=dataset_id,
+                            source_type='flickr',
+                            source_id=photo_id
+                        ).first()
+
+                        if existing:
+                            logging.debug(f"[Job {job_id}] Photo {photo_id} already in dataset, skipping")
+                            continue
+
+                        # Use photo data directly from frontend
+                        photo_data_list.append({
+                            'id': photo_id,
+                            'info': photo,
+                            'url_o': photo.get('url_o'),
+                            'url_l': photo.get('url_l'),
+                            'url_m': photo.get('url_m')
+                        })
+
+                    except Exception as e:
+                        logging.error(f"[Job {job_id}] Failed to prepare photo data: {e}")
+                        failed_count += 1
+
+                # Update total count
+                total_to_process = len(photo_data_list)
+                with flickr_import_jobs_lock:
+                    flickr_import_jobs[job_id]['total'] = total_to_process
+
+                # Helper function for parallel S3 upload processing
+                def _process_flickr_image(result, dataset_id, app):
+                    """Process a single Flickr download result: compute hash, upload to S3."""
+                    with app.app_context():
+                        try:
+                            if not result['success']:
+                                return False, None, result.get('error', 'Download failed')
+
+                            photo_id = result['photo_id']
+                            image_bytes = result['image_bytes']
+                            metadata = result['metadata']
+
+                            # Compute hash
+                            image_hash = compute_image_hash(image_bytes)
+
+                            # Check for duplicate hash
+                            existing_hash = DatasetImage.query.filter_by(
+                                dataset_id=dataset_id,
+                                image_hash=image_hash
+                            ).first()
+
+                            if existing_hash:
+                                return False, None, f"Duplicate hash detected for photo {photo_id}"
+
+                            # Upload to S3
+                            object_key, public_url = upload_dataset_image_to_s3(
+                                image_bytes=image_bytes,
+                                dataset_id=dataset_id,
+                                source_id=f"flickr_{photo_id}",
+                                file_extension='jpg'
+                            )
+
+                            # Prepare database record data
+                            image_data = {
+                                'dataset_id': dataset_id,
+                                'image_url': public_url,
+                                'source_type': 'flickr',
+                                'source_id': photo_id,
+                                'source_metadata': {
+                                    'title': metadata.get('title', ''),
+                                    'tags': metadata.get('tags', ''),
+                                    'owner_name': metadata.get('owner_name', ''),
+                                    'license': metadata.get('license', ''),
+                                    'date_taken': metadata.get('date_taken', ''),
+                                    'views': metadata.get('views', 0),
+                                    'score': metadata.get('_score', 0)
+                                },
+                                'image_hash': image_hash
+                            }
+
+                            return True, image_data, None
+
+                        except Exception as e:
+                            return False, None, f"Processing error for {result.get('photo_id', 'unknown')}: {str(e)}"
+
+                # Process in batches for progress updates
+                if photo_data_list:
+                    batch_size = 10
+                    for batch_start in range(0, len(photo_data_list), batch_size):
+                        batch_end = min(batch_start + batch_size, len(photo_data_list))
+                        batch = photo_data_list[batch_start:batch_end]
+
+                        # Download batch
+                        download_results = flickr_service.batch_download_photos(
+                            batch,
+                            max_workers=3
+                        )
+
+                        # Process each download result in parallel
+                        with ThreadPoolExecutor(max_workers=5) as executor:
+                            futures = {
+                                executor.submit(_process_flickr_image, result, dataset_id, app_instance): result
+                                for result in download_results
+                            }
+
+                            # Collect results as they complete
+                            for future in as_completed(futures):
+                                try:
+                                    success, image_data, error = future.result()
+
+                                    if success:
+                                        # Create database record and add to session
+                                        dataset_image = DatasetImage(**image_data)
+                                        db.session.add(dataset_image)
+                                        imported_count += 1
+                                    else:
+                                        failed_count += 1
+                                        if error:
+                                            logging.error(f"[Job {job_id}] Failed to process image: {error}")
+
+                                except Exception as e:
+                                    failed_count += 1
+                                    logging.error(f"[Job {job_id}] Error in parallel processing: {e}", exc_info=True)
+
+                        # Commit batch
+                        db.session.commit()
+
+                        # Update progress
+                        current_progress = batch_end
+                        with flickr_import_jobs_lock:
+                            flickr_import_jobs[job_id]['current'] = current_progress
+                            flickr_import_jobs[job_id]['imported'] = imported_count
+                            flickr_import_jobs[job_id]['failed'] = failed_count
+
+                        logging.info(f"[Job {job_id}] Progress: {current_progress}/{total_to_process} processed")
+
+                # Mark job as completed
+                with flickr_import_jobs_lock:
+                    flickr_import_jobs[job_id]['status'] = 'completed'
+                    flickr_import_jobs[job_id]['completed_at'] = datetime.utcnow().isoformat()
+                    flickr_import_jobs[job_id]['imported'] = imported_count
+                    flickr_import_jobs[job_id]['failed'] = failed_count
+
+                logging.info(f"[Job {job_id}] Flickr import complete: {imported_count} imported, {failed_count} failed")
+
+            except Exception as e:
+                db.session.rollback()
+                logging.error(f"[Job {job_id}] Error in Flickr import worker: {e}", exc_info=True)
+
+                # Mark job as failed
+                with flickr_import_jobs_lock:
+                    flickr_import_jobs[job_id]['status'] = 'failed'
+                    flickr_import_jobs[job_id]['error'] = str(e)
+                    flickr_import_jobs[job_id]['completed_at'] = datetime.utcnow().isoformat()
+
     @app.route('/api/image-datasets/<dataset_id>/import-flickr', methods=['POST'])
     @login_required
     def import_flickr(dataset_id):
-        """Import selected Flickr photos into dataset."""
+        """Start async Flickr import job."""
         try:
             # Get dataset and verify edit access
             dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
@@ -2800,167 +2994,91 @@ def create_app():
                     'message': 'No photos provided'
                 }), 400
 
-            from services import flickr_service
-            from services.image_utils import upload_dataset_image_to_s3, compute_image_hash
+            # Create unique job ID
+            job_id = str(uuid.uuid4())
 
-            imported_count = 0
-            failed_count = 0
+            # Initialize job status
+            with flickr_import_jobs_lock:
+                flickr_import_jobs[job_id] = {
+                    'status': 'queued',
+                    'current': 0,
+                    'total': len(photos),
+                    'imported': 0,
+                    'failed': 0,
+                    'started_at': datetime.utcnow().isoformat(),
+                    'completed_at': None,
+                    'error': None
+                }
 
-            logging.info(f"Starting Flickr import for dataset {dataset_id}: {len(photos)} photos provided from frontend (no API calls needed)")
+            # Start background thread
+            thread = threading.Thread(
+                target=_flickr_import_background_worker,
+                args=(job_id, dataset.id, current_user.id, photos, current_app._get_current_object()),
+                daemon=True
+            )
+            thread.start()
 
-            # Prepare for batch download using photo data from frontend (no API calls needed)
-            photo_data_list = []
-            for photo in photos:
-                try:
-                    photo_id = photo.get('id')
-
-                    if not photo_id:
-                        logging.warning("Photo missing ID, skipping")
-                        failed_count += 1
-                        continue
-
-                    # Check if already imported
-                    existing = DatasetImage.query.filter_by(
-                        dataset_id=dataset.id,
-                        source_type='flickr',
-                        source_id=photo_id
-                    ).first()
-
-                    if existing:
-                        logging.debug(f"Photo {photo_id} already in dataset, skipping")
-                        continue
-
-                    # Use photo data directly from frontend (already has all metadata and URLs from search)
-                    photo_data_list.append({
-                        'id': photo_id,
-                        'info': photo,  # Full photo object from search
-                        'url_o': photo.get('url_o'),
-                        'url_l': photo.get('url_l'),
-                        'url_m': photo.get('url_m')
-                    })
-
-                except Exception as e:
-                    logging.error(f"Failed to prepare photo data: {e}")
-                    failed_count += 1
-
-            # Helper function for parallel S3 upload processing
-            def _process_flickr_image(result, dataset_id, app):
-                """Process a single Flickr download result: compute hash, upload to S3.
-
-                Args:
-                    result: Download result dictionary
-                    dataset_id: Dataset ID
-                    app: Flask application instance for app context
-
-                Returns:
-                    tuple: (success: bool, image_data: dict or None, error: str or None)
-                """
-                with app.app_context():
-                    try:
-                        if not result['success']:
-                            return False, None, result.get('error', 'Download failed')
-
-                        photo_id = result['photo_id']
-                        image_bytes = result['image_bytes']
-                        metadata = result['metadata']
-
-                        # Compute hash
-                        image_hash = compute_image_hash(image_bytes)
-
-                        # Check for duplicate hash (read-only query, safe in thread)
-                        existing_hash = DatasetImage.query.filter_by(
-                            dataset_id=dataset_id,
-                            image_hash=image_hash
-                        ).first()
-
-                        if existing_hash:
-                            return False, None, f"Duplicate hash detected for photo {photo_id}"
-
-                        # Upload to S3
-                        object_key, public_url = upload_dataset_image_to_s3(
-                            image_bytes=image_bytes,
-                            dataset_id=dataset_id,
-                            source_id=f"flickr_{photo_id}",
-                            file_extension='jpg'
-                        )
-
-                        # Prepare database record data (don't create object yet)
-                        # Note: metadata comes from formatted search results, so field names are already normalized
-                        image_data = {
-                            'dataset_id': dataset_id,
-                            'image_url': public_url,
-                            'source_type': 'flickr',
-                            'source_id': photo_id,
-                            'source_metadata': {
-                                'title': metadata.get('title', ''),
-                                'tags': metadata.get('tags', ''),
-                                'owner_name': metadata.get('owner_name', ''),  # Already formatted from search
-                                'license': metadata.get('license', ''),  # Already formatted from search
-                                'date_taken': metadata.get('date_taken', ''),  # Already formatted from search
-                                'views': metadata.get('views', 0),
-                                'score': metadata.get('_score', 0)
-                            },
-                            'image_hash': image_hash
-                        }
-
-                        return True, image_data, None
-
-                    except Exception as e:
-                        return False, None, f"Processing error for {result.get('photo_id', 'unknown')}: {str(e)}"
-
-            # Batch download photos
-            if photo_data_list:
-                download_results = flickr_service.batch_download_photos(
-                    photo_data_list,
-                    max_workers=3
-                )
-
-                # Process each download result in parallel with ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=5) as executor:
-                    # Submit all tasks - pass current_app instance for app context
-                    futures = {
-                        executor.submit(_process_flickr_image, result, dataset.id, current_app._get_current_object()): result
-                        for result in download_results
-                    }
-
-                    # Collect results as they complete
-                    for future in as_completed(futures):
-                        try:
-                            success, image_data, error = future.result()
-
-                            if success:
-                                # Create database record and add to session
-                                dataset_image = DatasetImage(**image_data)
-                                db.session.add(dataset_image)
-                                imported_count += 1
-                            else:
-                                failed_count += 1
-                                if error:
-                                    logging.error(f"Failed to process image: {error}")
-
-                        except Exception as e:
-                            failed_count += 1
-                            logging.error(f"Error in parallel processing: {e}", exc_info=True)
-
-                # Commit all successful imports
-                db.session.commit()
-
-            logging.info(f"User {current_user.email} imported Flickr photos to dataset {dataset_id}: "
-                        f"{imported_count} imported, {failed_count} failed")
+            logging.info(f"Started Flickr import job {job_id} for dataset {dataset_id} with {len(photos)} photos")
 
             return jsonify({
                 'success': True,
-                'imported_count': imported_count,
-                'failed_count': failed_count,
-                'message': f'Import complete: {imported_count} imported, {failed_count} failed'
+                'job_id': job_id,
+                'message': 'Import started'
             }), 200
 
         except Exception as e:
-            db.session.rollback()
-            logging.error(f"Error importing Flickr photos: {e}", exc_info=True)
+            logging.error(f"Error starting Flickr import: {e}", exc_info=True)
             return jsonify({
                 'success': False,
-                'message': f'Import failed: {str(e)}'
+                'message': f'Failed to start import: {str(e)}'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/import-flickr/<job_id>/progress', methods=['GET'])
+    @login_required
+    def import_flickr_progress(dataset_id, job_id):
+        """Get progress of Flickr import job."""
+        try:
+            # Verify dataset access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='view')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            # Get job status
+            with flickr_import_jobs_lock:
+                job_status = flickr_import_jobs.get(job_id)
+
+            if not job_status:
+                return jsonify({
+                    'success': False,
+                    'message': 'Job not found'
+                }), 404
+
+            # Auto-cleanup completed jobs after 5 minutes
+            if job_status['status'] in ['completed', 'failed'] and job_status['completed_at']:
+                completed_time = datetime.fromisoformat(job_status['completed_at'])
+                if (datetime.utcnow() - completed_time).total_seconds() > 300:  # 5 minutes
+                    with flickr_import_jobs_lock:
+                        del flickr_import_jobs[job_id]
+                    logging.info(f"Auto-cleaned up job {job_id} after 5 minutes")
+
+            return jsonify({
+                'success': True,
+                'status': job_status['status'],
+                'current': job_status['current'],
+                'total': job_status['total'],
+                'imported': job_status['imported'],
+                'failed': job_status['failed'],
+                'error': job_status.get('error')
+            }), 200
+
+        except Exception as e:
+            logging.error(f"Error getting Flickr import progress: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'Failed to get progress: {str(e)}'
             }), 500
 
     @app.route('/api/image-datasets/<dataset_id>/import-urls', methods=['POST'])
