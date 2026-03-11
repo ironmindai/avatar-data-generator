@@ -2639,6 +2639,8 @@ def create_app():
             per_page = min(int(data.get('per_page', 50)), 100)  # Cap at 100
             exclude_used = data.get('exclude_used', True)
             license_filter = data.get('license_filter')  # 'cc' or None
+            search_mode = data.get('search_mode', 'tags')  # 'tags' or 'text'
+            tag_mode = data.get('tag_mode', 'any')  # 'any' or 'all'
 
             # Search Flickr
             from services import flickr_service
@@ -2648,7 +2650,9 @@ def create_app():
                 per_page=per_page,
                 page=page,
                 exclude_used=exclude_used,
-                license_filter=license_filter
+                license_filter=license_filter,
+                search_mode=search_mode,
+                tag_mode=tag_mode
             )
 
             # Format photos for response (remove internal Flickr fields)

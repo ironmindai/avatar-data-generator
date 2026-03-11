@@ -24,6 +24,8 @@
       keyword: '',
       excludeUsed: true,
       licenseFilter: '',
+      searchMode: 'tags',
+      tagMode: 'any',
       results: [],
       currentPage: 1,
       totalPages: 1,
@@ -142,6 +144,26 @@
       searchForm.addEventListener('submit', handleFlickrSearch);
     }
 
+    // Search mode toggle - show/hide tag mode options
+    const searchModeRadios = document.querySelectorAll('input[name="search_mode"]');
+    const tagModeGroup = document.getElementById('tagModeGroup');
+    const keywordInput = document.getElementById('flickrKeyword');
+
+    searchModeRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (tagModeGroup) {
+          tagModeGroup.style.display = e.target.value === 'tags' ? 'block' : 'none';
+        }
+        // Update placeholder based on search mode
+        if (keywordInput) {
+          if (e.target.value === 'tags') {
+            keywordInput.placeholder = 'e.g., portrait, landscape, nature';
+          } else {
+            keywordInput.placeholder = 'e.g., woman smiling, city skyline, sunset beach';
+          }
+        }
+      });
+    });
 
     // Select all/none buttons
     const selectAllBtn = document.getElementById('selectAllBtn');
@@ -215,6 +237,8 @@
       keyword: '',
       excludeUsed: true,
       licenseFilter: '',
+      searchMode: 'tags',
+      tagMode: 'any',
       results: [],
       currentPage: 1,
       totalPages: 1,
@@ -230,6 +254,8 @@
     const keyword = formData.get('keyword').trim();
     const excludeUsed = formData.get('exclude_used') === 'on';
     const licenseFilter = formData.get('license_filter') || '';
+    const searchMode = formData.get('search_mode') || 'tags';
+    const tagMode = formData.get('tag_mode') || 'any';
 
     if (!keyword) {
       showToast('Please enter a keyword', 'error');
@@ -240,6 +266,8 @@
     state.flickrSearch.keyword = keyword;
     state.flickrSearch.excludeUsed = excludeUsed;
     state.flickrSearch.licenseFilter = licenseFilter;
+    state.flickrSearch.searchMode = searchMode;
+    state.flickrSearch.tagMode = tagMode;
     state.flickrSearch.currentPage = 1;
     state.flickrSearch.results = [];
     state.selectedFlickrResults.clear();
@@ -253,7 +281,7 @@
   }
 
   async function performFlickrSearch(appendResults = false) {
-    const { keyword, excludeUsed, licenseFilter, currentPage } = state.flickrSearch;
+    const { keyword, excludeUsed, licenseFilter, searchMode, tagMode, currentPage } = state.flickrSearch;
 
     // Show loading
     const loading = document.getElementById('flickrLoading');
@@ -278,6 +306,8 @@
           keyword,
           exclude_used: excludeUsed,
           license_filter: licenseFilter,
+          search_mode: searchMode,
+          tag_mode: tagMode,
           page: currentPage
         })
       });

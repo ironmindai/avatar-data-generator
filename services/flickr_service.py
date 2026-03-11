@@ -106,7 +106,9 @@ def search_photos(
     per_page: int = 100,
     page: int = 1,
     exclude_used: bool = False,
-    license_filter: Optional[str] = None
+    license_filter: Optional[str] = None,
+    search_mode: str = 'tags',
+    tag_mode: str = 'any'
 ) -> Dict:
     """
     Search Flickr for photos with simple filtering.
@@ -117,6 +119,8 @@ def search_photos(
         page: Page number to retrieve (1-indexed)
         exclude_used: If True, exclude photos already in dataset_images table
         license_filter: License type filter ('cc' for Creative Commons only, None for any)
+        search_mode: Search mode - 'tags' for tag-based search, 'text' for full-text search
+        tag_mode: Tag matching mode - 'any' for OR logic, 'all' for AND logic (only applies when search_mode='tags')
 
     Returns:
         Dict containing:
@@ -135,13 +139,12 @@ def search_photos(
         # Rate limiting
         rate_limiter.wait()
 
-        logger.info(f"Searching Flickr: '{keyword}' (page {page}, per_page {per_page}, license_filter={license_filter})")
+        logger.info(f"Searching Flickr: '{keyword}' (page {page}, per_page {per_page}, license_filter={license_filter}, search_mode={search_mode}, tag_mode={tag_mode})")
 
         # Build API request parameters
         params = {
             'method': 'flickr.photos.search',
             'api_key': API_KEY,
-            'text': keyword,
             'per_page': min(per_page, 100),  # Cap at 100 for UI simplicity
             'page': page,
             'format': 'json',
@@ -152,6 +155,13 @@ def search_photos(
             'media': 'photos',
             'min_taken_date': '2015-01-01',  # Recent photos only
         }
+
+        # Apply search mode (tags vs text)
+        if search_mode == 'tags':
+            params['tags'] = keyword
+            params['tag_mode'] = tag_mode  # 'any' or 'all'
+        else:  # text mode
+            params['text'] = keyword
 
         # Apply license filter
         if license_filter == 'cc':

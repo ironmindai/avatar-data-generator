@@ -286,6 +286,52 @@
                            required>
                 </div>
 
+                <!-- Search Mode Selector -->
+                <div class="form-group">
+                    <label class="form-label">SEARCH MODE</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="search_mode" value="tags" id="searchModeTags" checked>
+                            <span class="radio-custom"></span>
+                            <span class="radio-label">
+                                <span class="radio-value">Tags Only</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="search_mode" value="text" id="searchModeText">
+                            <span class="radio-custom"></span>
+                            <span class="radio-label">
+                                <span class="radio-value">Title, Description & Tags</span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Tag Mode Toggle (visible only when Tags Only is selected) -->
+                <div class="form-group" id="tagModeGroup">
+                    <label class="form-label">TAG MATCHING</label>
+                    <div class="radio-group">
+                        <label class="radio-option">
+                            <input type="radio" name="tag_mode" value="any" id="tagModeAny" checked>
+                            <span class="radio-custom"></span>
+                            <span class="radio-label">
+                                <span class="radio-value">Match ANY tag</span>
+                            </span>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="tag_mode" value="all" id="tagModeAll">
+                            <span class="radio-custom"></span>
+                            <span class="radio-label">
+                                <span class="radio-value">Match ALL tags</span>
+                            </span>
+                        </label>
+                    </div>
+                    <p class="form-help" style="margin-top: 0.5rem;">
+                        <strong>ANY:</strong> Returns photos with at least one of your keywords.<br>
+                        <strong>ALL:</strong> Returns only photos that have all your keywords.
+                    </p>
+                </div>
+
                 <!-- Filters -->
                 <div class="filter-group">
                     <div class="checkbox-group">

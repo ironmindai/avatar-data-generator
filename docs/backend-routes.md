@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-10 (Added /api/proxy-image CORS proxy endpoint)*
+> *Last Updated: 2026-03-11 (Added search_mode and tag_mode parameters to Flickr search endpoint)*
 
 ## Application Information
 
@@ -1300,7 +1300,9 @@ Lists datasets in three categories:
   "page": 1,
   "per_page": 50,
   "exclude_used": true,
-  "license_filter": "cc"
+  "license_filter": "cc",
+  "search_mode": "tags",
+  "tag_mode": "any"
 }
 ```
 
@@ -1312,10 +1314,21 @@ Lists datasets in three categories:
 - `per_page`: Integer (default: 50, max: 100) - Results per page
 - `exclude_used`: Boolean (default: true) - Exclude already-imported photos
 - `license_filter`: String (optional) - License filter ('cc' for Creative Commons only, null for any)
+- `search_mode`: String (default: 'tags') - Search mode ('tags' or 'text')
+- `tag_mode`: String (default: 'any') - Tag matching mode ('any' or 'all', only applies when search_mode='tags')
 
 **License Filter Options**:
 - `'cc'`: Creative Commons licenses only (CC BY, CC BY-SA, CC BY-NC, etc.)
 - `null` or omitted: All licenses (includes All Rights Reserved)
+
+**Search Mode Options**:
+- `'tags'`: Tag-based search - searches the tags field of Flickr photos (faster, more precise)
+  - When using tag mode, the `tag_mode` parameter controls matching behavior:
+    - `'any'`: Match photos with ANY of the provided tags (OR logic, default)
+    - `'all'`: Match photos with ALL of the provided tags (AND logic)
+  - Keywords can include comma-separated tags (e.g., "coffee,shop" searches for photos tagged with "coffee" OR "shop" when tag_mode='any')
+- `'text'`: Full-text search - searches titles, descriptions, and tags (slower, broader results)
+  - The `tag_mode` parameter is ignored when using text mode
 
 **Success Response (200)**:
 ```json
