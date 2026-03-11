@@ -2385,9 +2385,10 @@ All authenticated pages (generate, settings, history, dashboard) now use the sam
 ### Face Detection Feature (Flickr Search Modal)
 
 **Implementation Date:** 2026-03-10
+**Last Updated:** 2026-03-11 (Changed to Manual Trigger)
 
 **Overview:**
-Client-side face detection integrated into Flickr search results using MediaPipe Face Detection library. Automatically detects faces in search results and provides filtering controls.
+Client-side face detection integrated into Flickr search results using MediaPipe Face Detection library. Person detection is triggered manually via a "Detect People" button, giving users control over when processing occurs.
 
 **Components:**
 
@@ -2437,17 +2438,38 @@ Client-side face detection integrated into Flickr search results using MediaPipe
 - **Content:** Dynamic text showing progress: "Detecting people in X/Y images..."
 - **Visibility:** Hidden by default, shown during detection process
 
-#### Person Detection Buttons
-- **Location:** Results controls section (next to "Select All" / "Deselect All")
+#### Person Detection Trigger Button
+- **Location:** Results controls section (between "Deselect All" and "Select All with People")
+- **Button Label:** "Detect People" (changes to "Re-detect People" after first run)
+- **Icon:** `users` (Feather icon)
+- **Style:** `btn btn-secondary btn-sm` - Secondary button style for call-to-action
+- **Background:** Transparent with neon cyan border
+- **Border:** `1px solid var(--color-accent-cyan)`
+- **Color:** `var(--color-accent-cyan)` (#00d9ff)
+- **Box Shadow:** `0 0 15px rgba(0, 217, 255, 0.2)` (subtle glow)
+- **Hover:** Background `rgba(0, 217, 255, 0.1)`, glow `0 0 25px rgba(0, 217, 255, 0.4)`
+- **Padding:** `0.5rem 0.75rem` (8px 12px)
+- **Font Size:** `var(--font-size-small)` (12px)
+- **Display:** Hidden by default, shown when search results are available
+- **Disabled State:** During detection, button shows "Detecting..." and is disabled
+- **Functionality:**
+  - Manually triggers person detection for all results
+  - Enables the "with People" selection buttons after detection completes
+  - Updates button text to "Re-detect People" after first run
+
+#### Person Detection Selection Buttons
+- **Location:** Results controls section (after "Detect People" button)
 - **Button Labels:**
   - "Select All with People" - Selects only images with detected people (faces OR person objects)
   - "Select None with People" - Deselects images with people
-- **Style:** `btn btn-ghost btn-sm` - Matches existing button pattern
+- **Style:** `btn btn-ghost btn-sm` - Ghost button style
 - **Background:** Transparent (ghost style)
 - **Color:** `var(--color-text-secondary)` (#cccccc)
 - **Hover:** Background `var(--color-bg-elevated)`, color `var(--color-text-primary)`
 - **Padding:** `0.5rem 0.75rem` (8px 12px)
 - **Font Size:** `var(--font-size-small)` (12px)
+- **Initial State:** Disabled with tooltip "Run 'Detect People' first"
+- **Enabled State:** After detection runs, buttons become enabled and tooltip is removed
 - **Functionality:**
   - Works with combined face and person detection results
   - Affects images with `faceCount > 0` OR `personCount > 0`
@@ -2486,12 +2508,18 @@ Client-side face detection integrated into Flickr search results using MediaPipe
 **User Experience Flow:**
 1. User performs Flickr search
 2. Results display immediately (no delay)
-3. Face and person detection start automatically in background
-4. Status indicator shows progress: "Detecting people in 15/50 images..."
-5. Badges appear progressively as detections are made (shows combined count)
-6. Badge tooltip reveals breakdown: "2 faces, 1 person"
-7. Status indicator disappears when complete
-8. User can filter selection using person detection buttons
+3. "Detect People" button appears in results controls (initially enabled)
+4. "Select All with People" and "Select None with People" buttons are disabled with tooltip
+5. User clicks "Detect People" button when ready
+6. Button changes to "Detecting..." and becomes disabled
+7. Status indicator shows progress: "Detecting people in 15/50 images..."
+8. Badges appear progressively as detections are made (shows combined count)
+9. Badge tooltip reveals breakdown: "2 faces, 1 person"
+10. Status indicator disappears when complete
+11. Button changes to "Re-detect People" and becomes enabled again
+12. "Select All/None with People" buttons become enabled
+13. User can filter selection using person detection selection buttons
+14. User can re-run detection if needed by clicking "Re-detect People"
 
 **Performance Characteristics:**
 - Face detection rate: ~95-98% accuracy for visible faces (higher recall with 0.3 threshold)
@@ -2523,6 +2551,13 @@ Client-side face detection integrated into Flickr search results using MediaPipe
 - Ghost buttons: Consistent with existing control patterns in modal
 - Tooltip on hover: Provides detailed breakdown without cluttering UI
 
+**UX Improvements (2026-03-11):**
+- **Manual Trigger:** Changed from automatic to manual detection for better user control
+- **Performance:** Users can choose when to run detection, avoiding unnecessary processing
+- **Progressive Disclosure:** Selection buttons disabled until detection runs, creating clear workflow
+- **Loading States:** Button shows "Detecting..." during processing for clear feedback
+- **Re-detection:** Button changes to "Re-detect People" allowing users to re-run if needed
+
 ---
 
-*Last Updated: 2026-03-10 (Enhanced Person Detection: Faces + Full Body Detection)*
+*Last Updated: 2026-03-11 (Changed to Manual Trigger for Person Detection)*

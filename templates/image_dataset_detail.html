@@ -363,8 +363,12 @@
                     <div class="results-controls">
                         <button class="btn btn-ghost btn-sm" id="selectAllBtn">Select All</button>
                         <button class="btn btn-ghost btn-sm" id="selectNoneBtn">Deselect All</button>
-                        <button class="btn btn-ghost btn-sm" id="selectAllWithFacesBtn">Select All with People</button>
-                        <button class="btn btn-ghost btn-sm" id="selectNoneWithFacesBtn">Select None with People</button>
+                        <button class="btn btn-secondary btn-sm" id="detectPeopleBtn" style="display: none;">
+                            <i data-feather="users"></i>
+                            <span>Detect People</span>
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="selectAllWithFacesBtn" disabled title="Run 'Detect People' first">Select All with People</button>
+                        <button class="btn btn-ghost btn-sm" id="selectNoneWithFacesBtn" disabled title="Run 'Detect People' first">Select None with People</button>
                     </div>
                 </div>
 

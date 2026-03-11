@@ -187,6 +187,12 @@
       selectNoneWithFacesBtn.addEventListener('click', deselectAllFlickrResultsWithFaces);
     }
 
+    // Detect People button
+    const detectPeopleBtn = document.getElementById('detectPeopleBtn');
+    if (detectPeopleBtn) {
+      detectPeopleBtn.addEventListener('click', handleDetectPeople);
+    }
+
     // Import selected button
     const importSelectedBtn = document.getElementById('importSelectedBtn');
     if (importSelectedBtn) {
@@ -364,8 +370,8 @@
     updateSelectedCount();
     feather.replace();
 
-    // Trigger person detection after displaying results
-    detectPeopleInFlickrResults();
+    // Show the "Detect People" button when results are displayed
+    showDetectPeopleButton();
   }
 
   function appendFlickrResults(photos) {
@@ -381,8 +387,8 @@
     updateSelectedCount();
     feather.replace();
 
-    // Trigger person detection for newly appended results
-    detectPeopleInFlickrResults();
+    // Show the "Detect People" button after appending new results
+    showDetectPeopleButton();
   }
 
   function createFlickrResultItem(photo, index, container) {
@@ -653,6 +659,79 @@
     badge.setAttribute('data-tooltip', `${personCount} person${personCount !== 1 ? 's' : ''} detected`);
 
     imageWrapper.appendChild(badge);
+  }
+
+  /**
+   * Show the "Detect People" button when results are available
+   */
+  function showDetectPeopleButton() {
+    const detectPeopleBtn = document.getElementById('detectPeopleBtn');
+    if (!detectPeopleBtn) return;
+
+    // Show the button
+    detectPeopleBtn.style.display = 'inline-flex';
+    detectPeopleBtn.disabled = false;
+
+    // Update button state based on whether detection has already run
+    const resultsGrid = document.getElementById('flickrResultsGrid');
+    if (resultsGrid) {
+      const resultItems = Array.from(resultsGrid.querySelectorAll('.result-item'));
+      const itemsNeedingDetection = resultItems.filter(item => {
+        const photoData = JSON.parse(item.dataset.photo);
+        return photoData.personCount === undefined;
+      });
+
+      if (itemsNeedingDetection.length === 0 && resultItems.length > 0) {
+        // All items have been detected - hide button or change text
+        detectPeopleBtn.querySelector('span').textContent = 'Re-detect People';
+      } else {
+        detectPeopleBtn.querySelector('span').textContent = 'Detect People';
+      }
+    }
+
+    feather.replace();
+  }
+
+  /**
+   * Handle manual person detection trigger
+   */
+  async function handleDetectPeople() {
+    const detectPeopleBtn = document.getElementById('detectPeopleBtn');
+    const selectAllWithFacesBtn = document.getElementById('selectAllWithFacesBtn');
+    const selectNoneWithFacesBtn = document.getElementById('selectNoneWithFacesBtn');
+
+    if (!detectPeopleBtn) return;
+
+    // Disable button and show loading state
+    detectPeopleBtn.disabled = true;
+    const buttonText = detectPeopleBtn.querySelector('span');
+    const originalText = buttonText.textContent;
+    buttonText.textContent = 'Detecting...';
+
+    try {
+      // Run person detection
+      await detectPeopleInFlickrResults();
+
+      // Enable the "with People" selection buttons after detection
+      if (selectAllWithFacesBtn) {
+        selectAllWithFacesBtn.disabled = false;
+        selectAllWithFacesBtn.removeAttribute('title');
+      }
+      if (selectNoneWithFacesBtn) {
+        selectNoneWithFacesBtn.disabled = false;
+        selectNoneWithFacesBtn.removeAttribute('title');
+      }
+
+      // Update button text to "Re-detect People"
+      buttonText.textContent = 'Re-detect People';
+      detectPeopleBtn.disabled = false;
+
+    } catch (error) {
+      console.error('Error during person detection:', error);
+      buttonText.textContent = originalText;
+      detectPeopleBtn.disabled = false;
+      showToast('Person detection failed. Please try again.', 'error');
+    }
   }
 
   /**
