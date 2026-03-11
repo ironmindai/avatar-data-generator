@@ -957,52 +957,52 @@ async def process_persona_images(
                     prompt = "Replace the subject from image 1 with the subject from image 2"
 
                 elif scene_prompt_strategy == 'natural_blend':
-                    # RECOMMENDED: Use "image 1" / "image 2" per Gemini docs (images are labeled before prompt)
+                    # RECOMMENDED: "Blend" for better lighting integration, reduces cutout effect
                     gender_full = 'male' if result.gender == 'm' else 'female'
                     prompt = (
-                        f"Replicate image 1 with {gender_full} face from image 2. "
-                        f"Copy: lighting, colors, shadows, flash, raw quality from image 1. "
-                        f"Apply: {gender_full} casual clothing. "
-                        f"Preserve: face from image 2."
+                        f"Blend {gender_full} face from image 2 into image 1. "
+                        f"Inherit lighting from image 1: match shadows, flash, color temperature exactly. "
+                        f"Apply: {gender_full} casual modest clothing, fully covered torso. "
+                        f"Preserve: facial features from image 2."
                     )
 
                 elif scene_prompt_strategy == 'photorealistic_integration':
-                    # Maximum realism emphasis
+                    # Maximum realism - "Integrate" emphasizes seamless blending
                     gender_full = 'male' if result.gender == 'm' else 'female'
                     prompt = (
-                        f"Replicate image 1 exactly, replace person with {gender_full} face from image 2. "
-                        f"Match: lighting, shadows, colors, raw quality from image 1. "
-                        f"Use: {gender_full} casual attire, age {result.age or 25}. "
-                        f"Keep: face from image 2."
+                        f"Integrate {gender_full} face from image 2 into image 1. "
+                        f"Inherit lighting from image 1: shadows, flash, color temperature. "
+                        f"Apply: {gender_full} casual modest attire, fully covered torso, age {result.age or 25}. "
+                        f"Preserve: facial features from image 2."
                     )
 
                 elif scene_prompt_strategy == 'seamless_replace':
-                    # Focus on seamless replacement
+                    # "Merge" emphasizes unified composition
                     gender_full = 'male' if result.gender == 'm' else 'female'
                     prompt = (
-                        f"Replace person in image 1 with {gender_full} from image 2. "
-                        f"Inherit: lighting, shadows, flash, colors from image 1. "
-                        f"Generate: {gender_full} casual clothing. "
-                        f"Transfer: face from image 2."
+                        f"Merge {gender_full} from image 2 into image 1. "
+                        f"Inherit lighting from image 1: shadows, flash, colors. "
+                        f"Apply: {gender_full} casual modest clothing, fully covered torso. "
+                        f"Preserve: face from image 2."
                     )
 
                 elif scene_prompt_strategy == 'blend_adaptive':
-                    # Adaptive blending - concise
+                    # "Fuse" for strongest integration signal
                     gender_full = 'male' if result.gender == 'm' else 'female'
                     prompt = (
-                        f"Merge {gender_full} face from image 2 into image 1 scene. "
-                        f"Adopt: lighting, shadows, quality from image 1. "
-                        f"Dress: {gender_full} casual. "
-                        f"Retain: facial features from image 2."
+                        f"Fuse {gender_full} face from image 2 into image 1. "
+                        f"Adopt lighting from image 1: shadows, flash, colors. "
+                        f"Apply: {gender_full} casual modest clothing, covered torso. "
+                        f"Preserve: face from image 2."
                     )
 
                 elif scene_prompt_strategy == 'environment_aware':
-                    # Environment-aware - minimal
+                    # "Embed" for deep environmental integration
                     gender_full = 'male' if result.gender == 'm' else 'female'
                     prompt = (
-                        f"Place {gender_full} face from image 2 into image 1 environment. "
-                        f"Mimic: lighting, shadows, flash from image 1. "
-                        f"Clothe: {gender_full} casual, age {result.age or 25}. "
+                        f"Embed {gender_full} face from image 2 into image 1. "
+                        f"Inherit lighting from image 1: shadows, flash, color temperature. "
+                        f"Apply: {gender_full} casual modest clothing, covered torso, age {result.age or 25}. "
                         f"Preserve: face from image 2."
                     )
 
