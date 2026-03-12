@@ -134,25 +134,27 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - **Restart Policy**: Always (with 10s delay, max 5 restarts in 300s)
 - **Dependencies**: Requires network.target, wants postgresql.service
 
-#### Gunicorn Worker Settings (Optimized for Memory Management)
-**Updated**: 2026-03-12 15:41 UTC
+#### Gunicorn Worker Settings
+**Last Updated**: 2026-03-12 17:20 UTC
 - **Workers**: 1 worker process
 - **Threads**: 2 threads per worker
 - **Timeout**: 300 seconds (increased from 120s for face detection operations)
-- **Max Requests**: 100 requests per worker before restart
-- **Max Requests Jitter**: 20 (random jitter to avoid simultaneous worker restarts)
+- **Max Requests**: REMOVED (was causing APScheduler RuntimeError)
+- **Max Requests Jitter**: REMOVED (was causing APScheduler RuntimeError)
 
-**Memory Leak Prevention**:
-- `--max-requests 100` - Automatically restarts worker after 100 requests to prevent memory leaks and OOM kills
-- `--max-requests-jitter 20` - Adds random jitter (80-120 requests) to avoid all workers restarting at once
+**Current Configuration**:
+- `--workers 1` - Single worker to maintain session consistency for CSRF
+- `--threads 2` - Two threads per worker for concurrent request handling
 - `--timeout 300` - Extended timeout for long-running face detection operations
+- No worker recycling parameters (incompatible with APScheduler background scheduler)
 
 **Memory Limits**: No systemd memory limits configured (MemoryMax=infinity)
 
 **OOM Kill History**:
 - 2026-03-12 15:33:15 UTC - Worker (pid:3601001) killed by OOM
 - 2026-03-12 15:35:54 UTC - Worker (pid:3602244) killed by OOM
-- **Fix Applied**: 2026-03-12 15:41 UTC - Added max-requests worker recycling to prevent memory buildup
+- **Initial Fix (15:41 UTC)**: Added `--max-requests 100` and `--max-requests-jitter 20` to prevent memory buildup
+- **Reverted (17:20 UTC)**: Removed max-requests parameters due to APScheduler RuntimeError conflict
 
 #### Service Logs
 - Access Log: `/var/log/avatar-data-generator/access.log`
@@ -1367,14 +1369,14 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Face detection feature now fully functional without CORS violations
 - Clean, standards-compliant CORS implementation for public S3 content
 
-### Gunicorn Worker OOM Kills - Memory Leak Prevention (2026-03-12 15:41 UTC)
+### Gunicorn Worker OOM Kills - Memory Leak Prevention (2026-03-12 15:41 UTC - REVERTED 17:20 UTC)
 **Reason**: Applied Gunicorn worker optimization to prevent Out-Of-Memory (OOM) kills during face detection
 **Issue**: Workers being killed by Linux OOM killer during memory-intensive face detection operations
 **OOM Kill Events Detected**:
   - 2026-03-12 15:33:15 UTC - Worker (pid:3601001) sent SIGKILL by OOM killer
   - 2026-03-12 15:35:54 UTC - Worker (pid:3602244) sent SIGKILL by OOM killer
 **Root Cause**: Memory leaks in long-running gunicorn workers processing face detection tasks. Workers accumulate memory over time without releasing, eventually triggering OOM killer.
-**Solution**: Implement automatic worker recycling after a fixed number of requests to prevent memory buildup
+**Initial Solution (REVERTED)**: Implement automatic worker recycling after a fixed number of requests to prevent memory buildup
 **Changes Applied**:
 1. **Backup Created**: `/etc/systemd/system/avatar-data-generator.service.backup-20260312-154155`
 2. **Updated Gunicorn Parameters** in `/etc/systemd/system/avatar-data-generator.service`:
@@ -1384,36 +1386,36 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 3. **Configuration Reload**:
    - `sudo systemctl daemon-reload` - Reload systemd configuration
    - `sudo systemctl restart avatar-data-generator.service` - Apply new settings
-**Verification**:
-- Service status: active (running) with PID 3606378 (master), 3606385 (worker)
+
+**REVERT (2026-03-12 17:20 UTC)**:
+**New Issue**: Worker recycling parameters (`--max-requests` and `--max-requests-jitter`) caused APScheduler RuntimeError
+**Error**: `RuntimeError: cannot schedule new futures after shutdown`
+**Root Cause**: When gunicorn recycles workers (after max-requests limit), it calls shutdown on the worker's ThreadPoolExecutor. APScheduler's background thread then tries to schedule new jobs on the shutdown executor, causing the RuntimeError.
+**Solution**: Removed worker recycling parameters to prevent APScheduler from being disrupted
+**Changes Applied**:
+1. **Backup Created**: `/etc/systemd/system/avatar-data-generator.service.backup-before-apscheduler-fix`
+2. **Removed Parameters** from `/etc/systemd/system/avatar-data-generator.service`:
+   - Removed `--max-requests 100`
+   - Removed `--max-requests-jitter 20`
+   - Kept `--timeout 300` (face detection timeout increase)
+3. **Configuration Reload**:
+   - `sudo systemctl daemon-reload`
+   - `sudo systemctl restart avatar-data-generator.service`
+**Verification (Post-Revert)**:
+- Service status: active (running) with PID 3643321 (master), 3643325 (worker)
 - Workers: 1 gunicorn worker with 2 threads successfully booted
-- New parameters confirmed: `--timeout 300 --max-requests 100 --max-requests-jitter 20`
-- Memory usage: 110.1M (initial, expected to cycle back to baseline after 100 requests)
+- Parameters confirmed: `--timeout 300` (no max-requests parameters)
+- Memory usage: 110.2M (peak: 110.4M)
 - Port 8085: Listening and accepting connections
-- Application startup: Initialized successfully at 15:41:55 UTC
-- No memory limits: systemd MemoryMax=infinity (no artificial memory caps)
-**How It Works**:
-- Worker processes up to 80-120 requests (100 ± 20 jitter)
-- After reaching limit, worker gracefully shuts down and master spawns new worker
-- Fresh worker starts with clean memory slate, preventing memory leak accumulation
-- Jitter prevents all workers from restarting simultaneously in multi-worker setup
-**Monitoring**:
-```bash
-# Watch for OOM kills in real-time
-journalctl -u avatar-data-generator.service -f | grep -i 'oom\|kill'
-
-# Check worker restarts (normal behavior with max-requests)
-journalctl -u avatar-data-generator.service -f | grep 'Worker exiting\|Booting worker'
-
-# Monitor memory usage
-ps aux | grep gunicorn | grep avatar-data-generator
-```
+- Application startup: Initialized successfully at 17:20:28 UTC
+- APScheduler: Running normally, checking for tasks every 5 seconds
+- **No RuntimeError exceptions**: Confirmed via log analysis (30+ seconds of monitoring)
 **Impact**:
-- Prevents OOM kills by proactively recycling workers before memory accumulates
-- Extended timeout (300s) allows face detection tasks to complete without timeout errors
-- Improved stability for long-running application with memory-intensive operations
-- Zero-downtime worker cycling (master-worker architecture ensures continuity)
-- **Expected behavior**: Workers will restart every ~100 requests (normal, not an error)
+- APScheduler now runs without RuntimeError interruptions
+- Background task processing restored to normal operation
+- Worker will no longer recycle automatically (may need alternative memory management strategy)
+- Extended timeout (300s) still active for face detection operations
+**Note**: The OOM issue may need to be addressed through alternative means (e.g., memory profiling, explicit memory cleanup, or systemd MemoryMax limits) since worker recycling conflicts with APScheduler
 
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
