@@ -41,7 +41,13 @@
             <div class="dataset-stats">
                 <div class="dataset-stat">
                     <i data-feather="image"></i>
-                    <span class="stat-value" id="imageCount">{{ images|length }}</span>
+                    <span class="stat-value" id="imageCount">
+                        {% if total_images > 0 %}
+                            {{ ((pagination.page - 1) * 250) + 1 }}-{{ [pagination.page * 250, total_images]|min }} of {{ total_images }}
+                        {% else %}
+                            0
+                        {% endif %}
+                    </span>
                     <span class="stat-label">images</span>
                 </div>
                 <div class="dataset-stat">
@@ -113,30 +119,14 @@
         </div>
     </div>
 
-    <!-- Filter Section -->
-    <div class="filter-section">
-        <div class="filter-label">
-            <i data-feather="filter"></i>
-            FILTER:
+    <!-- Selection Actions Section -->
+    {% if permission_level == 'edit' or is_owner %}
+    <div class="selection-actions-section">
+        <div class="selection-label">
+            <i data-feather="check-square"></i>
+            SELECTION ACTIONS:
         </div>
-        <div class="filter-buttons">
-            <button class="filter-btn active" data-filter="all">
-                All Images
-                <span class="filter-count" id="filterCountAll">{{ images|length }}</span>
-            </button>
-            <button class="filter-btn" data-filter="flickr">
-                <i data-feather="image"></i>
-                Flickr
-                <span class="filter-count" id="filterCountFlickr">0</span>
-            </button>
-            <button class="filter-btn" data-filter="url">
-                <i data-feather="link"></i>
-                URL Import
-                <span class="filter-count" id="filterCountUrl">0</span>
-            </button>
-        </div>
-        {% if permission_level == 'edit' or is_owner %}
-        <div class="selection-controls">
+        <div class="selection-buttons">
             <button class="btn btn-ghost btn-sm" id="selectAllImagesBtn">
                 <i data-feather="check-square"></i>
                 Select All
@@ -145,9 +135,40 @@
                 <i data-feather="square"></i>
                 Deselect All
             </button>
+            <button class="btn btn-ghost btn-sm" id="selectMonochromeBtn">
+                <i data-feather="circle"></i>
+                Select B&W / Mono
+            </button>
+            <button class="btn btn-ghost btn-sm" id="selectDuplicatesBtn">
+                <i data-feather="copy"></i>
+                Select Duplicates
+            </button>
         </div>
-        {% endif %}
+        <div class="tag-search-container">
+            <input type="text"
+                   id="tagSearchInput"
+                   class="tag-search-input"
+                   placeholder="Search by tag (e.g., portrait, landscape)">
+            <button class="btn btn-ghost btn-sm" id="selectByTagBtn">
+                <i data-feather="tag"></i>
+                Select by Tag
+            </button>
+        </div>
+        <div class="face-count-container">
+            <select id="faceCountSelect" class="face-count-select">
+                <option value="">Face Count...</option>
+                <option value="0">No faces (0)</option>
+                <option value="1">1 face</option>
+                <option value="2">2 faces</option>
+                <option value="3">3+ faces</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="selectByFaceCountBtn">
+                <i data-feather="user"></i>
+                Select by Faces
+            </button>
+        </div>
     </div>
+    {% endif %}
 
     <!-- Images Grid -->
     {% if images and images|length > 0 %}
@@ -584,8 +605,13 @@ https://example.com/image3.jpg"
 {% endblock %}
 
 {% block extra_js %}
-<!-- TensorFlow.js and COCO-SSD for person detection -->
+<!-- TensorFlow.js and models for person/face detection -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+<!-- MediaPipe Face Detection -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
 <script src="/static/js/image_dataset_detail.js"></script>
 {% endblock %}

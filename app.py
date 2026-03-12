@@ -2442,7 +2442,7 @@ def create_app():
 
             # Get pagination parameters
             page = request.args.get('page', 1, type=int)
-            per_page = 50
+            per_page = 250
             source_type_filter = request.args.get('source_type', None)
 
             # Build query for images

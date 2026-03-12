@@ -43,6 +43,16 @@
       isProcessing: false,
       processedCount: 0,
       totalCount: 0
+    },
+    faceDetection: {
+      model: null,
+      modelType: 'blazeface', // 'mediapipe' or 'blazeface'
+      isInitialized: false,
+      faceCounts: new Map() // imageId -> face count
+    },
+    monochromeDetection: {
+      analyzed: new Set(),
+      monochromeImages: new Set()
     }
   };
 
@@ -82,6 +92,12 @@
     // Bulk selection
     selectAllImagesBtn: document.getElementById('selectAllImagesBtn'),
     deselectAllImagesBtn: document.getElementById('deselectAllImagesBtn'),
+    selectMonochromeBtn: document.getElementById('selectMonochromeBtn'),
+    selectDuplicatesBtn: document.getElementById('selectDuplicatesBtn'),
+    tagSearchInput: document.getElementById('tagSearchInput'),
+    selectByTagBtn: document.getElementById('selectByTagBtn'),
+    faceCountSelect: document.getElementById('faceCountSelect'),
+    selectByFaceCountBtn: document.getElementById('selectByFaceCountBtn'),
     bulkDeleteToolbar: document.getElementById('bulkDeleteToolbar'),
     bulkSelectedCount: document.getElementById('bulkSelectedCount'),
     bulkDeleteBtn: document.getElementById('bulkDeleteBtn')
@@ -98,7 +114,7 @@
     initializeUrlModal();
     initializeShareModal();
     initializeImagePreview();
-    initializeFilters();
+    initializeSelectionActions();
     initializePagination();
     initializeExportDropdown();
     initializeDeleteDataset();
@@ -116,9 +132,6 @@
     if (elements.datasetId) state.datasetId = elements.datasetId.value;
     if (elements.isOwner) state.isOwner = elements.isOwner.value === 'True';
     if (elements.permissionLevel) state.permissionLevel = elements.permissionLevel.value;
-
-    // Update filter counts
-    updateFilterCounts();
   }
 
   // ========================================
@@ -1687,7 +1700,6 @@
           card.style.opacity = '0';
           setTimeout(() => {
             card.remove();
-            updateFilterCounts();
             updateImageCount();
           }, 300);
         }
@@ -1703,41 +1715,75 @@
   }
 
   // ========================================
-  // FILTERS
+  // SELECTION ACTIONS
   // ========================================
 
-  function initializeFilters() {
-    elements.filterBtns.forEach(btn => {
-      btn.addEventListener('click', function() {
-        const filter = this.getAttribute('data-filter');
-        setFilter(filter);
+  function initializeSelectionActions() {
+    // Select All
+    if (elements.selectAllImagesBtn) {
+      elements.selectAllImagesBtn.addEventListener('click', selectAllImages);
+    }
+
+    // Deselect All
+    if (elements.deselectAllImagesBtn) {
+      elements.deselectAllImagesBtn.addEventListener('click', deselectAllImages);
+    }
+
+    // Select Monochrome
+    if (elements.selectMonochromeBtn) {
+      elements.selectMonochromeBtn.addEventListener('click', handleMonochromeDetection);
+    }
+
+    // Select Duplicates
+    if (elements.selectDuplicatesBtn) {
+      elements.selectDuplicatesBtn.addEventListener('click', handleSelectDuplicates);
+    }
+
+    // Select by Tag
+    if (elements.selectByTagBtn) {
+      elements.selectByTagBtn.addEventListener('click', handleSelectByTag);
+    }
+
+    // Also allow pressing Enter in the tag search input
+    if (elements.tagSearchInput) {
+      elements.tagSearchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          handleSelectByTag();
+        }
       });
-    });
+    }
+
+    // Select by Face Count
+    if (elements.selectByFaceCountBtn) {
+      elements.selectByFaceCountBtn.addEventListener('click', handleSelectByFaceCount);
+    }
   }
 
-  function setFilter(filter) {
-    state.currentFilter = filter;
-
-    // Update active button
-    elements.filterBtns.forEach(btn => {
-      if (btn.getAttribute('data-filter') === filter) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    });
-
-    // Filter images
+  function selectAllImages() {
     const imageCards = document.querySelectorAll('.image-card');
     imageCards.forEach(card => {
-      const sourceType = card.getAttribute('data-source-type');
+      const imageId = card.getAttribute('data-image-id');
+      const checkbox = card.querySelector('.image-checkbox');
 
-      if (filter === 'all' || sourceType === filter) {
-        card.classList.remove('hidden');
-      } else {
-        card.classList.add('hidden');
+      if (checkbox) {
+        state.selectedImages.add(imageId);
+        checkbox.checked = true;
+        card.classList.add('selected');
       }
     });
+
+    updateBulkDeleteToolbar();
+  }
+
+  function deselectAllImages() {
+    state.selectedImages.clear();
+
+    document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+      checkbox.closest('.image-card').classList.remove('selected');
+    });
+
+    updateBulkDeleteToolbar();
   }
 
   // ========================================
@@ -1926,7 +1972,6 @@
     }
 
     // Update counts
-    updateFilterCounts();
     updateImageCount();
 
     // Show result
@@ -1941,28 +1986,8 @@
   }
 
   // ========================================
-  // FILTER MANAGEMENT
+  // IMAGE COUNT UPDATE
   // ========================================
-
-  function updateFilterCounts() {
-    const imageCards = document.querySelectorAll('.image-card');
-    let flickrCount = 0;
-    let urlCount = 0;
-
-    imageCards.forEach(card => {
-      const sourceType = card.getAttribute('data-source-type');
-      if (sourceType === 'flickr') flickrCount++;
-      if (sourceType === 'url') urlCount++;
-    });
-
-    const filterCountAll = document.getElementById('filterCountAll');
-    const filterCountFlickr = document.getElementById('filterCountFlickr');
-    const filterCountUrl = document.getElementById('filterCountUrl');
-
-    if (filterCountAll) filterCountAll.textContent = imageCards.length;
-    if (filterCountFlickr) filterCountFlickr.textContent = flickrCount;
-    if (filterCountUrl) filterCountUrl.textContent = urlCount;
-  }
 
   function updateImageCount() {
     const imageCards = document.querySelectorAll('.image-card');
@@ -2226,6 +2251,802 @@
       toast.style.transform = 'translateX(100%)';
       setTimeout(() => toast.remove(), 300);
     }, 4000);
+  }
+
+  // ========================================
+  // FACE DETECTION
+  // ========================================
+
+  /**
+   * Initialize face detection model (MediaPipe or BlazeFace)
+   */
+  async function initializeFaceDetection() {
+    if (state.faceDetection.isInitialized) return true;
+
+    try {
+      showToast('Loading face detection model...', 'info');
+
+      if (state.faceDetection.modelType === 'mediapipe') {
+        // Initialize MediaPipe Face Detection
+        if (typeof FaceDetection === 'undefined') {
+          console.error('MediaPipe Face Detection library not loaded');
+          return false;
+        }
+
+        state.faceDetection.model = new FaceDetection({
+          locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
+          }
+        });
+
+        // Configure MediaPipe
+        state.faceDetection.model.setOptions({
+          model: 'short', // 'short' for faces within 2 meters, 'full' for longer range
+          minDetectionConfidence: 0.5
+        });
+
+        // Wait for model to initialize
+        await new Promise((resolve, reject) => {
+          state.faceDetection.model.onResults(() => {
+            // Model is ready when first result comes
+            resolve();
+          });
+
+          // Initialize with a dummy canvas
+          const dummyCanvas = document.createElement('canvas');
+          dummyCanvas.width = 1;
+          dummyCanvas.height = 1;
+
+          setTimeout(() => {
+            state.faceDetection.isInitialized = true;
+            resolve();
+          }, 1000);
+        });
+
+      } else {
+        // Fallback to BlazeFace
+        if (typeof blazeface === 'undefined') {
+          console.error('BlazeFace library not loaded');
+          return false;
+        }
+
+        state.faceDetection.model = await blazeface.load({
+          maxFaces: 20,
+          iouThreshold: 0.3,
+          scoreThreshold: 0.5
+        });
+      }
+
+      state.faceDetection.isInitialized = true;
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize face detection:', error);
+      showToast('Failed to load face detection model', 'error');
+      return false;
+    }
+  }
+
+  /**
+   * Detect faces in a single image using full-resolution image
+   * Returns the number of faces detected
+   */
+  async function detectFacesInImage(imageUrl) {
+    if (!state.faceDetection.isInitialized) {
+      await initializeFaceDetection();
+    }
+
+    if (!state.faceDetection.model) return 0;
+
+    try {
+      if (state.faceDetection.modelType === 'mediapipe') {
+        // MediaPipe detection
+        return await detectFacesWithMediaPipe(imageUrl);
+      } else {
+        // BlazeFace detection
+        return await detectFacesWithBlazeFace(imageUrl);
+      }
+    } catch (error) {
+      console.warn('Error in face detection:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Detect faces using MediaPipe Face Detection
+   */
+  async function detectFacesWithMediaPipe(imageUrl) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = async () => {
+        try {
+          // Create a canvas to draw the image
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+
+          // Set up results handler
+          let faceCount = 0;
+          state.faceDetection.model.onResults((results) => {
+            faceCount = results.detections ? results.detections.length : 0;
+          });
+
+          // Send image to MediaPipe
+          await state.faceDetection.model.send({ image: canvas });
+
+          // Small delay to ensure results are processed
+          setTimeout(() => {
+            // Clean up
+            img.src = '';
+            resolve(faceCount);
+          }, 100);
+
+        } catch (error) {
+          console.warn('Error in MediaPipe detection:', error);
+          resolve(0);
+        }
+      };
+
+      img.onerror = () => {
+        console.warn('CORS error loading image:', imageUrl);
+        resolve(0);
+      };
+
+      img.src = imageUrl;
+    });
+  }
+
+  /**
+   * Detect faces using BlazeFace (fallback)
+   */
+  async function detectFacesWithBlazeFace(imageUrl) {
+    return new Promise((resolve) => {
+      const corsImg = new Image();
+      corsImg.crossOrigin = 'anonymous';
+      corsImg.setAttribute('crossOrigin', 'anonymous');
+
+      corsImg.onload = async () => {
+        try {
+          // Verify image actually loaded
+          if (corsImg.naturalWidth === 0 || corsImg.naturalHeight === 0) {
+            console.error('Image loaded but has no dimensions:', imageUrl);
+            resolve(0);
+            return;
+          }
+
+          const predictions = await state.faceDetection.model.estimateFaces(corsImg, false);
+
+          // Filter predictions by confidence score
+          const validFaces = predictions.filter(pred => {
+            const score = pred.probability ? pred.probability[0] : 1;
+            return score > 0.5;
+          });
+
+          resolve(validFaces.length);
+
+          // Clean up
+          setTimeout(() => {
+            corsImg.onload = null;
+            corsImg.onerror = null;
+            corsImg.src = '';
+          }, 100);
+        } catch (error) {
+          console.warn('Error detecting faces:', error);
+          resolve(0);
+        }
+      };
+
+      corsImg.onerror = () => {
+        console.warn('Failed to load image for face detection:', imageUrl);
+        resolve(0);
+      };
+
+      corsImg.src = imageUrl;
+    });
+  }
+
+  /**
+   * Handle face count selection
+   */
+  function handleSelectByFaceCount() {
+    const faceCountFilter = elements.faceCountSelect?.value;
+
+    if (!faceCountFilter) {
+      showToast('Please select a face count filter', 'error');
+      return;
+    }
+
+    // Deselect all first
+    state.selectedImages.clear();
+    document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+      checkbox.closest('.image-card').classList.remove('selected');
+    });
+
+    showToast('Detecting faces in images...', 'info');
+
+    detectFacesInAllImages()
+      .then(results => {
+        let matchCount = 0;
+
+        // Select images based on face count filter
+        results.forEach(({ imageId, faceCount }) => {
+          let shouldSelect = false;
+
+          switch(faceCountFilter) {
+            case '0':
+              shouldSelect = faceCount === 0;
+              break;
+            case '1':
+              shouldSelect = faceCount === 1;
+              break;
+            case '2':
+              shouldSelect = faceCount === 2;
+              break;
+            case '3':
+              shouldSelect = faceCount >= 3;
+              break;
+          }
+
+          if (shouldSelect) {
+            matchCount++;
+            state.selectedImages.add(imageId);
+
+            const checkbox = document.querySelector(`.image-checkbox[data-image-id="${imageId}"]`);
+            if (checkbox) {
+              checkbox.checked = true;
+              checkbox.closest('.image-card').classList.add('selected');
+            }
+          }
+        });
+
+        // Update UI
+        updateBulkDeleteToolbar();
+
+        // Show result
+        const filterText = {
+          '0': 'no faces',
+          '1': '1 face',
+          '2': '2 faces',
+          '3': '3+ faces'
+        }[faceCountFilter];
+
+        if (matchCount > 0) {
+          showToast(`Selected ${matchCount} image${matchCount > 1 ? 's' : ''} with ${filterText}`, 'success');
+        } else {
+          showToast(`No images found with ${filterText}`, 'info');
+        }
+      });
+  }
+
+  /**
+   * Detect faces in all visible images using full-resolution images
+   */
+  async function detectFacesInAllImages() {
+    // Initialize model if needed
+    const initialized = await initializeFaceDetection();
+    if (!initialized) {
+      return [];
+    }
+
+    const imageCards = document.querySelectorAll('.image-card');
+    const results = [];
+
+    // Get all images to process
+    const imagesToProcess = [];
+    imageCards.forEach(card => {
+      const imageId = card.getAttribute('data-image-id');
+
+      // Check if we already have face count cached
+      if (state.faceDetection.faceCounts.has(imageId)) {
+        results.push({
+          imageId,
+          faceCount: state.faceDetection.faceCounts.get(imageId)
+        });
+      } else {
+        // Get the full-resolution image URL from the view button
+        const viewBtn = card.querySelector('[data-action="view"]');
+        if (viewBtn) {
+          const imageUrl = viewBtn.getAttribute('data-image-url');
+          imagesToProcess.push({ imageId, imageUrl });
+        }
+      }
+    });
+
+    // Process images sequentially with small delays to avoid rate limiting
+    const totalImages = imagesToProcess.length;
+    let processedCount = 0;
+
+    for (const { imageId, imageUrl } of imagesToProcess) {
+      try {
+        const faceCount = await detectFacesInImage(imageUrl);
+
+        // Cache the result
+        state.faceDetection.faceCounts.set(imageId, faceCount);
+        results.push({ imageId, faceCount });
+
+        processedCount++;
+
+        // Update progress every 5 images
+        if (processedCount % 5 === 0 || processedCount === totalImages) {
+          showToast(`Analyzing ${processedCount}/${totalImages} images...`, 'info');
+        }
+
+        // Small delay to avoid overwhelming the browser/network
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error('Error processing image:', imageId, error);
+        // Continue with next image even if this one failed
+        processedCount++;
+      }
+    }
+
+    return results;
+  }
+
+  // ========================================
+  // DUPLICATE DETECTION
+  // ========================================
+
+  /**
+   * Handle duplicate/similar image detection
+   * Uses perceptual hashing to find visually similar images
+   */
+  function handleSelectDuplicates() {
+    // Deselect all first
+    state.selectedImages.clear();
+    document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+      checkbox.closest('.image-card').classList.remove('selected');
+    });
+
+    showToast('Detecting duplicate and similar images...', 'info');
+
+    detectDuplicateImages()
+      .then(result => {
+        const { duplicates, debugInfo } = result;
+
+        // Select all duplicates (keeping the first of each group)
+        duplicates.forEach(imageId => {
+          state.selectedImages.add(imageId);
+          const checkbox = document.querySelector(`.image-checkbox[data-image-id="${imageId}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            checkbox.closest('.image-card').classList.add('selected');
+          }
+        });
+
+        // Update UI
+        updateBulkDeleteToolbar();
+
+        // Show result
+        if (duplicates.length > 0) {
+          showToast(`Selected ${duplicates.length} duplicate/similar image${duplicates.length > 1 ? 's' : ''} for deletion`, 'success');
+        } else {
+          showToast('No duplicate or similar images detected', 'info');
+        }
+      });
+  }
+
+  /**
+   * Generate image fingerprint using color histogram and structure
+   * More robust than simple perceptual hash for detecting similar images
+   */
+  function generateImageFingerprint(img) {
+    return new Promise((resolve) => {
+      const corsImg = new Image();
+      corsImg.crossOrigin = 'anonymous';
+
+      corsImg.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          // Use 32x32 for better detail
+          const size = 32;
+          canvas.width = size;
+          canvas.height = size;
+
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(corsImg, 0, 0, size, size);
+
+          const imageData = ctx.getImageData(0, 0, size, size);
+          const data = imageData.data;
+
+          // Create color histogram (8 bins per channel = 512 total bins)
+          const histogramBins = 8;
+          const histogram = new Array(histogramBins * histogramBins * histogramBins).fill(0);
+
+          // Build histogram
+          for (let i = 0; i < data.length; i += 4) {
+            const r = Math.floor(data[i] / 256 * histogramBins);
+            const g = Math.floor(data[i + 1] / 256 * histogramBins);
+            const b = Math.floor(data[i + 2] / 256 * histogramBins);
+            const binIndex = r * histogramBins * histogramBins + g * histogramBins + b;
+            histogram[binIndex]++;
+          }
+
+          // Normalize histogram
+          const total = size * size;
+          const normalizedHistogram = histogram.map(count => count / total);
+
+          // Also get average color per quadrant for spatial information
+          const quadrants = [];
+          const quadSize = size / 4;
+          for (let qy = 0; qy < 4; qy++) {
+            for (let qx = 0; qx < 4; qx++) {
+              let rSum = 0, gSum = 0, bSum = 0, count = 0;
+
+              for (let y = qy * quadSize; y < (qy + 1) * quadSize; y++) {
+                for (let x = qx * quadSize; x < (qx + 1) * quadSize; x++) {
+                  const idx = (Math.floor(y) * size + Math.floor(x)) * 4;
+                  rSum += data[idx];
+                  gSum += data[idx + 1];
+                  bSum += data[idx + 2];
+                  count++;
+                }
+              }
+
+              quadrants.push({
+                r: Math.round(rSum / count),
+                g: Math.round(gSum / count),
+                b: Math.round(bSum / count)
+              });
+            }
+          }
+
+          resolve({
+            histogram: normalizedHistogram,
+            quadrants: quadrants
+          });
+        } catch (error) {
+          console.warn('Could not generate fingerprint for image:', error);
+          resolve(null);
+        }
+      };
+
+      corsImg.onerror = () => {
+        console.warn('CORS error loading image:', img.src);
+        resolve(null);
+      };
+
+      corsImg.src = img.src;
+    });
+  }
+
+  /**
+   * Calculate similarity between two image fingerprints
+   * Returns a score from 0 (identical) to 1 (completely different)
+   */
+  function calculateImageSimilarity(fingerprint1, fingerprint2) {
+    if (!fingerprint1 || !fingerprint2) return 1.0;
+
+    // Calculate histogram distance (Chi-square distance)
+    let histogramDistance = 0;
+    for (let i = 0; i < fingerprint1.histogram.length; i++) {
+      const sum = fingerprint1.histogram[i] + fingerprint2.histogram[i];
+      if (sum > 0) {
+        const diff = fingerprint1.histogram[i] - fingerprint2.histogram[i];
+        histogramDistance += (diff * diff) / sum;
+      }
+    }
+    histogramDistance = histogramDistance / 2; // Normalize
+
+    // Calculate quadrant color difference (structural similarity)
+    let quadrantDistance = 0;
+    for (let i = 0; i < fingerprint1.quadrants.length; i++) {
+      const q1 = fingerprint1.quadrants[i];
+      const q2 = fingerprint2.quadrants[i];
+
+      // Euclidean distance in RGB space
+      const colorDiff = Math.sqrt(
+        Math.pow(q1.r - q2.r, 2) +
+        Math.pow(q1.g - q2.g, 2) +
+        Math.pow(q1.b - q2.b, 2)
+      );
+      quadrantDistance += colorDiff;
+    }
+    quadrantDistance = quadrantDistance / (fingerprint1.quadrants.length * 441.67); // Normalize (max is sqrt(255^2*3))
+
+    // Weighted combination: 70% histogram, 30% structure
+    const combinedDistance = (histogramDistance * 0.7) + (quadrantDistance * 0.3);
+
+    return combinedDistance;
+  }
+
+  /**
+   * Detect duplicate and similar images
+   * Returns array of image IDs to delete (keeps first of each duplicate group)
+   */
+  async function detectDuplicateImages() {
+    const imageCards = document.querySelectorAll('.image-card');
+    const imageData = []; // Array of {imageId, fingerprint, card}
+    const promises = [];
+
+    // Generate fingerprints for all images
+    imageCards.forEach(card => {
+      const imageId = card.getAttribute('data-image-id');
+      const img = card.querySelector('.image-thumbnail');
+
+      if (!img) return;
+
+      const promise = generateImageFingerprint(img).then(fingerprint => {
+        if (fingerprint) {
+          imageData.push({ imageId, fingerprint, card });
+        }
+      });
+
+      promises.push(promise);
+    });
+
+    await Promise.all(promises);
+
+    // Find duplicates/similar images
+    const duplicatesToDelete = new Set();
+    const kept = new Set(); // Track which images we're keeping
+    const allPairs = []; // Track all comparisons for debugging
+
+    // Similarity threshold: 0.0-0.15 = very similar (lower is more similar)
+    // This is based on normalized histogram + quadrant color distance
+    const SIMILARITY_THRESHOLD = 0.15;
+
+    // Compare each image with all others
+    for (let i = 0; i < imageData.length; i++) {
+      // Skip if this image is already marked for deletion
+      if (duplicatesToDelete.has(imageData[i].imageId)) continue;
+
+      // This image will be kept
+      kept.add(imageData[i].imageId);
+
+      // Compare with all subsequent images
+      for (let j = i + 1; j < imageData.length; j++) {
+        // Skip if already marked for deletion
+        if (duplicatesToDelete.has(imageData[j].imageId)) continue;
+
+        const similarity = calculateImageSimilarity(imageData[i].fingerprint, imageData[j].fingerprint);
+
+        // Store all pairs for debugging (limit to first 50 to avoid spam)
+        if (allPairs.length < 50 && similarity < 0.5) {
+          allPairs.push({
+            id1: imageData[i].imageId,
+            id2: imageData[j].imageId,
+            distance: Math.round(similarity * 100) / 100 // Round to 2 decimals
+          });
+        }
+
+        if (similarity <= SIMILARITY_THRESHOLD) {
+          // Mark as duplicate
+          duplicatesToDelete.add(imageData[j].imageId);
+        }
+      }
+    }
+
+    return {
+      duplicates: Array.from(duplicatesToDelete),
+      debugInfo: {
+        totalImages: imageData.length,
+        uniqueImages: kept.size,
+        duplicatesFound: duplicatesToDelete.size,
+        pairs: allPairs.sort((a, b) => a.distance - b.distance) // Sort by similarity
+      }
+    };
+  }
+
+  // ========================================
+  // SELECT BY TAG
+  // ========================================
+
+  /**
+   * Handle tag-based selection
+   * Searches all images for the specified tag and selects matches
+   */
+  function handleSelectByTag() {
+    const searchTag = elements.tagSearchInput?.value?.trim().toLowerCase();
+
+    if (!searchTag) {
+      showToast('Please enter a tag to search for', 'error');
+      return;
+    }
+
+    // Deselect all first
+    state.selectedImages.clear();
+    document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+      checkbox.closest('.image-card').classList.remove('selected');
+    });
+
+    let matchCount = 0;
+    const imageCards = document.querySelectorAll('.image-card');
+
+    imageCards.forEach(card => {
+      const imageId = card.getAttribute('data-image-id');
+
+      // Get metadata from the view button
+      const viewBtn = card.querySelector('[data-action="view"]');
+      if (!viewBtn) return;
+
+      const metadataStr = viewBtn.getAttribute('data-source-metadata');
+      if (!metadataStr) return;
+
+      try {
+        const metadata = JSON.parse(metadataStr);
+        const tags = metadata.tags || [];
+
+        // Check if any tag matches (case-insensitive, partial match)
+        const hasMatchingTag = tags.some(tag =>
+          tag.toLowerCase().includes(searchTag)
+        );
+
+        if (hasMatchingTag) {
+          matchCount++;
+          state.selectedImages.add(imageId);
+
+          const checkbox = card.querySelector('.image-checkbox');
+          if (checkbox) {
+            checkbox.checked = true;
+            card.classList.add('selected');
+          }
+        }
+      } catch (error) {
+        console.warn('Error parsing metadata for image:', imageId, error);
+      }
+    });
+
+    // Update UI
+    updateBulkDeleteToolbar();
+
+    // Show result
+    if (matchCount > 0) {
+      showToast(`Selected ${matchCount} image${matchCount > 1 ? 's' : ''} with tag "${searchTag}"`, 'success');
+    } else {
+      showToast(`No images found with tag "${searchTag}"`, 'info');
+    }
+  }
+
+  // ========================================
+  // MONOCHROME DETECTION
+  // ========================================
+
+  /**
+   * Handle monochrome detection button click
+   * Detects B&W images and selects them
+   */
+  function handleMonochromeDetection() {
+    // Deselect all first
+    state.selectedImages.clear();
+    document.querySelectorAll('.image-checkbox').forEach(checkbox => {
+      checkbox.checked = false;
+    });
+
+    // Show processing message
+    showToast('Detecting black & white images...', 'info');
+
+    // Start detection
+    state.monochromeDetection.analyzed.clear();
+    state.monochromeDetection.monochromeImages.clear();
+
+    detectMonochromeImages()
+      .then(count => {
+        // Select all detected monochrome images
+        state.monochromeDetection.monochromeImages.forEach(imageId => {
+          state.selectedImages.add(imageId);
+          const checkbox = document.querySelector(`.image-checkbox[data-image-id="${imageId}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            checkbox.closest('.image-card').classList.add('selected');
+          }
+        });
+
+        // Update UI
+        updateBulkDeleteToolbar();
+
+        // Show result
+        if (count > 0) {
+          showToast(`Detected and selected ${count} black & white image${count > 1 ? 's' : ''}`, 'success');
+        } else {
+          showToast('No black & white images detected', 'info');
+        }
+      });
+  }
+
+  /**
+   * Detect if an image is monochrome (black & white / grayscale)
+   * Uses Canvas API to sample pixels and check color variance
+   */
+  function isImageMonochrome(img) {
+    return new Promise((resolve) => {
+      // Create a new image with CORS enabled
+      const corsImg = new Image();
+      corsImg.crossOrigin = 'anonymous';
+
+      corsImg.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          // Use a smaller sample size for performance (max 200x200)
+          const maxSize = 200;
+          const scale = Math.min(maxSize / corsImg.width, maxSize / corsImg.height, 1);
+          canvas.width = corsImg.width * scale;
+          canvas.height = corsImg.height * scale;
+
+          ctx.drawImage(corsImg, 0, 0, canvas.width, canvas.height);
+
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imageData.data;
+
+          // Sample every nth pixel for performance (sample ~1000 pixels)
+          const totalPixels = data.length / 4;
+          const sampleRate = Math.max(1, Math.floor(totalPixels / 1000));
+
+          let colorVariance = 0;
+          let sampledPixels = 0;
+
+          for (let i = 0; i < data.length; i += 4 * sampleRate) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+
+            // Calculate variance between RGB channels
+            const avg = (r + g + b) / 3;
+            const variance = Math.abs(r - avg) + Math.abs(g - avg) + Math.abs(b - avg);
+
+            colorVariance += variance;
+            sampledPixels++;
+          }
+
+          // Average variance per pixel
+          const avgVariance = colorVariance / sampledPixels;
+
+          // Threshold: if average variance is less than 8, consider it monochrome
+          // Slightly higher threshold to account for JPEG compression artifacts
+          resolve(avgVariance < 8);
+        } catch (error) {
+          console.warn('Could not analyze image for monochrome detection:', error);
+          resolve(false);
+        }
+      };
+
+      corsImg.onerror = () => {
+        // If CORS fails, try without and catch the error
+        console.warn('CORS error loading image, skipping:', img.src);
+        resolve(false);
+      };
+
+      corsImg.src = img.src;
+    });
+  }
+
+  /**
+   * Detect monochrome images in the current page
+   * Returns a promise that resolves with the count
+   */
+  async function detectMonochromeImages() {
+    const imageCards = document.querySelectorAll('.image-card');
+    const promises = [];
+
+    imageCards.forEach(card => {
+      const imageId = card.getAttribute('data-image-id');
+      const img = card.querySelector('.image-thumbnail');
+
+      if (!img) return;
+
+      const promise = isImageMonochrome(img).then(isMono => {
+        if (isMono) {
+          state.monochromeDetection.monochromeImages.add(imageId);
+        }
+        state.monochromeDetection.analyzed.add(imageId);
+      });
+
+      promises.push(promise);
+    });
+
+    await Promise.all(promises);
+    return state.monochromeDetection.monochromeImages.size;
   }
 
   // ========================================
