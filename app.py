@@ -229,6 +229,50 @@ def create_app():
             replace_existing=True
         )
 
+        # Add face detection processor job (runs every 60 seconds)
+        def scheduled_face_detection():
+            """Wrapper function to run face detection processor with Flask app context.
+
+            Continuously processes batches when images are available:
+            - If full batch (50 images) is processed, immediately process next batch
+            - If partial batch or no images, stop and wait for next scheduled run
+            - This allows rapid processing of large backlogs without delay
+            """
+            with app.app_context():
+                try:
+                    from workers.face_detection_worker import process_face_detection_batch
+
+                    total_processed = 0
+                    batch_size = 50
+
+                    while True:
+                        count = process_face_detection_batch(batch_size=batch_size)
+                        if count > 0:
+                            total_processed += count
+                            logging.info(f"[SCHEDULER] Face detection batch: {count} images (total: {total_processed})")
+
+                            # If we processed a full batch, there might be more - continue immediately
+                            if count >= batch_size:
+                                continue  # Process next batch immediately
+
+                        # No more images to process (count == 0 or partial batch)
+                        break
+
+                    if total_processed > 0:
+                        logging.info(f"[SCHEDULER] Face detection completed: {total_processed} total images processed")
+
+                except Exception as e:
+                    logging.error(f"[SCHEDULER] Error processing face detection: {e}", exc_info=True)
+
+        # Schedule the face detection processor to run every 10 seconds
+        scheduler.add_job(
+            func=scheduled_face_detection,
+            trigger=IntervalTrigger(seconds=10),
+            id='face_detection_job',
+            name='Process face detection for unanalyzed images',
+            replace_existing=True
+        )
+
         # Run stuck task recovery immediately on startup (with stricter checks)
         print("[SCHEDULER] Running initial stuck task recovery check...", flush=True)
         with app.app_context():
@@ -2442,7 +2486,7 @@ def create_app():
 
             # Get pagination parameters
             page = request.args.get('page', 1, type=int)
-            per_page = 250
+            per_page = 1000
             source_type_filter = request.args.get('source_type', None)
 
             # Build query for images
@@ -2495,6 +2539,7 @@ def create_app():
                 images=images_pagination.items,
                 pagination=images_pagination,
                 total_images=total_images,
+                per_page=per_page,
                 source_types=source_types,
                 source_type_filter=source_type_filter,
                 is_owner=is_owner,
@@ -2730,7 +2775,7 @@ def create_app():
 
             # Parse URL and validate domain
             parsed_url = urlparse(image_url)
-            allowed_domains = ['flickr.com', 'staticflickr.com']
+            allowed_domains = ['flickr.com', 'staticflickr.com', 's3-api.dev.iron-mind.ai']
 
             # Check if domain ends with any allowed domain (supports subdomains)
             is_allowed = any(
@@ -2873,6 +2918,10 @@ def create_app():
                                 file_extension='jpg'
                             )
 
+                            # Face detection disabled during import - will be processed by background job
+                            # This prevents worker crashes and keeps imports fast and reliable
+                            face_count = None
+
                             # Prepare database record data
                             # Handle tags: ensure they're stored as a list
                             tags = metadata.get('tags', [])
@@ -2897,7 +2946,8 @@ def create_app():
                                     'views': metadata.get('views', 0),
                                     'score': metadata.get('_score', 0)
                                 },
-                                'image_hash': image_hash
+                                'image_hash': image_hash,
+                                'face_count': face_count
                             }
 
                             return True, image_data, None

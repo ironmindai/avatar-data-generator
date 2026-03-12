@@ -610,6 +610,7 @@ class DatasetImage(db.Model):
         source_id: Original ID from source (e.g., Flickr photo ID, original URL)
         source_metadata: JSONB metadata from source (tags, owner, license, etc.)
         image_hash: SHA256 hash of image for duplicate detection
+        face_count: Number of faces detected in image (NULL = not analyzed, 0 = no faces, 1+ = faces detected)
         added_at: Timestamp when image was added to dataset
     """
     __tablename__ = 'dataset_images'
@@ -621,6 +622,7 @@ class DatasetImage(db.Model):
     source_id = db.Column(db.String(255), nullable=True, index=True)
     source_metadata = db.Column(db.JSON, nullable=True)
     image_hash = db.Column(db.String(64), nullable=True, index=True)
+    face_count = db.Column(db.Integer, nullable=True, index=True)
     added_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, server_default=db.text('NOW()'))
 
     # Relationship

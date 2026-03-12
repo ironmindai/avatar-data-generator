@@ -43,7 +43,7 @@
                     <i data-feather="image"></i>
                     <span class="stat-value" id="imageCount">
                         {% if total_images > 0 %}
-                            {{ ((pagination.page - 1) * 250) + 1 }}-{{ [pagination.page * 250, total_images]|min }} of {{ total_images }}
+                            {{ ((pagination.page - 1) * per_page) + 1 }}-{{ [pagination.page * per_page, total_images]|min }} of {{ total_images }}
                         {% else %}
                             0
                         {% endif %}
@@ -111,6 +111,10 @@
                 </div>
             </div>
 
+            <button class="btn btn-ghost" id="refreshPageBtn" title="Refresh page">
+                <i data-feather="rotate-cw"></i>
+            </button>
+
             {% if is_owner %}
             <button class="btn btn-ghost" id="deleteDatasetBtn">
                 <i data-feather="trash-2"></i>
@@ -174,7 +178,10 @@
     {% if images and images|length > 0 %}
     <div class="images-grid" id="imagesGrid">
         {% for image in images %}
-        <div class="image-card" data-image-id="{{ image.id }}" data-source-type="{{ image.source_type }}">
+        <div class="image-card"
+             data-image-id="{{ image.id }}"
+             data-source-type="{{ image.source_type }}"
+             data-face-count="{{ image.face_count if image.face_count is not none else 'null' }}">
             <div class="image-container">
                 {% if permission_level == 'edit' or is_owner %}
                 <div class="image-checkbox-wrapper">
@@ -188,6 +195,20 @@
                      alt="Image {{ loop.index }}"
                      class="image-thumbnail"
                      loading="lazy">
+
+                <!-- Face Count Badge -->
+                {% if image.face_count is not none %}
+                    {% if image.face_count > 0 %}
+                    <div class="face-count-badge" data-tooltip="{{ image.face_count }} face{{ 's' if image.face_count > 1 else '' }} detected">
+                        {{ image.face_count }}
+                    </div>
+                    {% endif %}
+                {% else %}
+                <div class="face-count-badge" data-tooltip="Face count not analyzed" style="background: var(--color-text-muted);">
+                    ?
+                </div>
+                {% endif %}
+
                 <div class="image-overlay">
                     <button class="image-action-btn"
                             data-action="view"
@@ -605,13 +626,8 @@ https://example.com/image3.jpg"
 {% endblock %}
 
 {% block extra_js %}
-<!-- TensorFlow.js and models for person/face detection -->
+<!-- TensorFlow.js and COCO-SSD for person detection -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
-<!-- MediaPipe Face Detection -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
 <script src="/static/js/image_dataset_detail.js"></script>
 {% endblock %}

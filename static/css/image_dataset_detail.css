@@ -938,16 +938,23 @@
   transition: all var(--transition-base);
 }
 
-/* Face detection badge - circular green dot indicator at top right */
+/* Face detection badge - circular indicator at top right with face count */
 .face-count-badge {
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 20px;
-  height: 20px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
   background: var(--color-success); /* Green #00ff88 */
-  opacity: 0.6;
-  border-radius: 50%; /* Circular */
+  color: var(--color-bg-primary); /* Dark text for contrast */
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-bold);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px; /* Rounded pill shape */
   border: 1px solid rgba(0, 255, 136, 0.5);
   z-index: 10;
   cursor: help;

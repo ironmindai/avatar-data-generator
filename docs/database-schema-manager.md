@@ -274,6 +274,7 @@ Stores images within datasets, including source information and metadata for Fli
 - `source_id` (String(255), NULLABLE, Indexed) - Original ID from source (Flickr photo ID or original URL)
 - `source_metadata` (JSONB, NULLABLE) - Source metadata (Flickr tags, owner, license, etc.)
 - `image_hash` (String(64), NULLABLE, Indexed) - SHA256 hash for duplicate detection
+- `face_count` (Integer, NULLABLE, Indexed) - Number of faces detected in image (NULL = not yet analyzed, 0 = no faces detected, 1+ = number of faces)
 - `added_at` (DateTime, NOT NULL, Server Default: NOW()) - Timestamp when image was added to dataset
 
 **Indexes:**
@@ -281,6 +282,7 @@ Stores images within datasets, including source information and metadata for Fli
 - `ix_dataset_images_source_type` on `source_type`
 - `ix_dataset_images_source_id` on `source_id`
 - `ix_dataset_images_image_hash` on `image_hash`
+- `ix_dataset_images_face_count` on `face_count`
 
 **Constraints:**
 - Primary Key: `id`
@@ -908,6 +910,44 @@ Implements the scene-based image generation feature, enabling:
 - Unique constraint prevents duplicate usage records
 - **Downgrade Warning**: Rolling back this migration will permanently delete the dataset_image_usage table and all usage tracking data, and remove the image_set_ids column from generation_tasks
 
+**Status**: APPLIED
+
+---
+
+### Migration: 5999ec64f0aa - add_face_count_to_dataset_images
+**Date**: 2026-03-12 11:47:09
+**Parent**: 9f2e3d4b6c8a
+
+**Changes:**
+- Added `face_count` (Integer, NULLABLE, Indexed) column to `dataset_images` table
+  - Stores the number of faces detected in each image using YuNet face detection
+  - NULL = image not yet analyzed for faces
+  - 0 = no faces detected in image
+  - 1+ = number of faces detected in image
+
+**Files**: `/home/niro/galacticos/avatar-data-generator/migrations/versions/5999ec64f0aa_add_face_count_to_dataset_images.py`
+
+**Purpose:**
+Enables server-side face detection during image import to improve scene selection quality and reduce client-side processing. The face_count field is populated during image import by running YuNet face detection on the server, eliminating the need for client-side face detection in the UI.
+
+**Schema Changes Details:**
+- Column is nullable to maintain backward compatibility with existing images
+- Index on `face_count` enables efficient filtering of images by face count
+- Supports queries like "find all images with exactly 1 face" or "exclude images with no faces"
+
+**Use Cases:**
+- Filter images to only show those with detected faces
+- Prioritize images with specific face counts for scene generation
+- Improve image selection quality by excluding images without faces
+- Display face count statistics in UI without client-side processing
+
+**Safety Notes:**
+- Non-destructive operation (adding nullable column and index only)
+- Fully reversible via downgrade function
+- Backward compatible - existing images will have NULL for face_count until analyzed
+- Index creation is fast and non-blocking for existing data
+- **Downgrade Warning**: Rolling back this migration will permanently delete all face_count data and the associated index
+
 **Status**: APPLIED (Current HEAD)
 
 ---
@@ -970,12 +1010,13 @@ alembic downgrade -1
 
 ## Current Schema Status
 
-**Latest Migration**: 1a0315a32006 (add_image_set_ids_and_dataset_image_usage_tracking) - APPLIED (HEAD)
+**Latest Migration**: 5999ec64f0aa (add_face_count_to_dataset_images) - APPLIED (HEAD)
 **Total Tables**: 12
-**Total Migrations**: 17 (2 reverted/deleted)
+**Total Migrations**: 18 (2 reverted/deleted)
 **Database State**: Up to date
 
 **Recent Schema Changes:**
+- NEW `dataset_images.face_count` (Integer, Indexed) - stores number of faces detected in each image via YuNet face detection (NULL = not analyzed, 0 = no faces, 1+ = face count)
 - NEW `dataset_image_usage` table - tracks which scene images have been used in generation tasks for intelligent selection
 - NEW `generation_tasks.image_set_ids` (ARRAY of INTEGER) - stores selected image-set IDs for scene-based generation
 - NEW `image_datasets` table - user-created image datasets with UUID identifiers, status management, and public/private visibility

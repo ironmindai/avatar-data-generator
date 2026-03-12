@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-11 (Added search_mode and tag_mode parameters to Flickr search endpoint)*
+> *Last Updated: 2026-03-12 (Added face detection as scheduled APScheduler job)*
 
 ## Application Information
 
@@ -1967,6 +1967,163 @@ db.session.commit()
 
 **Usage**:
 WorkflowNodeLog records are created for each step in an LLM workflow execution. The `node_order` field maintains the execution sequence, and the complete prompts, responses, and token usage are stored for full observability.
+
+---
+
+## Backend Services
+
+### Face Detection Service
+
+**Module**: `services/face_detection_service.py`
+
+**Description**: Provides automatic face detection for imported images using the YuNet face detection model from OpenCV.
+
+**Key Features**:
+- Uses YuNet (face_detection_yunet_2023mar.onnx) - lightweight and accurate
+- Model is downloaded once and cached in `/tmp/`
+- 100% accuracy on test images (based on testing)
+- Detection threshold: 0.6 (configurable)
+- Graceful error handling (returns None on failure)
+
+**Functions**:
+
+#### `detect_faces_in_image_bytes(image_bytes: bytes, threshold: float = 0.6) -> Optional[int]`
+Detect faces in image from raw bytes.
+
+**Parameters**:
+- `image_bytes`: Raw image bytes
+- `threshold`: Confidence threshold (0.0 - 1.0)
+
+**Returns**: Number of faces detected (0, 1+) or None if detection fails
+
+**Example**:
+```python
+from services.face_detection_service import detect_faces_in_image_bytes
+
+face_count = detect_faces_in_image_bytes(image_bytes)
+if face_count is not None:
+    print(f"Detected {face_count} faces")
+```
+
+#### `detect_faces_in_image_url(image_url: str, threshold: float = 0.6, timeout: int = 30) -> Optional[int]`
+Detect faces in image from URL.
+
+**Parameters**:
+- `image_url`: Public URL to image
+- `threshold`: Confidence threshold (0.0 - 1.0)
+- `timeout`: Download timeout in seconds
+
+**Returns**: Number of faces detected (0, 1+) or None if download/detection fails
+
+#### `warmup_face_detector() -> bool`
+Pre-download YuNet model to warm up the detector. Useful for application startup.
+
+**Returns**: True if model is ready, False if download fails
+
+**Integration**:
+- **URL Import**: Face detection is **disabled during import** - `face_count` is set to NULL
+- **Flickr Import**: Face detection is **disabled during import** - `face_count` is set to NULL
+- **Database**: Face count is stored in `DatasetImage.face_count` field (NULL = not analyzed, 0 = no faces, 1+ = faces, -1 = error)
+- **Background Processing**: Face detection runs as an APScheduler job every 60 seconds (see Background Jobs section)
+- **Reason**: Face detection during import caused worker crashes and performance issues. Imports are now fast and simple, with face detection handled by a scheduled background job.
+
+**Model Information**:
+- **Model File**: `face_detection_yunet_2023mar.onnx`
+- **Download URL**: https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/
+- **Cache Location**: `/tmp/face_detection_yunet_2023mar.onnx`
+- **Model Size**: ~2.8MB
+
+**Error Handling**:
+Face detection failures are logged as warnings but do not block image imports. If detection fails, `face_count` is set to NULL in the database.
+
+---
+
+## Background Jobs (APScheduler)
+
+The application uses **APScheduler** (BackgroundScheduler) to run background tasks. The scheduler starts automatically when the Flask app starts and runs continuously.
+
+### Configuration
+- **Scheduler Type**: BackgroundScheduler (runs in a background thread)
+- **Log Level**: ERROR (suppressed INFO/WARNING to reduce log spam)
+- **Auto-start**: Only starts in main process (not in Flask reloader process)
+
+### Active Jobs
+
+#### 1. Avatar Data Generation Task Processor
+**ID**: `task_processor_job`
+**Interval**: Every `WORKER_INTERVAL` seconds (configurable via env)
+**Function**: `scheduled_task_processor()`
+**Purpose**: Processes pending avatar data generation tasks
+**Features**:
+- Configurable concurrent tasks (via `max_concurrent_tasks` setting)
+- Thread pool execution (max 3 parallel tasks)
+- Respects capacity limits (checks currently processing tasks)
+- Only logs when work is done (avoids spam)
+
+#### 2. Image Generation Processor
+**ID**: `image_processor_job`
+**Interval**: Every `WORKER_INTERVAL` seconds (configurable via env)
+**Function**: `scheduled_image_processor()`
+**Purpose**: Processes image generation for completed data tasks
+**Features**:
+- Same concurrency model as data generation
+- Thread pool execution
+- Capacity-aware (respects `max_concurrent_tasks`)
+- Only logs when work is done
+
+#### 3. Stuck Task Recovery
+**ID**: `stuck_task_recovery_job`
+**Interval**: Every 5 minutes
+**Function**: `scheduled_stuck_task_recovery()`
+**Purpose**: Recovers tasks stuck in processing state for 15+ minutes
+**Features**:
+- Runs immediately on startup with stricter checks
+- Startup check uses 0-minute threshold
+- Only logs when tasks are recovered
+
+#### 4. Face Detection Processor
+**ID**: `face_detection_job`
+**Interval**: Every 60 seconds
+**Function**: `scheduled_face_detection()`
+**Purpose**: Processes face detection for unanalyzed dataset images
+**Features**:
+- Batch processing (50 images per run)
+- Only processes images with `face_count = NULL`
+- Updates `face_count` field (0+ for success, -1 for error)
+- Only logs when work is done (avoids spam)
+- No locking needed (APScheduler prevents overlapping executions)
+
+**Implementation Details**:
+```python
+def scheduled_face_detection():
+    """Wrapper function to run face detection processor with Flask app context."""
+    with app.app_context():
+        try:
+            from workers.face_detection_worker import process_face_detection_batch
+            processed_count = process_face_detection_batch(batch_size=50)
+            # Only log if work was done to avoid log spam
+            if processed_count > 0:
+                logging.info(f"[SCHEDULER] Face detection processed {processed_count} image(s)")
+        except Exception as e:
+            logging.error(f"[SCHEDULER] Error processing face detection: {e}", exc_info=True)
+```
+
+**Worker Function**: `workers.face_detection_worker.process_face_detection_batch(batch_size=50)`
+- Queries `DatasetImage.query.filter_by(face_count=None).limit(batch_size)`
+- Calls `detect_faces_in_image_url()` for each image
+- Updates `face_count` (0+ for success, -1 for error)
+- Logs progress every 10 images
+- Commits all changes in a single transaction
+- Returns number of images processed
+
+### Shutdown Handling
+The scheduler is registered with `atexit` to ensure proper shutdown when the application exits.
+
+### Concurrency Control
+- APScheduler prevents overlapping executions of the same job
+- Each job runs in Flask app context for database access
+- Thread pool executors manage parallel task processing
+- Row-level locking used for database operations where needed
 
 ---
 

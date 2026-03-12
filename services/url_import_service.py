@@ -287,7 +287,11 @@ def batch_import_urls(
                         file_extension=file_extension
                     )
 
-                    # Step 7: Insert into database
+                    # Step 7: Face detection disabled during import - will be processed by background job
+                    # This prevents worker crashes and keeps imports fast and reliable
+                    face_count = None
+
+                    # Step 8: Insert into database
                     dataset_image = DatasetImage(
                         dataset_id=dataset_id,
                         image_url=public_url,
@@ -298,7 +302,8 @@ def batch_import_urls(
                             'content_type': content_type if 'content_type' in locals() else None,
                             'file_size': len(image_bytes)
                         },
-                        image_hash=image_hash
+                        image_hash=image_hash,
+                        face_count=face_count  # Store face detection result
                     )
                     db.session.add(dataset_image)
                     db.session.commit()

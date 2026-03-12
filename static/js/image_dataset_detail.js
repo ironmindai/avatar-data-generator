@@ -44,12 +44,7 @@
       processedCount: 0,
       totalCount: 0
     },
-    faceDetection: {
-      model: null,
-      modelType: 'blazeface', // 'mediapipe' or 'blazeface'
-      isInitialized: false,
-      faceCounts: new Map() // imageId -> face count
-    },
+    // Face detection removed - now using server-side stored face_count
     monochromeDetection: {
       analyzed: new Set(),
       monochromeImages: new Set()
@@ -73,6 +68,7 @@
     shareBtn: document.getElementById('shareBtn'),
     exportBtn: document.getElementById('exportBtn'),
     exportMenu: document.getElementById('exportMenu'),
+    refreshPageBtn: document.getElementById('refreshPageBtn'),
     deleteDatasetBtn: document.getElementById('deleteDatasetBtn'),
 
     // Filter
@@ -117,6 +113,7 @@
     initializeSelectionActions();
     initializePagination();
     initializeExportDropdown();
+    initializeRefreshButton();
     initializeDeleteDataset();
     initializeInlineEditing();
     initializeFeatherIcons();
@@ -2077,6 +2074,18 @@
   }
 
   // ========================================
+  // REFRESH PAGE
+  // ========================================
+
+  function initializeRefreshButton() {
+    if (!elements.refreshPageBtn) return;
+
+    elements.refreshPageBtn.addEventListener('click', function() {
+      window.location.reload();
+    });
+  }
+
+  // ========================================
   // DELETE DATASET
   // ========================================
 
@@ -2257,199 +2266,10 @@
   // FACE DETECTION
   // ========================================
 
-  /**
-   * Initialize face detection model (MediaPipe or BlazeFace)
-   */
-  async function initializeFaceDetection() {
-    if (state.faceDetection.isInitialized) return true;
-
-    try {
-      showToast('Loading face detection model...', 'info');
-
-      if (state.faceDetection.modelType === 'mediapipe') {
-        // Initialize MediaPipe Face Detection
-        if (typeof FaceDetection === 'undefined') {
-          console.error('MediaPipe Face Detection library not loaded');
-          return false;
-        }
-
-        state.faceDetection.model = new FaceDetection({
-          locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`;
-          }
-        });
-
-        // Configure MediaPipe
-        state.faceDetection.model.setOptions({
-          model: 'short', // 'short' for faces within 2 meters, 'full' for longer range
-          minDetectionConfidence: 0.5
-        });
-
-        // Wait for model to initialize
-        await new Promise((resolve, reject) => {
-          state.faceDetection.model.onResults(() => {
-            // Model is ready when first result comes
-            resolve();
-          });
-
-          // Initialize with a dummy canvas
-          const dummyCanvas = document.createElement('canvas');
-          dummyCanvas.width = 1;
-          dummyCanvas.height = 1;
-
-          setTimeout(() => {
-            state.faceDetection.isInitialized = true;
-            resolve();
-          }, 1000);
-        });
-
-      } else {
-        // Fallback to BlazeFace
-        if (typeof blazeface === 'undefined') {
-          console.error('BlazeFace library not loaded');
-          return false;
-        }
-
-        state.faceDetection.model = await blazeface.load({
-          maxFaces: 20,
-          iouThreshold: 0.3,
-          scoreThreshold: 0.5
-        });
-      }
-
-      state.faceDetection.isInitialized = true;
-      return true;
-    } catch (error) {
-      console.error('Failed to initialize face detection:', error);
-      showToast('Failed to load face detection model', 'error');
-      return false;
-    }
-  }
+  // Face detection functions removed - now using server-side stored face_count
 
   /**
-   * Detect faces in a single image using full-resolution image
-   * Returns the number of faces detected
-   */
-  async function detectFacesInImage(imageUrl) {
-    if (!state.faceDetection.isInitialized) {
-      await initializeFaceDetection();
-    }
-
-    if (!state.faceDetection.model) return 0;
-
-    try {
-      if (state.faceDetection.modelType === 'mediapipe') {
-        // MediaPipe detection
-        return await detectFacesWithMediaPipe(imageUrl);
-      } else {
-        // BlazeFace detection
-        return await detectFacesWithBlazeFace(imageUrl);
-      }
-    } catch (error) {
-      console.warn('Error in face detection:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * Detect faces using MediaPipe Face Detection
-   */
-  async function detectFacesWithMediaPipe(imageUrl) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-
-      img.onload = async () => {
-        try {
-          // Create a canvas to draw the image
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-
-          // Set up results handler
-          let faceCount = 0;
-          state.faceDetection.model.onResults((results) => {
-            faceCount = results.detections ? results.detections.length : 0;
-          });
-
-          // Send image to MediaPipe
-          await state.faceDetection.model.send({ image: canvas });
-
-          // Small delay to ensure results are processed
-          setTimeout(() => {
-            // Clean up
-            img.src = '';
-            resolve(faceCount);
-          }, 100);
-
-        } catch (error) {
-          console.warn('Error in MediaPipe detection:', error);
-          resolve(0);
-        }
-      };
-
-      img.onerror = () => {
-        console.warn('CORS error loading image:', imageUrl);
-        resolve(0);
-      };
-
-      img.src = imageUrl;
-    });
-  }
-
-  /**
-   * Detect faces using BlazeFace (fallback)
-   */
-  async function detectFacesWithBlazeFace(imageUrl) {
-    return new Promise((resolve) => {
-      const corsImg = new Image();
-      corsImg.crossOrigin = 'anonymous';
-      corsImg.setAttribute('crossOrigin', 'anonymous');
-
-      corsImg.onload = async () => {
-        try {
-          // Verify image actually loaded
-          if (corsImg.naturalWidth === 0 || corsImg.naturalHeight === 0) {
-            console.error('Image loaded but has no dimensions:', imageUrl);
-            resolve(0);
-            return;
-          }
-
-          const predictions = await state.faceDetection.model.estimateFaces(corsImg, false);
-
-          // Filter predictions by confidence score
-          const validFaces = predictions.filter(pred => {
-            const score = pred.probability ? pred.probability[0] : 1;
-            return score > 0.5;
-          });
-
-          resolve(validFaces.length);
-
-          // Clean up
-          setTimeout(() => {
-            corsImg.onload = null;
-            corsImg.onerror = null;
-            corsImg.src = '';
-          }, 100);
-        } catch (error) {
-          console.warn('Error detecting faces:', error);
-          resolve(0);
-        }
-      };
-
-      corsImg.onerror = () => {
-        console.warn('Failed to load image for face detection:', imageUrl);
-        resolve(0);
-      };
-
-      corsImg.src = imageUrl;
-    });
-  }
-
-  /**
-   * Handle face count selection
+   * Handle face count selection using server-side stored face_count values
    */
   function handleSelectByFaceCount() {
     const faceCountFilter = elements.faceCountSelect?.value;
@@ -2466,125 +2286,65 @@
       checkbox.closest('.image-card').classList.remove('selected');
     });
 
-    showToast('Detecting faces in images...', 'info');
+    // Track how many we matched
+    let matchCount = 0;
 
-    detectFacesInAllImages()
-      .then(results => {
-        let matchCount = 0;
-
-        // Select images based on face count filter
-        results.forEach(({ imageId, faceCount }) => {
-          let shouldSelect = false;
-
-          switch(faceCountFilter) {
-            case '0':
-              shouldSelect = faceCount === 0;
-              break;
-            case '1':
-              shouldSelect = faceCount === 1;
-              break;
-            case '2':
-              shouldSelect = faceCount === 2;
-              break;
-            case '3':
-              shouldSelect = faceCount >= 3;
-              break;
-          }
-
-          if (shouldSelect) {
-            matchCount++;
-            state.selectedImages.add(imageId);
-
-            const checkbox = document.querySelector(`.image-checkbox[data-image-id="${imageId}"]`);
-            if (checkbox) {
-              checkbox.checked = true;
-              checkbox.closest('.image-card').classList.add('selected');
-            }
-          }
-        });
-
-        // Update UI
-        updateBulkDeleteToolbar();
-
-        // Show result
-        const filterText = {
-          '0': 'no faces',
-          '1': '1 face',
-          '2': '2 faces',
-          '3': '3+ faces'
-        }[faceCountFilter];
-
-        if (matchCount > 0) {
-          showToast(`Selected ${matchCount} image${matchCount > 1 ? 's' : ''} with ${filterText}`, 'success');
-        } else {
-          showToast(`No images found with ${filterText}`, 'info');
-        }
-      });
-  }
-
-  /**
-   * Detect faces in all visible images using full-resolution images
-   */
-  async function detectFacesInAllImages() {
-    // Initialize model if needed
-    const initialized = await initializeFaceDetection();
-    if (!initialized) {
-      return [];
-    }
-
+    // Get all image cards and filter by stored face_count data attribute
     const imageCards = document.querySelectorAll('.image-card');
-    const results = [];
 
-    // Get all images to process
-    const imagesToProcess = [];
     imageCards.forEach(card => {
       const imageId = card.getAttribute('data-image-id');
+      const faceCountAttr = card.getAttribute('data-face-count');
 
-      // Check if we already have face count cached
-      if (state.faceDetection.faceCounts.has(imageId)) {
-        results.push({
-          imageId,
-          faceCount: state.faceDetection.faceCounts.get(imageId)
-        });
-      } else {
-        // Get the full-resolution image URL from the view button
-        const viewBtn = card.querySelector('[data-action="view"]');
-        if (viewBtn) {
-          const imageUrl = viewBtn.getAttribute('data-image-url');
-          imagesToProcess.push({ imageId, imageUrl });
+      // Parse face count (handle 'null' string for unanalyzed images)
+      const faceCount = faceCountAttr === 'null' ? null : parseInt(faceCountAttr, 10);
+
+      let shouldSelect = false;
+
+      // Apply filter logic
+      switch(faceCountFilter) {
+        case '0':
+          shouldSelect = faceCount === 0;
+          break;
+        case '1':
+          shouldSelect = faceCount === 1;
+          break;
+        case '2':
+          shouldSelect = faceCount === 2;
+          break;
+        case '3':
+          shouldSelect = faceCount !== null && faceCount >= 3;
+          break;
+      }
+
+      if (shouldSelect) {
+        matchCount++;
+        state.selectedImages.add(imageId);
+
+        const checkbox = document.querySelector(`.image-checkbox[data-image-id="${imageId}"]`);
+        if (checkbox) {
+          checkbox.checked = true;
+          checkbox.closest('.image-card').classList.add('selected');
         }
       }
     });
 
-    // Process images sequentially with small delays to avoid rate limiting
-    const totalImages = imagesToProcess.length;
-    let processedCount = 0;
+    // Update UI
+    updateBulkDeleteToolbar();
 
-    for (const { imageId, imageUrl } of imagesToProcess) {
-      try {
-        const faceCount = await detectFacesInImage(imageUrl);
+    // Show result
+    const filterText = {
+      '0': 'no faces',
+      '1': '1 face',
+      '2': '2 faces',
+      '3': '3+ faces'
+    }[faceCountFilter];
 
-        // Cache the result
-        state.faceDetection.faceCounts.set(imageId, faceCount);
-        results.push({ imageId, faceCount });
-
-        processedCount++;
-
-        // Update progress every 5 images
-        if (processedCount % 5 === 0 || processedCount === totalImages) {
-          showToast(`Analyzing ${processedCount}/${totalImages} images...`, 'info');
-        }
-
-        // Small delay to avoid overwhelming the browser/network
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error('Error processing image:', imageId, error);
-        // Continue with next image even if this one failed
-        processedCount++;
-      }
+    if (matchCount > 0) {
+      showToast(`Selected ${matchCount} image${matchCount > 1 ? 's' : ''} with ${filterText}`, 'success');
+    } else {
+      showToast(`No images found with ${filterText}`, 'info');
     }
-
-    return results;
   }
 
   // ========================================
