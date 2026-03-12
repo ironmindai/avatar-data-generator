@@ -1770,7 +1770,7 @@ def create_app():
     @login_required
     def regenerate_image():
         """
-        Regenerate a single image in a dataset using SeeDream img2img.
+        Regenerate a single image in a dataset using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview).
 
         POST: Generate a temporary preview image based on user prompt
         Returns: JSON with new temporary image URL
@@ -1903,7 +1903,7 @@ def create_app():
             REGENERATION_LOCKS[lock_key] = time.time()
 
             # Import necessary functions
-            from services.seedream_service import generate_image_with_reference
+            from services.openrouter_scene_service import generate_scene_image_openrouter
             from services.image_utils import upload_to_s3, generate_presigned_url, S3_PUBLIC_URL_BASE, S3_BUCKET_NAME
 
             # Extract S3 key from image_url
@@ -1927,7 +1927,7 @@ def create_app():
 
             logging.info(f"Extracted S3 key: {s3_key}")
 
-            # Generate presigned URL for SeeDream to access the image
+            # Generate presigned URL for OpenRouter to access the image
             try:
                 presigned_url = generate_presigned_url(s3_key, expiration=3600)
             except Exception as e:
@@ -1958,33 +1958,36 @@ def create_app():
 
             except Exception as e:
                 logging.warning(f"Could not determine original image size, using default: {e}")
-                original_size = None  # Will use default SEEDREAM_IMAGE_SIZE
+                original_size = None  # Will use default (2560x1440)
 
-            # Call SeeDream to generate new image with original dimensions
+            # Call OpenRouter Nano Banana 2 to generate new image with original dimensions
+            # For image regeneration, we pass the same image URL twice (as both scene and person reference)
+            # since we're modifying a single reference image
             logging.info(f"Regenerating image for result_id={result_id}, image_index={image_index}")
             logging.info(f"Prompt: {prompt}")
             logging.info(f"Size: {original_size or 'default (2560x1440)'}")
 
             try:
-                image_bytes = asyncio.run(generate_image_with_reference(
+                image_bytes = asyncio.run(generate_scene_image_openrouter(
                     prompt=prompt,
-                    base_image_url=presigned_url,
-                    size=original_size  # Preserve original dimensions
+                    scene_image_url=presigned_url,
+                    person_image_url=presigned_url,  # Same image used for both references in regeneration
+                    size=original_size or "2560x1440"  # Preserve original dimensions
                 ))
             except httpx.HTTPStatusError as e:
-                logging.error(f"SeeDream HTTP error: {e}", exc_info=True)
+                logging.error(f"OpenRouter Nano Banana 2 HTTP error: {e}", exc_info=True)
                 return jsonify({
                     'success': False,
                     'error': f'Image generation failed: HTTP {e.response.status_code}'
                 }), 502
             except httpx.TimeoutException as e:
-                logging.error(f"SeeDream timeout: {e}", exc_info=True)
+                logging.error(f"OpenRouter Nano Banana 2 timeout: {e}", exc_info=True)
                 return jsonify({
                     'success': False,
                     'error': 'Image generation timed out'
                 }), 504
             except Exception as e:
-                logging.error(f"SeeDream generation error: {e}", exc_info=True)
+                logging.error(f"OpenRouter Nano Banana 2 generation error: {e}", exc_info=True)
                 return jsonify({
                     'success': False,
                     'error': f'Image generation failed: {str(e)}'

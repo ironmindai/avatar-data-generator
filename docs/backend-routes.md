@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-12 (Added face detection as scheduled APScheduler job)*
+> *Last Updated: 2026-03-12 (Migrated /api/regenerate-image from SeeDream to OpenRouter Nano Banana 2)*
 
 ## Application Information
 
@@ -895,7 +895,7 @@ You can send any combination of settings in a single request:
 ---
 
 #### POST `/api/regenerate-image`
-**Description**: Regenerate a single image in a dataset using SeeDream img2img
+**Description**: Regenerate a single image in a dataset using OpenRouter Nano Banana 2 (Gemini 3.1 Flash Image Preview)
 **Authentication**: Required
 **Content-Type**: `application/json`
 
@@ -922,8 +922,8 @@ You can send any combination of settings in a single request:
 4. Validates image_index is within bounds
 5. Implements concurrency lock (prevents duplicate regenerations)
 6. Extracts S3 key from image_url
-7. Generates presigned URL for SeeDream to access the image
-8. Calls SeeDream API with prompt and base image reference
+7. Generates presigned URL for OpenRouter to access the image
+8. Calls OpenRouter Nano Banana 2 with prompt and dual image reference (same image used twice for regeneration)
 9. Uploads regenerated image to S3 with temporary name
 10. Returns temporary image URL for preview
 
@@ -964,14 +964,14 @@ You can send any combination of settings in a single request:
     "error": "This image is already being regenerated. Please wait."
   }
   ```
-- **502**: SeeDream HTTP error
+- **502**: OpenRouter HTTP error
   ```json
   {
     "success": false,
     "error": "Image generation failed: HTTP 500"
   }
   ```
-- **504**: SeeDream timeout
+- **504**: OpenRouter timeout
   ```json
   {
     "success": false,
@@ -1002,8 +1002,10 @@ You can send any combination of settings in a single request:
 - Validates image_index bounds
 
 **Implementation Notes**:
-- Uses `asyncio.run()` to call async SeeDream function
+- Uses `asyncio.run()` to call async OpenRouter function
 - Generates presigned URL with 1-hour expiration
+- For image regeneration, the same presigned URL is passed twice (as both scene_image_url and person_image_url) since we're modifying a single reference image
+- Preserves original image dimensions by detecting size before regeneration
 - Temporary images stored with timestamp in filename
 - Logs all errors with full stack trace
 - Catches specific httpx exceptions for better error handling
