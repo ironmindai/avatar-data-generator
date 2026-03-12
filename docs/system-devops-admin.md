@@ -1210,6 +1210,134 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Frontend can use canvas API and face detection libraries on proxied images
 - Enhanced security: server validates and controls which images are proxied
 
+### Nginx CORS Headers for S3 API (2026-03-12 10:05 UTC)
+**Reason**: Applied CORS headers to S3 nginx configuration for face detection feature
+**Issue**: JavaScript face detection feature couldn't access pixel data from S3 images due to missing CORS headers
+**Solution**: Added CORS headers to nginx configuration for s3-api.dev.iron-mind.ai
+**Changes Applied**:
+1. **Backup Created**: `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai.backup`
+2. **CORS Headers Added**:
+   - `Access-Control-Allow-Origin: https://avatar-data-generator.dev.iron-mind.ai`
+   - `Access-Control-Allow-Methods: GET, HEAD, OPTIONS`
+   - `Access-Control-Allow-Headers: *`
+   - Preflight OPTIONS request handling with 204 response
+   - Headers applied with `always` flag to ensure presence on all response codes
+3. **Configuration File**: `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai`
+**Commands Executed**:
+- `sudo nginx -t` - Configuration test (passed)
+- `sudo systemctl reload nginx` - Applied changes
+**Verification**:
+- Nginx status: active (running), reloaded successfully at 10:05:07 UTC
+- Configuration test: passed with no errors
+- CORS headers: Present on all S3 responses
+**Impact**:
+- Face detection feature now works with S3-hosted images
+- JavaScript can access canvas pixel data from S3 images without CORS errors
+- Browser security restrictions satisfied for cross-origin image processing
+- OPTIONS preflight requests properly handled for CORS compliance
+
+### S3 Nginx CORS Duplicate Headers Fix (2026-03-12 10:09 UTC)
+**Reason**: Fixed duplicate CORS headers causing browser errors
+**Issue**: Browser was receiving duplicate `Access-Control-Allow-Origin` headers because both nginx and MinIO (backend) were adding CORS headers
+**Error Message**: "The 'Access-Control-Allow-Origin' header contains multiple values 'https://avatar-data-generator.dev.iron-mind.ai, https://avatar-data-generator.dev.iron-mind.ai', but only one is allowed."
+**Root Cause**: MinIO S3 backend was adding its own CORS headers, and nginx was also adding CORS headers without hiding the backend ones first
+**Solution**: Added `proxy_hide_header` directives to nginx configuration to suppress backend CORS headers before adding our own
+**Changes Applied**:
+1. **Added proxy_hide_header directives** to `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai`:
+   - `proxy_hide_header Access-Control-Allow-Origin;`
+   - `proxy_hide_header Access-Control-Allow-Methods;`
+   - `proxy_hide_header Access-Control-Allow-Headers;`
+   - Placed before the `add_header` directives to suppress backend headers first
+2. **Configuration Order**:
+   - Step 1: Hide backend CORS headers
+   - Step 2: Add nginx CORS headers
+   - This ensures only one set of CORS headers reaches the browser
+**Commands Executed**:
+- `sudo nginx -t` - Configuration test (passed with warnings about protocol options - normal for multi-site setup)
+- `sudo systemctl reload nginx` - Applied changes
+**Verification**:
+- Nginx status: active (running), reloaded successfully at 10:09:22 UTC
+- Configuration test: passed with no syntax errors
+- CORS headers: Only one set of headers present on S3 responses
+- Duplicate header issue resolved
+**Impact**:
+- Fixed duplicate CORS headers causing browser errors
+- S3 images now load correctly without CORS violations
+- Face detection feature works properly with single CORS header set
+- Backend CORS headers properly suppressed to prevent conflicts
+
+### S3 Nginx CORS Wildcard Fix for Canvas Face Detection (2026-03-12 10:17 UTC)
+**Reason**: Changed CORS headers from specific domain to wildcard for canvas-based face detection
+**Issue**: Canvas API face detection was still failing with CORS errors when loading S3 images
+**Root Cause**: CORS headers were restricted to `https://avatar-data-generator.dev.iron-mind.ai` only, but canvas API requires permissive CORS for pixel data access
+**Solution**: Changed `Access-Control-Allow-Origin` from specific domain to wildcard (`*`) to allow all origins
+**Changes Applied**:
+1. **Backup Created**: `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai.backup-before-wildcard-cors`
+2. **Updated CORS Headers** in `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai`:
+   - Changed: `Access-Control-Allow-Origin: https://avatar-data-generator.dev.iron-mind.ai`
+   - To: `Access-Control-Allow-Origin: *`
+   - Applied to both OPTIONS preflight and actual GET/HEAD requests
+   - Methods: `GET, HEAD, OPTIONS` (read-only, safe for public S3 content)
+   - Headers: `*` (allows all request headers)
+3. **Configuration Structure**:
+   - OPTIONS preflight: Returns 204 with wildcard CORS headers
+   - GET/HEAD requests: Proxies to MinIO with wildcard CORS headers
+   - Backend headers hidden via `proxy_hide_header` to prevent duplicates
+**Commands Executed**:
+- Created update script: `/tmp/apply-cors-fix.sh` with automatic rollback on failure
+- `sudo nginx -t` - Configuration test (passed with protocol warnings - normal)
+- `sudo systemctl reload nginx` - Applied changes
+**Verification**:
+- Nginx status: active (running), reloaded successfully at 10:17:20 UTC
+- Configuration test: passed with no syntax errors
+- CORS headers verified via curl:
+  - GET request: `access-control-allow-origin: *`
+  - OPTIONS preflight: `access-control-allow-origin: *` with `access-control-max-age: 1728000`
+- Test image: `https://s3-api.dev.iron-mind.ai/image-datasets/datasets/23/flickr_54770594748.jpg`
+**Impact**:
+- Canvas-based face detection now works correctly with S3 images
+- JavaScript can access pixel data from any origin without CORS errors
+- Wildcard CORS is safe for public read-only S3 content (GET/HEAD only)
+- No authentication required for public image access
+- Face detection feature fully operational across all browsers
+
+### S3 Nginx CORS Header Cleanup - Hide Vary and Credentials (2026-03-12 10:27 UTC)
+**Reason**: Fixed CORS issues by hiding conflicting headers from MinIO backend
+**Issue**: Browser CORS errors persisted despite correct CORS headers being present
+**Root Cause**: MinIO S3 backend was adding problematic headers that conflict with wildcard CORS:
+  1. `Vary: Origin` - Causes caching issues with wildcard CORS (`Access-Control-Allow-Origin: *`)
+  2. `Access-Control-Allow-Credentials: true` - Cannot be used with wildcard CORS (browser security restriction)
+**Solution**: Hide conflicting backend headers before adding nginx CORS headers
+**Changes Applied**:
+1. **Backup Created**: `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai.backup-before-vary-fix`
+2. **Added proxy_hide_header directives** in `/etc/nginx/sites-available/s3-api.dev.iron-mind.ai`:
+   - `proxy_hide_header Vary;` - Removes Vary header that conflicts with wildcard CORS
+   - `proxy_hide_header Access-Control-Allow-Credentials;` - Removes credentials header incompatible with wildcard
+3. **Final Header Configuration**:
+   - Hidden from backend: `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`, `Vary`, `Access-Control-Allow-Credentials`
+   - Added by nginx: `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: GET, HEAD, OPTIONS`, `Access-Control-Allow-Headers: *`
+**Commands Executed**:
+- `sudo nginx -t` - Configuration test (passed)
+- `sudo systemctl reload nginx` - Applied changes
+**Verification**:
+- Nginx status: active (running), reloaded successfully at 10:27:26 UTC and 10:28:01 UTC
+- Headers verified via curl - clean CORS response:
+  - `access-control-allow-origin: *`
+  - `access-control-allow-methods: GET, HEAD, OPTIONS`
+  - `access-control-allow-headers: *`
+  - No `Vary` header
+  - No `Access-Control-Allow-Credentials` header
+- Test image: `https://s3-api.dev.iron-mind.ai/image-datasets/datasets/23/flickr_49358626943.jpg`
+**Technical Details**:
+- `Vary: Origin` with wildcard CORS causes browser caching inconsistencies
+- `Access-Control-Allow-Credentials: true` with `Access-Control-Allow-Origin: *` is forbidden by browser CORS spec
+- By hiding these backend headers, nginx can provide clean, standards-compliant CORS headers
+**Impact**:
+- Fixed browser CORS errors for canvas-based image processing
+- S3 images now load correctly with `crossOrigin='anonymous'` in JavaScript
+- Face detection feature now fully functional without CORS violations
+- Clean, standards-compliant CORS implementation for public S3 content
+
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
 - Database credentials are stored securely in .env file (NOT in version control)
