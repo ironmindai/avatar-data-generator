@@ -59,23 +59,44 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 **Status**: Created and activated
 
 ### Installed Packages (in venv)
+
+#### Core Framework
 - Flask==3.0.0
 - Flask-SQLAlchemy==3.1.1
 - Flask-Migrate==4.0.5
 - Flask-Login==0.6.3
 - Flask-WTF==1.2.1
+- Werkzeug==3.0.1
+- gunicorn==24.1.1 (production WSGI server)
+
+#### Database
 - psycopg2-binary==2.9.9
 - SQLAlchemy==2.0.23
+
+#### Security & Utilities
 - bcrypt==4.1.2
 - python-dotenv==1.0.0
 - email-validator==2.1.0
-- Werkzeug==3.0.1
-- gunicorn==24.1.1 (production WSGI server)
-- APScheduler==3.11.0 (background task scheduling - installed 2026-01-30)
-- opencv-python==4.13.0.90 (image processing - installed 2026-02-01)
-- numpy==2.4.2 (dependency for opencv-python)
-- httpx==0.28.1 (async HTTP client - dependency of openai package, verified 2026-02-20)
+
+#### LLM/AI Integration (ACTIVE)
+- openai==1.12.0 (GPT-4o Mini for prompt generation, DALL-E for fallback image generation)
+- httpx==0.27.0 (async HTTP client - required by openai package, also used for API calls)
+- requests==2.31.0 (HTTP client for OpenRouter, Flickr, URL imports)
+- **Note**: OpenRouter API uses OpenAI SDK compatibility (no separate package required)
+
+#### Background Processing
+- APScheduler==3.10.4 (background task scheduling - installed 2026-01-30)
+
+#### Image Processing
+- Pillow==10.2.0 (PIL - core image manipulation)
+- opencv-python==4.13.0.90 (face detection with YuNet - installed 2026-02-01)
+- split-image==2.0.1 (image splitting utilities)
+- numpy (dependency for opencv-python)
 - piexif==1.1.3 (EXIF metadata manipulation for JPEG images - installed 2026-02-25)
+
+#### S3 Storage
+- boto3==1.34.34
+- botocore==1.34.34
 
 ## Nginx Sites
 **Subdomain**: avatar-data-generator.dev.iron-mind.ai
@@ -1416,6 +1437,75 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - Worker will no longer recycle automatically (may need alternative memory management strategy)
 - Extended timeout (300s) still active for face detection operations
 **Note**: The OOM issue may need to be addressed through alternative means (e.g., memory profiling, explicit memory cleanup, or systemd MemoryMax limits) since worker recycling conflicts with APScheduler
+
+## LLM/Vision Model Requirements
+
+### Active Dependencies (Required for Current System)
+The system currently uses the following AI/ML services and packages:
+
+**Python Packages (in requirements.txt)**:
+- `openai==1.12.0` - **REQUIRED**
+  - Used for GPT-4o Mini (prompt generation)
+  - Used for DALL-E fallback image generation
+  - OpenRouter API is compatible with OpenAI SDK (no separate package needed)
+- `httpx==0.27.0` - **REQUIRED**
+  - Async HTTP client required by openai package
+  - Also used for API calls to OpenRouter and other services
+- `requests==2.31.0` - **REQUIRED**
+  - HTTP client for OpenRouter, Flickr, URL imports
+- `opencv-python==4.13.0.90` - **REQUIRED**
+  - Face detection using YuNet ONNX model (local processing, no API)
+
+**Environment Variables (in .env)**:
+- `OPENROUTER_API_KEY` - **REQUIRED** - Main image generation via OpenRouter
+- `OPENROUTER_MODEL` - Default: `openai/gpt-5-image` (base image generation)
+- `OPENROUTER_SCENE_MODEL` - Default: `google/gemini-3.1-flash-image-preview` (scene generation)
+- `USE_OPENROUTER` - Default: `True` (enables OpenRouter for base images)
+- `USE_OPENROUTER_SCENE` - Default: `True` (enables OpenRouter for scene images)
+- `OPENAI_API_KEY` - **REQUIRED** - Fallback image generation + prompt generation
+
+### Deprecated/Legacy (Commented Out in .env)
+The following services are **NO LONGER USED** but code still exists:
+- SeeDream (ByteDance) - Replaced by OpenRouter Nano Banana 2 (commit 616b194)
+- RunPod ComfyUI - Replaced by OpenRouter (commit 074b77d)
+- Flowise Workflow - Superseded by image_prompt_chain.py
+
+**No packages need to be removed** - the legacy service files don't load unless explicitly called.
+
+### Migration Checklist for Production Deployment
+
+When deploying the latest version to production:
+
+1. **Update .env file**:
+   - Comment out deprecated sections (BYTEPLUS_API, USE_TWO_STAGE_PIPELINE, RUNPOD_*)
+   - Ensure `USE_OPENROUTER=True` and `USE_OPENROUTER_SCENE=True`
+   - Verify `OPENROUTER_API_KEY` and `OPENAI_API_KEY` are set
+
+2. **Install/Update Python packages**:
+   ```bash
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+   All required packages are in requirements.txt (no manual installs needed)
+
+3. **Restart service**:
+   ```bash
+   sudo systemctl restart avatar-data-generator.service
+   ```
+
+4. **Verify active models**:
+   Check logs for confirmation that OpenRouter is being used:
+   ```bash
+   sudo journalctl -u avatar-data-generator.service -n 50 | grep -i "openrouter\|image generation"
+   ```
+
+### No Additional System Packages Required
+All LLM/vision functionality uses:
+- Python packages in requirements.txt (installed in venv)
+- API calls to external services (OpenRouter, OpenAI)
+- Local OpenCV with YuNet ONNX model (downloaded automatically to /tmp/)
+
+No system-level packages (apt install) needed for LLM/vision features.
 
 ## Notes
 - This is a production deployment on the shared dev.iron-mind.ai server
