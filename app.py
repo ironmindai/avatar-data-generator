@@ -30,6 +30,7 @@ from sqlalchemy import func
 import httpx
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import hashlib
 
 # Global lock for image regeneration (prevents concurrent regeneration of same image)
 REGENERATION_LOCKS = {}
@@ -3140,7 +3141,7 @@ def create_app():
     @app.route('/api/image-datasets/<dataset_id>/import-urls', methods=['POST'])
     @login_required
     def import_urls(dataset_id):
-        """Import images from external URLs."""
+        """Import images from URLs into a dataset (synchronous)."""
         try:
             # Get dataset and verify edit access
             dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
@@ -3159,9 +3160,10 @@ def create_app():
                     'message': 'No URLs provided'
                 }), 400
 
-            # Import using url_import_service
-            from services import url_import_service
+            logging.info(f"Starting URL import for dataset {dataset_id} with {len(urls)} URLs")
 
+            # Import URLs synchronously
+            from services import url_import_service
             result = url_import_service.batch_import_urls(
                 urls=urls,
                 dataset_id=dataset.id,
@@ -3169,22 +3171,197 @@ def create_app():
                 max_workers=5
             )
 
-            logging.info(f"User {current_user.email} imported URLs to dataset {dataset_id}: "
-                        f"{result['imported']} imported, {result['failed']} failed")
+            # Build response message
+            message = f"Import complete: {result['imported']} imported, {result['failed']} failed"
+
+            logging.info(f"URL import complete for dataset {dataset_id}: {message}")
 
             return jsonify({
                 'success': True,
-                'imported_count': result['imported'],
-                'failed_count': result['failed'],
+                'imported': result['imported'],
+                'failed': result['failed'],
                 'failed_urls': result.get('failed_urls', []),
-                'message': f"Import complete: {result['imported']} imported, {result['failed']} failed"
+                'message': message
             }), 200
 
         except Exception as e:
             logging.error(f"Error importing URLs: {e}", exc_info=True)
             return jsonify({
                 'success': False,
-                'message': f'Import failed: {str(e)}'
+                'message': f'Failed to import URLs: {str(e)}'
+            }), 500
+
+    @app.route('/api/image-datasets/<dataset_id>/upload-files', methods=['POST'])
+    @login_required
+    def upload_dataset_files(dataset_id):
+        """Upload image files to dataset from local file system."""
+        try:
+            # Get dataset and verify edit access
+            dataset = _get_dataset_or_404(dataset_id, current_user.id, required_level='edit')
+            if not dataset:
+                return jsonify({
+                    'success': False,
+                    'message': 'Dataset not found or access denied'
+                }), 403
+
+            # Check if files were provided
+            if 'files[]' not in request.files:
+                return jsonify({
+                    'success': False,
+                    'message': 'No files provided'
+                }), 400
+
+            # Get all uploaded files
+            files = request.files.getlist('files[]')
+
+            if not files or len(files) == 0:
+                return jsonify({
+                    'success': False,
+                    'message': 'No files provided'
+                }), 400
+
+            # Import required services
+            from services.image_utils import upload_dataset_image_to_s3, compute_image_hash
+
+            # Process each file
+            imported_count = 0
+            failed_count = 0
+            failed_files = []
+
+            # Allowed MIME types
+            ALLOWED_TYPES = {'image/jpeg', 'image/png'}
+            MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+            for file in files:
+                try:
+                    # Get original filename
+                    original_filename = file.filename
+
+                    if not original_filename:
+                        failed_count += 1
+                        failed_files.append({
+                            'filename': 'unknown',
+                            'error': 'No filename provided'
+                        })
+                        continue
+
+                    # Validate file type
+                    if file.content_type not in ALLOWED_TYPES:
+                        failed_count += 1
+                        failed_files.append({
+                            'filename': original_filename,
+                            'error': 'Invalid file type (only PNG and JPG allowed)'
+                        })
+                        logging.warning(f"Invalid file type {file.content_type} for {original_filename}")
+                        continue
+
+                    # Read file bytes
+                    file.seek(0)  # Ensure we're at the start
+                    image_bytes = file.read()
+
+                    # Validate file size
+                    if len(image_bytes) > MAX_FILE_SIZE:
+                        failed_count += 1
+                        failed_files.append({
+                            'filename': original_filename,
+                            'error': f'File too large ({len(image_bytes) / 1024 / 1024:.1f} MB, max 50 MB)'
+                        })
+                        logging.warning(f"File too large: {original_filename} ({len(image_bytes)} bytes)")
+                        continue
+
+                    if len(image_bytes) == 0:
+                        failed_count += 1
+                        failed_files.append({
+                            'filename': original_filename,
+                            'error': 'File is empty'
+                        })
+                        logging.warning(f"Empty file: {original_filename}")
+                        continue
+
+                    # Compute image hash for duplicate detection
+                    image_hash = compute_image_hash(image_bytes)
+
+                    # Check for duplicate hash in this dataset
+                    existing = DatasetImage.query.filter_by(
+                        dataset_id=dataset.id,
+                        image_hash=image_hash
+                    ).first()
+
+                    if existing:
+                        failed_count += 1
+                        failed_files.append({
+                            'filename': original_filename,
+                            'error': f'Duplicate image (already exists in dataset)'
+                        })
+                        logging.info(f"Skipping duplicate: {original_filename} (hash: {image_hash[:16]}...)")
+                        continue
+
+                    # Determine file extension from MIME type
+                    ext_map = {
+                        'image/jpeg': 'jpg',
+                        'image/png': 'png'
+                    }
+                    file_extension = ext_map.get(file.content_type, 'jpg')
+
+                    # Upload to S3 using hash as source_id
+                    object_key, public_url = upload_dataset_image_to_s3(
+                        image_bytes=image_bytes,
+                        dataset_id=dataset.id,
+                        source_id=image_hash[:16],  # Use first 16 chars of hash
+                        file_extension=file_extension
+                    )
+
+                    # Create DatasetImage record
+                    dataset_image = DatasetImage(
+                        dataset_id=dataset.id,
+                        image_url=public_url,
+                        source_type='file_upload',
+                        source_id=None,  # No external source ID for uploaded files
+                        source_metadata={
+                            'original_filename': original_filename,
+                            'content_type': file.content_type,
+                            'file_size': len(image_bytes)
+                        },
+                        image_hash=image_hash,
+                        face_count=None  # Will be processed by background job
+                    )
+                    db.session.add(dataset_image)
+                    db.session.commit()
+
+                    imported_count += 1
+                    logging.info(f"Successfully uploaded file: {original_filename} -> {public_url}")
+
+                except Exception as e:
+                    # Rollback on error for this specific file
+                    try:
+                        db.session.rollback()
+                    except Exception:
+                        pass
+
+                    failed_count += 1
+                    failed_files.append({
+                        'filename': original_filename if 'original_filename' in locals() else 'unknown',
+                        'error': str(e)
+                    })
+                    logging.error(f"Failed to upload file {original_filename if 'original_filename' in locals() else 'unknown'}: {e}", exc_info=True)
+
+            # Log summary
+            logging.info(f"User {current_user.email} uploaded files to dataset {dataset_id}: "
+                        f"{imported_count} imported, {failed_count} failed")
+
+            return jsonify({
+                'success': True,
+                'imported': imported_count,
+                'failed': failed_count,
+                'failed_files': failed_files,
+                'message': f"Upload complete: {imported_count} imported, {failed_count} failed"
+            }), 200
+
+        except Exception as e:
+            logging.error(f"Error uploading files: {e}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'message': f'Upload failed: {str(e)}'
             }), 500
 
     @app.route('/api/image-datasets/<dataset_id>/images/<int:image_id>', methods=['DELETE'])

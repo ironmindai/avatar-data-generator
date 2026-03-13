@@ -1,7 +1,7 @@
 # Backend Routes - Avatar Data Generator
 
 > *Maintained by: backend-coder agent*
-> *Last Updated: 2026-03-12 (Migrated /api/regenerate-image from SeeDream to OpenRouter Nano Banana 2)*
+> *Last Updated: 2026-03-13 (Reverted URL import to synchronous - async had GIL/threading issues)*
 
 ## Application Information
 
@@ -1533,7 +1533,7 @@ img.src = proxyUrl;
 ---
 
 ### POST `/api/image-datasets/<dataset_id>/import-urls`
-**Description**: Import images from external URLs
+**Description**: Import images from URLs into dataset (synchronous - waits for completion)
 **Authentication**: Required
 **Content-Type**: `application/json`
 
@@ -1557,36 +1557,169 @@ img.src = proxyUrl;
 ```json
 {
   "success": true,
-  "imported": 8,
-  "failed": 2,
+  "imported": 3,
+  "failed": 1,
   "failed_urls": [
     {
-      "url": "https://example.com/broken.jpg",
+      "url": "https://example.com/invalid.jpg",
       "error": "HTTP error 404: Not Found"
     }
   ],
-  "message": "Import complete: 8 imported, 2 failed"
+  "message": "Import complete: 3 imported, 1 failed"
+}
+```
+
+**Error Response (400)**:
+```json
+{
+  "success": false,
+  "message": "No URLs provided"
 }
 ```
 
 **Workflow**:
 1. Verify edit access
-2. Validate each URL (HEAD request, Content-Type check)
-3. Batch download images (concurrent, max 5 workers)
-4. Compute hash for duplicate detection
-5. Upload to S3
-6. Insert DatasetImage records
+2. Process URLs concurrently (max 5 workers):
+   - Download images directly (no pre-validation for speed)
+   - Compute hash for tracking
+   - Upload to S3
+   - Insert DatasetImage records
+3. Return results when all URLs processed
 
-**URL Validation**:
+**URL Validation** (during download):
 - Must start with http:// or https://
 - Content-Type must be image/*
 - Max file size: 50 MB
 - 30-second timeout per download
 
+**Performance**:
+- Duplicate checking is **disabled during import** for speed
+- Users can filter/remove duplicates later using the UI
+- Fast synchronous operation (no job polling needed)
+
 **Security**:
 - Requires edit access
 - URL validation prevents abuse
 - Size limits prevent resource exhaustion
+
+**Implementation Notes**:
+- Uses `services.url_import_service.batch_import_urls()`
+- No background threading or job tracking
+- Simple synchronous request/response model
+
+---
+
+### POST `/api/image-datasets/<dataset_id>/upload-files`
+**Description**: Upload image files to dataset from local file system
+**Authentication**: Required
+**Content-Type**: `multipart/form-data`
+
+**Path Parameters**:
+- `dataset_id`: String - Dataset UUID
+
+**Form Fields**:
+- `files[]`: File array - Multiple image files to upload
+
+**Supported File Types**:
+- `image/jpeg` - JPEG/JPG images
+- `image/png` - PNG images
+
+**File Validation**:
+- Max file size: 50 MB per file
+- Only PNG and JPG formats allowed
+- Files must not be empty
+
+**Success Response (200)**:
+```json
+{
+  "success": true,
+  "imported": 5,
+  "failed": 1,
+  "failed_files": [
+    {
+      "filename": "invalid.gif",
+      "error": "Invalid file type (only PNG and JPG allowed)"
+    }
+  ],
+  "message": "Upload complete: 5 imported, 1 failed"
+}
+```
+
+**Error Response (400)** - No files provided:
+```json
+{
+  "success": false,
+  "message": "No files provided"
+}
+```
+
+**Error Response (403)** - Access denied:
+```json
+{
+  "success": false,
+  "message": "Dataset not found or access denied"
+}
+```
+
+**Workflow**:
+1. Verify edit access to dataset
+2. Validate file type (PNG/JPG only)
+3. Validate file size (≤50 MB)
+4. Read file bytes
+5. Compute SHA256 hash for duplicate detection
+6. Check for duplicate images in dataset (by hash)
+7. Upload to S3 (bucket: image-datasets)
+8. Create DatasetImage record with metadata
+
+**DatasetImage Fields**:
+- `source_type`: 'file_upload'
+- `source_id`: NULL (no external source)
+- `source_metadata`: JSON with original filename, content type, file size
+- `image_hash`: SHA256 hash of file bytes
+- `face_count`: NULL (processed by background job)
+
+**Duplicate Detection**:
+- Skips files if image hash matches existing image in dataset
+- Returns duplicate files in `failed_files` array with error message
+
+**Failed Upload Reasons**:
+- Invalid file type (not PNG/JPG)
+- File too large (>50 MB)
+- Empty file (0 bytes)
+- Duplicate image (hash already exists)
+- Upload/processing errors
+
+**Example cURL Upload**:
+```bash
+curl -X POST http://localhost:7001/api/image-datasets/abc123/upload-files \
+  -H "X-CSRFToken: YOUR_CSRF_TOKEN" \
+  -b cookies.txt \
+  -F "files[]=@image1.jpg" \
+  -F "files[]=@image2.png" \
+  -F "files[]=@image3.jpg"
+```
+
+**Security**:
+- Requires authentication
+- Requires edit access to dataset
+- File type validation (MIME type check)
+- File size limits prevent abuse
+- Hash-based duplicate detection
+- Each file processed independently (failures don't stop batch)
+
+**Implementation Notes**:
+- Uses `upload_dataset_image_to_s3` from services.image_utils
+- Uses `compute_image_hash` for duplicate detection
+- Original filename preserved in source_metadata
+- Face detection handled by background job (not during upload)
+- Database transaction per file (failures are isolated)
+- Logs all uploads and failures
+
+**Performance**:
+- Files processed sequentially (no concurrency overhead)
+- Fast uploads directly from bytes
+- No external API calls required
+- Typical upload time: ~0.5 seconds per file
 
 ---
 

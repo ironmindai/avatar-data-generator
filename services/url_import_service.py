@@ -228,35 +228,16 @@ def batch_import_urls(
             # Always run database operations within app context
             with app.app_context():
                 try:
-                    # Step 1: Validate URL
-                    is_valid, error = validate_image_url(url)
-                    if not is_valid:
-                        return {
-                            'success': False,
-                            'url': url,
-                            'error': f"Validation failed: {error}"
-                        }
-
-                    # Step 2: Download image
+                    # Step 1: Download image directly (no pre-validation for speed)
+                    # The download function will validate Content-Type and fail if not an image
                     image_bytes = download_image_from_url(url)
 
-                    # Step 3: Compute image hash for duplicate detection
+                    # Step 2: Compute image hash (for tracking, not for duplicate checking during import)
+                    # Note: We skip duplicate checking during URL import for performance.
+                    # Users can filter/remove duplicates later using the UI.
                     image_hash = compute_image_hash(image_bytes)
 
-                    # Step 4: Check for duplicate hash in this dataset
-                    existing = DatasetImage.query.filter_by(
-                        dataset_id=dataset_id,
-                        image_hash=image_hash
-                    ).first()
-
-                    if existing:
-                        return {
-                            'success': False,
-                            'url': url,
-                            'error': f"Duplicate image already exists (hash: {image_hash[:16]}...)"
-                        }
-
-                    # Step 5: Determine file extension from Content-Type
+                    # Step 3: Determine file extension from Content-Type
                     try:
                         response = requests.head(url, timeout=5, allow_redirects=True)
                         content_type = response.headers.get('Content-Type', '').lower()
@@ -278,7 +259,7 @@ def batch_import_urls(
                         file_extension = 'jpg'
                         logger.debug(f"Could not determine file extension for {url}, using jpg")
 
-                    # Step 6: Upload to S3
+                    # Step 5: Upload to S3
                     # Use hash as source_id for URL imports (unique and meaningful)
                     object_key, public_url = upload_dataset_image_to_s3(
                         image_bytes=image_bytes,
@@ -287,11 +268,11 @@ def batch_import_urls(
                         file_extension=file_extension
                     )
 
-                    # Step 7: Face detection disabled during import - will be processed by background job
+                    # Step 6: Face detection disabled during import - will be processed by background job
                     # This prevents worker crashes and keeps imports fast and reliable
                     face_count = None
 
-                    # Step 8: Insert into database
+                    # Step 7: Insert into database
                     dataset_image = DatasetImage(
                         dataset_id=dataset_id,
                         image_url=public_url,
@@ -331,14 +312,18 @@ def batch_import_urls(
                     }
 
         # Execute imports concurrently
+        # Timeout per URL: 60 seconds (generous for large images)
+        TIMEOUT_PER_URL = 60
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all import tasks
             futures = {executor.submit(import_single_url, url): url for url in urls}
 
             # Collect results as they complete
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=TIMEOUT_PER_URL * len(urls)):
                 try:
-                    result = future.result()
+                    # Get result with timeout
+                    result = future.result(timeout=TIMEOUT_PER_URL)
 
                     if result['success']:
                         imported_count += 1
@@ -356,11 +341,14 @@ def batch_import_urls(
                                   f"(imported: {imported_count}, failed: {failed_count})")
 
                 except Exception as e:
+                    # Handle timeout or other errors
                     failed_count += 1
-                    logger.error(f"Import task failed unexpectedly: {e}", exc_info=True)
+                    url = futures.get(future, 'unknown')
+                    error_msg = str(e)
+                    logger.error(f"Import task failed for {url}: {error_msg}", exc_info=True)
                     failed_urls.append({
-                        'url': 'unknown',
-                        'error': str(e)
+                        'url': url,
+                        'error': error_msg
                     })
 
         # Final summary

@@ -235,6 +235,95 @@ Uses a tight, precise 4px base unit system:
 - **Resize:** Vertical only
 - **Line Height:** `1.5`
 
+### File Upload Input (Custom Styled)
+
+Used for uploading images with visual preview thumbnails.
+
+#### File Input Wrapper (`.file-input-wrapper`)
+- **Position:** Relative
+- **Margin Bottom:** `var(--spacing-3)` (12px)
+
+#### Hidden File Input (`.file-input`)
+- **Position:** Absolute
+- **Dimensions:** `0.1px × 0.1px` (effectively invisible)
+- **Opacity:** `0`
+- **Overflow:** Hidden
+- **Z-Index:** `-1`
+- **Purpose:** Native file input for accessibility
+
+#### File Selection Button
+- Styled as **Secondary Button** (outlined with glow)
+- Icon: `upload` or `folder` feather icon
+- Full width (`btn-block` class)
+- Triggers native file picker on click
+
+#### File Preview Container (`.file-preview`)
+- **Margin Top:** `var(--spacing-4)` (16px)
+- **Padding:** `var(--spacing-4)` (16px)
+- **Background:** `var(--color-bg-secondary)` (#0f0f0f)
+- **Border:** `1px solid var(--color-border)` (#333333)
+- **Border Radius:** `0` - SHARP CORNERS
+- **Max Height:** `400px`
+- **Overflow Y:** Auto
+
+#### File Count Display (`.file-count`)
+- **Font Family:** `var(--font-mono)`
+- **Font Size:** `var(--font-size-body)` (14px)
+- **Color:** `var(--color-text-secondary)` (#cccccc)
+- **Margin Bottom:** `var(--spacing-3)` (12px)
+- **Padding:** `var(--spacing-2)` (8px)
+- **Background:** `var(--color-bg-primary)` (#1a1a1a)
+- **Text Align:** Center
+- **Format:** "[N] files selected"
+
+#### File Preview Grid (`.file-preview-grid`)
+- **Display:** Grid
+- **Grid Template:** `repeat(auto-fill, minmax(100px, 1fr))`
+- **Gap:** `var(--spacing-3)` (12px)
+- **Purpose:** Display thumbnail previews in responsive grid
+
+#### File Preview Item (`.file-preview-item`)
+- **Position:** Relative
+- **Aspect Ratio:** 1:1 (square)
+- **Background:** `var(--color-bg-primary)` (#1a1a1a)
+- **Border:** `1px solid var(--color-border)` (#333333)
+- **Border Radius:** `0` - SHARP CORNERS
+- **Overflow:** Hidden
+- **Transition:** `border-color 0.2s, box-shadow 0.2s`
+- **Hover:** Border color `#00d9ff`, box shadow `0 0 15px rgba(0, 217, 255, 0.3)`
+
+#### File Preview Image (`.file-preview-image`)
+- **Width:** `100%`
+- **Height:** `100%`
+- **Object Fit:** Cover
+
+#### File Preview Filename (`.file-preview-name`)
+- **Position:** Absolute bottom overlay
+- **Padding:** `var(--spacing-1)` (4px)
+- **Background:** `linear-gradient(to top, rgba(15, 15, 15, 0.95), transparent)`
+- **Font Size:** `var(--font-size-tiny)` (11px)
+- **Color:** `var(--color-text-secondary)` (#cccccc)
+- **Font Family:** `var(--font-mono)`
+- **Text Overflow:** Ellipsis
+- **Overflow:** Hidden
+- **White Space:** Nowrap
+
+#### File Remove Button (`.file-preview-remove`)
+- **Position:** Absolute top-right corner
+- **Top/Right:** `var(--spacing-1)` (4px)
+- **Size:** `24px × 24px`
+- **Background:** `var(--color-error)` (#ff4466)
+- **Border:** None
+- **Border Radius:** `0` - SHARP CORNERS
+- **Color:** `var(--color-text-primary)` (#ffffff)
+- **Cursor:** Pointer
+- **Display:** Flex (centered)
+- **Opacity (default):** `0` (hidden until hover)
+- **Opacity (parent hover):** `1` (visible on item hover)
+- **Box Shadow:** `0 0 10px rgba(255, 68, 102, 0.3)` (error glow)
+- **Hover:** Box shadow `0 0 20px rgba(255, 68, 102, 0.6)` (enhanced glow)
+- **Icon:** `x` feather icon, 14px size
+
 ### Multi-Select Fields (Select2 with Multiple Selection)
 
 Used for selecting multiple options from a searchable dropdown (e.g., image-set selection).

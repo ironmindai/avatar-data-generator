@@ -84,6 +84,10 @@
                 <i data-feather="link"></i>
                 Import URLs
             </button>
+            <button class="btn btn-secondary" id="uploadFilesBtn">
+                <i data-feather="upload"></i>
+                Upload Files
+            </button>
             {% endif %}
 
             {% if is_owner %}
@@ -526,12 +530,75 @@ https://example.com/image3.jpg"
                     <div class="progress-bar" id="urlProgressBar"></div>
                 </div>
                 <p class="progress-text">
-                    Importing <span class="font-mono" id="urlProgressCurrent">0</span> of <span class="font-mono" id="urlProgressTotal">0</span> images...
+                    Importing URL(s)...
                 </p>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Upload Files Modal -->
+{% if permission_level == 'edit' or is_owner %}
+<div class="modal" id="uploadModal" role="dialog" aria-labelledby="uploadModalTitle" aria-hidden="true">
+    <div class="modal-overlay" id="uploadModalOverlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title" id="uploadModalTitle">UPLOAD IMAGES</h3>
+            <button class="modal-close" id="uploadModalClose" aria-label="Close Modal">
+                <i data-feather="x"></i>
+            </button>
+        </div>
+
+        <div class="modal-body">
+            <form id="uploadFilesForm">
+                <div class="form-group">
+                    <label for="fileInput" class="form-label">SELECT IMAGES <span class="required">*</span></label>
+                    <div class="file-input-wrapper">
+                        <input type="file"
+                               id="fileInput"
+                               name="files"
+                               class="file-input"
+                               accept=".jpg,.jpeg,.png"
+                               multiple
+                               required>
+                        <button type="button" class="btn btn-secondary btn-block" id="selectFilesBtn">
+                            <i data-feather="folder"></i>
+                            Choose Files
+                        </button>
+                    </div>
+                    <span class="form-help-text">
+                        Select one or more images. Supported formats: JPG, PNG
+                    </span>
+                </div>
+
+                <!-- File Preview -->
+                <div id="filePreview" class="file-preview" style="display: none;">
+                    <h4 class="preview-title">SELECTED FILES</h4>
+                    <div class="file-count">
+                        <span class="font-mono" id="selectedFileCount">0</span> files selected
+                    </div>
+                    <div class="file-preview-grid" id="filePreviewGrid"></div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="uploadFilesSubmitBtn">
+                    <i data-feather="upload"></i>
+                    Upload All
+                </button>
+            </form>
+
+            <!-- Progress State -->
+            <div id="uploadProgress" class="import-progress" style="display: none;">
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="uploadProgressBar"></div>
+                </div>
+                <p class="progress-text">
+                    Uploading <span class="font-mono" id="uploadProgressCurrent">0</span> of <span class="font-mono" id="uploadProgressTotal">0</span> images...
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Share Modal -->
 {% if is_owner %}

@@ -65,6 +65,7 @@
     addFromFlickrBtnEmpty: document.getElementById('addFromFlickrBtnEmpty'),
     importUrlsBtn: document.getElementById('importUrlsBtn'),
     importUrlsBtnEmpty: document.getElementById('importUrlsBtnEmpty'),
+    uploadFilesBtn: document.getElementById('uploadFilesBtn'),
     shareBtn: document.getElementById('shareBtn'),
     exportBtn: document.getElementById('exportBtn'),
     exportMenu: document.getElementById('exportMenu'),
@@ -82,6 +83,7 @@
     // Modals
     flickrModal: document.getElementById('flickrModal'),
     urlModal: document.getElementById('urlModal'),
+    uploadModal: document.getElementById('uploadModal'),
     shareModal: document.getElementById('shareModal'),
     imageModal: document.getElementById('imageModal'),
 
@@ -108,6 +110,7 @@
     initializeImageSelection();
     initializeFlickrModal();
     initializeUrlModal();
+    initializeUploadModal();
     initializeShareModal();
     initializeImagePreview();
     initializeSelectionActions();
@@ -1134,7 +1137,10 @@
     const urlPreview = document.getElementById('urlPreview');
     const importProgress = document.getElementById('urlImportProgress');
 
-    if (importForm) importForm.reset();
+    if (importForm) {
+      importForm.reset();
+      importForm.style.display = 'block';
+    }
     if (urlPreview) urlPreview.style.display = 'none';
     if (importProgress) importProgress.style.display = 'none';
   }
@@ -1210,25 +1216,25 @@
       return;
     }
 
-    // Show progress
+    // Show progress UI
     const importForm = document.getElementById('urlImportForm');
     const importProgress = document.getElementById('urlImportProgress');
     const progressBar = document.getElementById('urlProgressBar');
-    const progressCurrent = document.getElementById('urlProgressCurrent');
-    const progressTotal = document.getElementById('urlProgressTotal');
-    const submitBtn = document.getElementById('importUrlsSubmitBtn');
 
     importForm.style.display = 'none';
     importProgress.style.display = 'block';
 
-    if (progressTotal) progressTotal.textContent = validUrls.length;
-    if (progressCurrent) progressCurrent.textContent = '0';
-    if (progressBar) progressBar.style.width = '0%';
+    // Show indeterminate progress
+    if (progressBar) {
+      progressBar.style.width = '100%';
+      progressBar.classList.add('indeterminate');
+    }
 
     // Get CSRF token
     const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
 
     try {
+      // Call synchronous import endpoint
       const response = await fetch(`/api/image-datasets/${state.datasetId}/import-urls`, {
         method: 'POST',
         headers: {
@@ -1241,45 +1247,295 @@
       const result = await response.json();
 
       if (response.ok && result.success) {
-        if (progressBar) progressBar.style.width = '100%';
-        if (progressCurrent) progressCurrent.textContent = result.imported_count;
+        const importedCount = result.imported || 0;
+        const failedCount = result.failed || 0;
 
-        // Check if any images were actually imported
-        if (result.imported_count > 0) {
-          showToast(`Successfully imported ${result.imported_count} image(s)`, 'success');
-          closeUrlModal();
-
-          // Reload page to show new images
-          setTimeout(() => window.location.reload(), 500);
-        } else if (result.failed_count > 0 && result.failed_urls && result.failed_urls.length > 0) {
-          // All URLs failed - show detailed error messages
-          let errorMsg = `Failed to import ${result.failed_count} URL(s): `;
-          const firstError = result.failed_urls[0];
-          errorMsg += firstError.error;
-          if (result.failed_urls.length > 1) {
-            errorMsg += ` (and ${result.failed_urls.length - 1} more)`;
-          }
-
-          showToast(errorMsg, 'error');
-          importForm.style.display = 'block';
-          importProgress.style.display = 'none';
-        } else {
-          // Shouldn't happen, but handle it
-          showToast('No images were imported. Please check your URLs.', 'error');
-          importForm.style.display = 'block';
-          importProgress.style.display = 'none';
+        // Show success message
+        let message = `Successfully imported ${importedCount} image${importedCount !== 1 ? 's' : ''}`;
+        if (failedCount > 0) {
+          message += `. ${failedCount} failed`;
         }
+        showToast(message, 'success');
+
+        // Close modal and reload
+        closeUrlModal();
+        setTimeout(() => window.location.reload(), 500);
       } else {
+        // Handle error
         showToast(result.message || 'Failed to import URLs', 'error');
+
+        // Reset UI
         importForm.style.display = 'block';
         importProgress.style.display = 'none';
       }
     } catch (error) {
       console.error('Error importing URLs:', error);
       showToast('An error occurred while importing URLs', 'error');
+
+      // Reset UI
       importForm.style.display = 'block';
       importProgress.style.display = 'none';
     }
+  }
+
+  // ========================================
+  // FILE UPLOAD MODAL
+  // ========================================
+
+  let selectedFiles = [];
+
+  function initializeUploadModal() {
+    if (!elements.uploadModal) return;
+
+    // Open modal
+    if (elements.uploadFilesBtn) {
+      elements.uploadFilesBtn.addEventListener('click', openUploadModal);
+    }
+
+    // Close modal
+    const closeBtn = document.getElementById('uploadModalClose');
+    const overlay = document.getElementById('uploadModalOverlay');
+
+    [closeBtn, overlay].filter(el => el).forEach(el => {
+      el.addEventListener('click', closeUploadModal);
+    });
+
+    // File input handling
+    const fileInput = document.getElementById('fileInput');
+    const selectFilesBtn = document.getElementById('selectFilesBtn');
+
+    if (selectFilesBtn && fileInput) {
+      selectFilesBtn.addEventListener('click', () => fileInput.click());
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener('change', handleFileSelection);
+    }
+
+    // Upload form
+    const uploadForm = document.getElementById('uploadFilesForm');
+    if (uploadForm) {
+      uploadForm.addEventListener('submit', handleFileUpload);
+    }
+
+    // Escape key to close
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && elements.uploadModal.classList.contains('active')) {
+        closeUploadModal();
+      }
+    });
+  }
+
+  function openUploadModal() {
+    elements.uploadModal.classList.add('active');
+    elements.uploadModal.setAttribute('aria-hidden', 'false');
+    selectedFiles = [];
+  }
+
+  function closeUploadModal() {
+    elements.uploadModal.classList.remove('active');
+    elements.uploadModal.setAttribute('aria-hidden', 'true');
+
+    // Reset form and state
+    const uploadForm = document.getElementById('uploadFilesForm');
+    const filePreview = document.getElementById('filePreview');
+    const uploadProgress = document.getElementById('uploadProgress');
+
+    if (uploadForm) uploadForm.reset();
+    if (filePreview) filePreview.style.display = 'none';
+    if (uploadProgress) uploadProgress.style.display = 'none';
+
+    selectedFiles = [];
+  }
+
+  function handleFileSelection(e) {
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    // Validate file types
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    const validFiles = files.filter(file => validTypes.includes(file.type));
+
+    if (validFiles.length !== files.length) {
+      showToast('Some files were skipped. Only JPG and PNG files are supported.', 'warning');
+    }
+
+    if (validFiles.length === 0) {
+      showToast('No valid image files selected', 'error');
+      return;
+    }
+
+    selectedFiles = validFiles;
+    displayFilePreview(validFiles);
+  }
+
+  function displayFilePreview(files) {
+    const filePreview = document.getElementById('filePreview');
+    const filePreviewGrid = document.getElementById('filePreviewGrid');
+    const selectedFileCount = document.getElementById('selectedFileCount');
+
+    if (!filePreview || !filePreviewGrid) return;
+
+    // Update count
+    if (selectedFileCount) {
+      selectedFileCount.textContent = files.length;
+    }
+
+    // Clear existing preview
+    filePreviewGrid.innerHTML = '';
+
+    // Create preview items
+    files.forEach((file, index) => {
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const previewItem = document.createElement('div');
+        previewItem.className = 'file-preview-item';
+        previewItem.innerHTML = `
+          <img src="${e.target.result}" alt="${file.name}" class="file-preview-image">
+          <div class="file-preview-name">${file.name}</div>
+          <button type="button" class="file-preview-remove" data-index="${index}" aria-label="Remove file">
+            <i data-feather="x"></i>
+          </button>
+        `;
+
+        // Add remove handler
+        const removeBtn = previewItem.querySelector('.file-preview-remove');
+        if (removeBtn) {
+          removeBtn.addEventListener('click', () => removeFile(index));
+        }
+
+        filePreviewGrid.appendChild(previewItem);
+
+        // Reinitialize feather icons for the new elements
+        if (window.feather) {
+          feather.replace();
+        }
+      };
+
+      reader.readAsDataURL(file);
+    });
+
+    filePreview.style.display = 'block';
+  }
+
+  function removeFile(index) {
+    selectedFiles.splice(index, 1);
+
+    if (selectedFiles.length === 0) {
+      const filePreview = document.getElementById('filePreview');
+      const fileInput = document.getElementById('fileInput');
+
+      if (filePreview) filePreview.style.display = 'none';
+      if (fileInput) fileInput.value = '';
+    } else {
+      displayFilePreview(selectedFiles);
+    }
+  }
+
+  async function handleFileUpload(e) {
+    e.preventDefault();
+
+    if (selectedFiles.length === 0) {
+      showToast('Please select at least one image file', 'error');
+      return;
+    }
+
+    // Show progress
+    const uploadForm = document.getElementById('uploadFilesForm');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const progressBar = document.getElementById('uploadProgressBar');
+    const progressCurrent = document.getElementById('uploadProgressCurrent');
+    const progressTotal = document.getElementById('uploadProgressTotal');
+
+    uploadForm.style.display = 'none';
+    uploadProgress.style.display = 'block';
+
+    if (progressTotal) progressTotal.textContent = selectedFiles.length;
+    if (progressCurrent) progressCurrent.textContent = '0';
+    if (progressBar) progressBar.style.width = '0%';
+
+    // Get CSRF token
+    const csrfToken = document.querySelector('input[name="csrf_token"]')?.value;
+
+    // Create FormData and append files
+    const formData = new FormData();
+    selectedFiles.forEach(file => {
+      formData.append('files[]', file);
+    });
+
+    // Use XMLHttpRequest for upload progress tracking
+    const xhr = new XMLHttpRequest();
+
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percentComplete = (e.loaded / e.total) * 100;
+        if (progressBar) progressBar.style.width = `${percentComplete}%`;
+
+        // Update text to show upload progress
+        const uploadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
+        const totalMB = (e.total / (1024 * 1024)).toFixed(1);
+        if (progressCurrent) {
+          progressCurrent.textContent = `${uploadedMB} MB / ${totalMB} MB`;
+        }
+      }
+    });
+
+    // Handle completion
+    xhr.addEventListener('load', () => {
+      try {
+        const result = JSON.parse(xhr.responseText);
+
+        if (xhr.status === 200 && result.success) {
+          if (progressBar) progressBar.style.width = '100%';
+          if (progressCurrent) progressCurrent.textContent = result.imported;
+
+          if (result.imported > 0) {
+            showToast(`Successfully uploaded ${result.imported} image(s)`, 'success');
+            closeUploadModal();
+
+            // Reload page to show new images
+            setTimeout(() => window.location.reload(), 500);
+          } else if (result.failed > 0) {
+            let errorMsg = `Failed to upload ${result.failed} file(s)`;
+            if (result.message) {
+              errorMsg += `: ${result.message}`;
+            }
+            showToast(errorMsg, 'error');
+            uploadForm.style.display = 'block';
+            uploadProgress.style.display = 'none';
+          } else {
+            showToast('No images were uploaded', 'error');
+            uploadForm.style.display = 'block';
+            uploadProgress.style.display = 'none';
+          }
+        } else {
+          showToast(result.message || 'Failed to upload files', 'error');
+          uploadForm.style.display = 'block';
+          uploadProgress.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Error parsing response:', error);
+        showToast('An error occurred while uploading files', 'error');
+        uploadForm.style.display = 'block';
+        uploadProgress.style.display = 'none';
+      }
+    });
+
+    // Handle errors
+    xhr.addEventListener('error', () => {
+      console.error('Error uploading files');
+      showToast('Upload failed. Please try again.', 'error');
+      uploadForm.style.display = 'block';
+      uploadProgress.style.display = 'none';
+    });
+
+    // Start upload
+    xhr.open('POST', `/api/image-datasets/${state.datasetId}/upload-files`);
+    xhr.setRequestHeader('X-CSRFToken', csrfToken);
+    xhr.send(formData);
   }
 
   // ========================================

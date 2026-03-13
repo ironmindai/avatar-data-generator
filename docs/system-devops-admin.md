@@ -107,7 +107,7 @@ Port 8085 allocated for Avatar Data Generator Flask application.
 - HTTP: Redirects to HTTPS (configured by certbot)
 - HTTPS: Port 443 with SSL/TLS
 - Reverse Proxy: Proxies to localhost:8085
-- Client Max Body Size: 10M
+- Client Max Body Size: 2048M (2GB - updated 2026-03-13 for batch image uploads)
 - Static Files: /static served from /home/niro/galacticos/avatar-data-generator/static
   - Directory permissions: 755 (drwxr-xr-x)
   - File permissions: 644 (-rw-r--r--)
@@ -1389,6 +1389,31 @@ find /home/niro/galacticos/avatar-data-generator/static/ -type f -exec chmod 644
 - S3 images now load correctly with `crossOrigin='anonymous'` in JavaScript
 - Face detection feature now fully functional without CORS violations
 - Clean, standards-compliant CORS implementation for public S3 content
+
+### Nginx Client Max Body Size Increased for Batch Image Uploads (2026-03-13 07:13 UTC)
+**Reason**: Fixed 413 "Payload Too Large" error when uploading large batches of images (221 images)
+**Issue**: Nginx was rejecting large file uploads with HTTP 413 error
+**Root Cause**: `client_max_body_size` was set to 10M, which is insufficient for batch image uploads
+**Solution**: Increased `client_max_body_size` from 10M to 2048M (2GB) to accommodate large batch uploads
+**Changes Applied**:
+1. **Backup Created**: `/etc/nginx/sites-available/avatar-data-generator.dev.iron-mind.ai.backup-20260313`
+2. **Updated Configuration** in `/etc/nginx/sites-available/avatar-data-generator.dev.iron-mind.ai`:
+   - Changed: `client_max_body_size 10M;`
+   - To: `client_max_body_size 2048M;`
+   - Location: Line 19 of nginx configuration
+3. **Configuration Reload**:
+   - `sudo nginx -t` - Configuration test passed
+   - `sudo systemctl reload nginx` - Applied changes without downtime
+**Verification**:
+- Nginx status: active (running), reloaded successfully at 07:13:37 UTC
+- Configuration test: passed with protocol option warnings (normal for multi-site setup)
+- New limit: 2048M (2GB) allows up to ~9MB per image for 221 images or similar large batches
+- No service interruption during reload
+**Impact**:
+- Users can now upload large batches of images (200+ images) without HTTP 413 errors
+- Maximum upload size increased from 10MB to 2GB total payload
+- Supports image dataset imports, bulk uploads, and large batch operations
+- No backend code changes required - purely nginx configuration fix
 
 ### Gunicorn Worker OOM Kills - Memory Leak Prevention (2026-03-12 15:41 UTC - REVERTED 17:20 UTC)
 **Reason**: Applied Gunicorn worker optimization to prevent Out-Of-Memory (OOM) kills during face detection
